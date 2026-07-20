@@ -30,6 +30,7 @@ public class Settings extends BaseSettings {
     public static final BooleanSetting HIDE_ANSWERS_BUTTON = new BooleanSetting("morphe_hide_answers_button", FALSE, true);
     public static final BooleanSetting HIDE_CHAT_BUTTON = new BooleanSetting("morphe_hide_chat_button", FALSE, true);
     public static final BooleanSetting HIDE_COMMUNITIES_SHELF = new BooleanSetting("morphe_hide_communities_shelf", FALSE, true);
+    public static final BooleanSetting FORCE_BOTTOM_NAVIGATION = new BooleanSetting("morphe_force_bottom_navigation", TRUE, true);
     public static final BooleanSetting FORCE_SYSTEM_FONT = new BooleanSetting("morphe_force_system_font", FALSE, true);
     public static final BooleanSetting HIDE_CREATE_BUTTON = new BooleanSetting("morphe_hide_create_button", FALSE, true);
     public static final BooleanSetting HIDE_DISCOVER_BUTTON = new BooleanSetting("morphe_hide_discover_button", FALSE, true);

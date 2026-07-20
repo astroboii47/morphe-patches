@@ -24,6 +24,8 @@ Second \"item\" text"</string>
     <string name="morphe_hide_chat_button_title">Hide Chat button</string>
     <string name="morphe_hide_create_button_title">Hide Create button</string>
     <string name="morphe_hide_discover_button_title">Hide Discover or Communities button</string>
+    <string name="morphe_force_bottom_navigation_title">Force bottom navigation</string>
+    <string name="morphe_force_bottom_navigation_summary">Use the bottom navigation bar instead of the side navigation rail</string>
     <string name="morphe_hide_games_button_title">Hide Games button</string>
 
     <string name="morphe_screen_sidebar_title">Sidebar</string>

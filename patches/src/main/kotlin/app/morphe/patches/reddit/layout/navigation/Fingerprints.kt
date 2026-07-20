@@ -36,6 +36,23 @@ internal object BottomNavScreenListBuilderFingerprint : Fingerprint(
     )
 )
 
+internal object BottomNavScreenSideNavLayoutFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/launch/bottomnav/BottomNavScreen;",
+    name = "n5",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(
+        "Z",
+        "Landroidx/compose/runtime/internal/a;",
+        "Z",
+        "Landroidx/compose/runtime/internal/a;",
+        "L",
+        "Landroidx/compose/runtime/internal/a;",
+        "L",
+        "I"
+    )
+)
+
 internal object BottomNavScreenResourceBuilderLegacyFingerprint : Fingerprint(
     definingClass = "Lcom/reddit/launch/bottomnav/BottomNavScreen;",
     returnType = "L",
