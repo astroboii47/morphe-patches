@@ -37,8 +37,7 @@ val forceBottomNavigationPatch = bytecodePatch(
         BottomNavScreenSideNavLayoutFingerprint.method.addInstructions(
             0,
             """
-                invoke-static { p1 }, $EXTENSION_CLASS->forceBottomNavigation(Z)Z
-                move-result p1
+                const/16 p1, 0x0
             """
         )
 
