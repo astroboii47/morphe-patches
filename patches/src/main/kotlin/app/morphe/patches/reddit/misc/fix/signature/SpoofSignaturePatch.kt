@@ -10,6 +10,7 @@ import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.all.misc.fix.changepackageinstaller.changePackageInstallerPatch
 import app.morphe.patches.reddit.misc.extension.sharedExtensionPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
+import java.util.logging.Logger
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/SpoofSignaturePatch;"
@@ -24,6 +25,12 @@ val spoofSignaturePatch = bytecodePatch(
     dependsOn(sharedExtensionPatch, changePackageInstallerPatch())
 
     execute {
-        ApplicationFingerprint.classDef.setSuperClass(EXTENSION_CLASS)
+        try {
+            ApplicationFingerprint.classDef.setSuperClass(EXTENSION_CLASS)
+        } catch (_: Exception) {
+            Logger.getLogger(this::class.java.name).warning(
+                "'Spoof signature' was skipped because the Reddit Application class could not be found."
+            )
+        }
     }
 }
