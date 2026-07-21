@@ -11,6 +11,7 @@ import static app.morphe.extension.shared.StringRef.str;
 import android.content.Context;
 import android.preference.PreferenceScreen;
 
+import app.morphe.extension.reddit.patches.ForceBottomNavigationPatch;
 import app.morphe.extension.reddit.patches.HideNavigationButtonsPatch;
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.reddit.settings.preference.BooleanSettingPreference;
@@ -24,11 +25,23 @@ public class NavigationBarPreferenceCategory extends ConditionalPreferenceCatego
 
     @Override
     public boolean getSettingsStatus() {
-        return HideNavigationButtonsPatch.isPatchIncluded();
+        return ForceBottomNavigationPatch.isPatchIncluded() ||
+                HideNavigationButtonsPatch.isPatchIncluded();
     }
 
     @Override
     public void addPreferences(Context context) {
+        if (ForceBottomNavigationPatch.isPatchIncluded()) {
+            addPreference(new BooleanSettingPreference(
+                    context,
+                    Settings.FORCE_BOTTOM_NAVIGATION
+            ));
+        }
+
+        if (!HideNavigationButtonsPatch.isPatchIncluded()) {
+            return;
+        }
+
         addPreference(new BooleanSettingPreference(
                 context,
                 Settings.HIDE_ANSWERS_BUTTON
