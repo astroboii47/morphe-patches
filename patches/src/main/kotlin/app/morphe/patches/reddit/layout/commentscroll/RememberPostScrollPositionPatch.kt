@@ -28,14 +28,14 @@ val rememberPostScrollPositionPatch = bytecodePatch(
         CommentsListContentFingerprint.method.addInstructions(
             0,
             """
-                invoke-static { p0, p1 }, $EXTENSION_CLASS->bindAndRestorePosition(Ljava/lang/Object;Ljava/lang/Object;)V
+                invoke-static/range { p0 .. p1 }, $EXTENSION_CLASS->bindAndRestorePosition(Ljava/lang/Object;Ljava/lang/Object;)V
             """
         )
 
         LazyListStateUpdateScrollFingerprint.method.addInstructions(
             0,
             """
-                invoke-static { p0, p1, p2 }, $EXTENSION_CLASS->saveBoundPosition(Ljava/lang/Object;II)V
+                invoke-static/range { p0 .. p2 }, $EXTENSION_CLASS->saveBoundPosition(Ljava/lang/Object;II)V
             """
         )
 
