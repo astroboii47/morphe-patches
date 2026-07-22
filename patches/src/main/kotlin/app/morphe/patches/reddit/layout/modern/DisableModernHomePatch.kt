@@ -6,17 +6,22 @@
  */
 package app.morphe.patches.reddit.layout.modern
 
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findInstructionIndicesReversedOrThrow
+import app.morphe.util.getReference
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import java.util.logging.Logger
 
 private const val EXTENSION_CLASS =
@@ -64,7 +69,35 @@ val disableModernHomePatch = bytecodePatch(
             )
         }.isSuccess
 
-        if (!legacyHomePatched && !modernHomeSearchBarPatched) {
+        val modernHomeSidebarButtonPatched = runCatching {
+            HomeRevampTopBarBuilderFingerprint.method.apply {
+                val topBarCallIndex = instructions.indexOfFirst { instruction ->
+                    val reference = instruction.getReference<MethodReference>()
+
+                    instruction.opcode == Opcode.INVOKE_STATIC_RANGE &&
+                        reference != null &&
+                        reference.definingClass == "Lkz0;" &&
+                        reference.name == "G" &&
+                        reference.returnType == "V"
+                }
+
+                if (topBarCallIndex < 0) {
+                    error("Could not find v29 home top-bar call")
+                }
+
+                val topBarCall = getInstruction<RegisterRangeInstruction>(topBarCallIndex)
+                val leftSlotRegister = topBarCall.startRegister + 2
+
+                addInstructions(
+                    topBarCallIndex,
+                    """
+                        move-object/from16 v$leftSlotRegister, p13
+                    """
+                )
+            }
+        }.isSuccess
+
+        if (!legacyHomePatched && !modernHomeSearchBarPatched && !modernHomeSidebarButtonPatched) {
             return@execute Logger.getLogger(this::class.java.name).warning(
                 "'Disable modern home' could not find a supported home UI hook"
             )

@@ -172,14 +172,9 @@ public final class RememberPostScrollPositionPatch {
         indexField.setAccessible(true);
         int index = indexField.getInt(firstItem);
 
-        int offset = 0;
-        try {
-            Field offsetField = firstItem.getClass().getDeclaredField("h");
-            offsetField.setAccessible(true);
-            offset = offsetField.getInt(firstItem);
-        } catch (NoSuchFieldException ignored) {
-            // Restoring to the first visible comment is still useful if offset storage changes.
-        }
+        Field offsetField = layoutInfo.getClass().getDeclaredField("b");
+        offsetField.setAccessible(true);
+        int offset = offsetField.getInt(layoutInfo);
 
         return new Position(Math.max(0, index), Math.max(0, offset));
     }
