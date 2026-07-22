@@ -9,7 +9,6 @@ package app.morphe.patches.reddit.layout.modern
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
-import app.morphe.patches.reddit.misc.version.is_2026_25_0_or_greater
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.addInstructionsAtControlFlowLabel
@@ -17,7 +16,6 @@ import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import java.util.logging.Logger
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/DisableModernHomePatch;"
@@ -25,18 +23,13 @@ private const val EXTENSION_CLASS =
 @Suppress("unused")
 val disableModernHomePatch = bytecodePatch(
     name = "Disable modern home",
-    description = "Adds an option to disable the modern home UI. This patch works with Reddit 2026.24.0 and earlier."
+    description = "Adds an option to disable the modern home UI."
 ) {
     compatibleWith(COMPATIBILITY_REDDIT)
 
     dependsOn(settingsPatch, versionCheckPatch)
 
     execute {
-        if (is_2026_25_0_or_greater) {
-            return@execute Logger.getLogger(this::class.java.name).warning(
-                "'Disable modern home' does not work with Reddit 2026.25.0+"
-            )
-        }
         HomeRevampVariantFingerprint.method.apply {
             findInstructionIndicesReversedOrThrow(Opcode.RETURN).forEach { index ->
                 val register = getInstruction<OneRegisterInstruction>(index).registerA

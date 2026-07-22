@@ -30,6 +30,7 @@ import app.morphe.util.copyResources
 import app.morphe.util.findFreeRegister
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import org.w3c.dom.Element
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/settings/RedditActivityHook;"
@@ -62,6 +63,30 @@ val settingsPatch = bytecodePatch(
                         "morphe_custom_list_item_checked.xml"
                     )
                 )
+
+                document("AndroidManifest.xml").use { document ->
+                    val applicationNode =
+                        document
+                            .getElementsByTagName("application")
+                            .item(0) as Element
+
+                    val settingsActivity = document.createElement("activity").apply {
+                        setAttribute("android:name", "app.morphe.extension.reddit.settings.MorpheSettingsActivity")
+                        setAttribute("android:exported", "true")
+                        setAttribute("android:label", "Morphe Settings")
+                    }
+                    val intentFilter = document.createElement("intent-filter").apply {
+                        appendChild(document.createElement("action").apply {
+                            setAttribute("android:name", "android.intent.action.MAIN")
+                        })
+                        appendChild(document.createElement("category").apply {
+                            setAttribute("android:name", "android.intent.category.LAUNCHER")
+                        })
+                    }
+
+                    settingsActivity.appendChild(intentFilter)
+                    applicationNode.appendChild(settingsActivity)
+                }
             }
         }
     )

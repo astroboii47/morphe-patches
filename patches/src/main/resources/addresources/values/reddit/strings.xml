@@ -53,6 +53,8 @@ Second \"item\" text"</string>
     <string name="morphe_custom_font_failed_to_load">Failed to load custom font. Pick a different file</string>
     <string name="morphe_hide_communities_shelf_title">Hide communities shelf</string>
     <string name="morphe_hide_communities_shelf_summary">Hides the related or suggested communities shelf in subreddits</string>
+    <string name="morphe_remember_post_scroll_position_title">Remember post scroll position</string>
+    <string name="morphe_remember_post_scroll_position_summary">Restores the comment list position when reopening the same post</string>
     <string name="morphe_hide_trending_shelves_title">Hide Trending shelves</string>
     <string name="morphe_hide_trending_shelves_summary">Hides the Trending shelves from feed and search suggestions</string>
     <string name="morphe_remove_notification_dialog_title">Remove notification suggestion dialog</string>
