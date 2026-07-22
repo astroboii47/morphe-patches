@@ -10,6 +10,7 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
+import app.morphe.util.findFreeRegister
 import app.morphe.util.setExtensionIsPatchIncluded
 
 private const val EXTENSION_CLASS =
@@ -31,6 +32,22 @@ val rememberPostScrollPositionPatch = bytecodePatch(
                 invoke-static/range { p0 .. p1 }, $EXTENSION_CLASS->bindAndRestorePosition(Ljava/lang/Object;Ljava/lang/Object;)V
             """
         )
+
+        listOf(
+            CommentsListContentWithoutStateFingerprint.method,
+            CommentsListScrollTargetFingerprint.method
+        ).forEach { method ->
+            val providerRegister = method.findFreeRegister(0)
+            val stateRegister = method.findFreeRegister(0, providerRegister)
+            method.addInstructions(
+                0,
+                """
+                    move-object/from16 v$providerRegister, p0
+                    move-object/from16 v$stateRegister, p1
+                    invoke-static { v$providerRegister, v$stateRegister }, $EXTENSION_CLASS->bindAndRestorePosition(Ljava/lang/Object;Ljava/lang/Object;)V
+                """
+            )
+        }
 
         LazyListStateUpdateScrollFingerprint.method.addInstructions(
             0,

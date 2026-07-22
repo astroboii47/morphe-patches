@@ -55,7 +55,9 @@ val disableModernHomePatch = bytecodePatch(
                     invoke-static { }, $EXTENSION_CLASS->shouldDisableModernHome()Z
                     move-result v0
                     if-eqz v0, :off
-                    return-void
+                    const-string p2, ""
+                    const/16 p3, 0x1
+                    const/16 p4, 0x0
                     :off
                     nop
                 """

@@ -26,6 +26,34 @@ internal object CommentsListContentFingerprint : Fingerprint(
     )
 )
 
+internal object CommentsListContentWithoutStateFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/comments/presentation/composables/d;",
+    name = "f",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(
+        "Landroidx/compose/foundation/lazy/b;",
+        "I",
+        "I",
+        "Licb;",
+        "I"
+    )
+)
+
+internal object CommentsListScrollTargetFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/comments/presentation/composables/d;",
+    name = "g",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(
+        "Landroidx/compose/foundation/lazy/b;",
+        "I",
+        "I",
+        "Licb;",
+        "I"
+    )
+)
+
 internal object LazyListStateUpdateScrollFingerprint : Fingerprint(
     definingClass = "Landroidx/compose/foundation/lazy/b;",
     name = "k",
