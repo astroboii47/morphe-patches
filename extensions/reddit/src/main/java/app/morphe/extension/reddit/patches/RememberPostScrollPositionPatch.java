@@ -27,8 +27,10 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
     private static final Map<Object, RestoreAttempt> RESTORE_ATTEMPTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
+    private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final int MAX_RESTORE_ATTEMPTS = 12;
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
+    private static final long RESTORE_SETTLE_MS = 1500L;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -93,9 +95,24 @@ public final class RememberPostScrollPositionPatch {
                 if (pending != null) {
                     if (incoming.isNear(pending)) {
                         PENDING_RESTORES.remove(lazyListState);
-                    } else if (incoming.isBefore(pending)) {
+                        synchronized (SUPPRESS_SAVE_UNTIL) {
+                            SUPPRESS_SAVE_UNTIL.put(
+                                    lazyListState,
+                                    System.currentTimeMillis() + RESTORE_SETTLE_MS
+                            );
+                        }
+                    }
+                    return;
+                }
+            }
+
+            synchronized (SUPPRESS_SAVE_UNTIL) {
+                Long suppressUntil = SUPPRESS_SAVE_UNTIL.get(lazyListState);
+                if (suppressUntil != null) {
+                    if (System.currentTimeMillis() < suppressUntil) {
                         return;
                     }
+                    SUPPRESS_SAVE_UNTIL.remove(lazyListState);
                 }
             }
 
