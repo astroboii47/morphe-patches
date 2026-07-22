@@ -88,10 +88,12 @@ val disableModernHomePatch = bytecodePatch(
                 val topBarCall = getInstruction<RegisterRangeInstruction>(topBarCallIndex)
                 val leftSlotRegister = topBarCall.startRegister + 2
 
-                addInstructions(
+                addInstructionsWithLabels(
                     topBarCallIndex,
                     """
-                        move-object/from16 v$leftSlotRegister, p13
+                        invoke-static/range { p11 .. p13 }, $EXTENSION_CLASS->createAppBarSlot(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                        move-result-object v$leftSlotRegister
+                        check-cast v$leftSlotRegister, Landroidx/compose/runtime/internal/a;
                     """
                 )
             }

@@ -6,6 +6,8 @@
  */
 package app.morphe.extension.reddit.patches;
 
+import java.lang.reflect.Constructor;
+
 import app.morphe.extension.reddit.settings.Settings;
 
 @SuppressWarnings("unused")
@@ -30,5 +32,27 @@ public class DisableModernHomePatch {
      */
     public static boolean shouldDisableModernHome() {
         return isPatchIncluded() || Settings.DISABLE_MODERN_HOME.get();
+    }
+
+    /**
+     * Injection point.
+     */
+    public static Object createAppBarSlot(Object fallbackSlot, Object unused, Object sidebarContent) {
+        try {
+            if (sidebarContent == null) {
+                return fallbackSlot;
+            }
+
+            Class<?> slotClass = Class.forName("androidx.compose.runtime.internal.a");
+            if (slotClass.isInstance(sidebarContent)) {
+                return sidebarContent;
+            }
+
+            Constructor<?> constructor = slotClass.getDeclaredConstructor(Object.class, int.class, boolean.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(sidebarContent, 0x4815aa7, false);
+        } catch (Throwable ignoredException) {
+            return fallbackSlot;
+        }
     }
 }
