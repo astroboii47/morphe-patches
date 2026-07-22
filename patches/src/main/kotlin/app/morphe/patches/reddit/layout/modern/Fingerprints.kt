@@ -7,7 +7,6 @@
 package app.morphe.patches.reddit.layout.modern
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.AccessFlags
 
 internal object HomeRevampVariantFingerprint : Fingerprint(
@@ -19,9 +18,17 @@ internal object HomeRevampVariantFingerprint : Fingerprint(
 )
 
 internal object HomeRevampM1SearchBarFingerprint : Fingerprint(
+    definingClass = "Lkz0;",
+    name = "E",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
-    filters = listOf(
-        string("main_top_app_bar_search")
+    parameters = listOf(
+        "Lkotlin/jvm/functions/Function0;",
+        "Loev;",
+        "Ljava/lang/String;",
+        "Z",
+        "Z",
+        "Licb;",
+        "I"
     )
 )
