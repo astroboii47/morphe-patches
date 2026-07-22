@@ -52,14 +52,21 @@ val rememberPostScrollPositionPatch = bytecodePatch(
         LazyListStateUpdateScrollFingerprint.method.addInstructions(
             0,
             """
-                invoke-static/range { p0 .. p2 }, $EXTENSION_CLASS->saveBoundPosition(Ljava/lang/Object;II)V
+                invoke-static/range { p0 .. p3 }, $EXTENSION_CLASS->saveBoundPosition(Ljava/lang/Object;IIZ)V
             """
         )
 
         LazyListStateLayoutUpdateFingerprint.method.addInstructions(
             0,
             """
-                invoke-static/range { p0 .. p1 }, $EXTENSION_CLASS->saveBoundPositionFromLayout(Ljava/lang/Object;Ljava/lang/Object;)V
+                invoke-static/range { p0 .. p2 }, $EXTENSION_CLASS->saveBoundPositionFromLayout(Ljava/lang/Object;Ljava/lang/Object;Z)V
+            """
+        )
+
+        LazyListStateDispatchRawDeltaFingerprint.method.addInstructions(
+            0,
+            """
+                invoke-static { p0, p1 }, $EXTENSION_CLASS->markBoundListScrolled(Ljava/lang/Object;F)V
             """
         )
 
