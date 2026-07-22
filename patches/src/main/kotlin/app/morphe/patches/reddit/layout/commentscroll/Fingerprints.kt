@@ -69,11 +69,3 @@ internal object LazyListStateLayoutUpdateFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf("Lu2q;", "Z", "Z")
 )
-
-internal object LazyListStateDispatchRawDeltaFingerprint : Fingerprint(
-    definingClass = "Landroidx/compose/foundation/lazy/b;",
-    name = "e",
-    returnType = "F",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
-    parameters = listOf("F")
-)

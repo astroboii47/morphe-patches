@@ -63,13 +63,6 @@ val rememberPostScrollPositionPatch = bytecodePatch(
             """
         )
 
-        LazyListStateDispatchRawDeltaFingerprint.method.addInstructions(
-            0,
-            """
-                invoke-static { p0, p1 }, $EXTENSION_CLASS->markBoundListScrolled(Ljava/lang/Object;F)V
-            """
-        )
-
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }

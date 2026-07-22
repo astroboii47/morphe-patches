@@ -28,11 +28,9 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, RestoreAttempt> RESTORE_ATTEMPTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
-    private static final Map<Object, Long> USER_SCROLL_UNTIL = new WeakHashMap<>();
     private static final int MAX_RESTORE_ATTEMPTS = 12;
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 2500L;
-    private static final long USER_SCROLL_CAPTURE_MS = 1200L;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -71,36 +69,12 @@ public final class RememberPostScrollPositionPatch {
     /**
      * Injection point.
      */
-    public static void markBoundListScrolled(Object lazyListState, float delta) {
-        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
-            return;
-        }
-
-        if (lazyListState == null || Math.abs(delta) < 0.5f) {
-            return;
-        }
-
-        synchronized (BOUND_LISTS) {
-            if (!BOUND_LISTS.containsKey(lazyListState)) {
-                return;
-            }
-        }
-
-        synchronized (USER_SCROLL_UNTIL) {
-            USER_SCROLL_UNTIL.put(lazyListState, System.currentTimeMillis() + USER_SCROLL_CAPTURE_MS);
-        }
-    }
-
-    /**
-     * Injection point.
-     */
     public static void saveBoundPosition(Object lazyListState, int index, int offset, boolean requestRemeasure) {
         if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
             return;
         }
 
-        boolean hasRecentUserScroll = hasRecentUserScroll(lazyListState);
-        if (!hasRecentUserScroll) {
+        if (!requestRemeasure) {
             return;
         }
 
@@ -131,10 +105,14 @@ public final class RememberPostScrollPositionPatch {
                                     System.currentTimeMillis() + RESTORE_SETTLE_MS
                             );
                         }
-                    } else if (hasRecentUserScroll) {
-                        PENDING_RESTORES.remove(lazyListState);
                     } else {
-                        return;
+                        synchronized (SUPPRESS_SAVE_UNTIL) {
+                            Long suppressUntil = SUPPRESS_SAVE_UNTIL.get(lazyListState);
+                            if (suppressUntil != null && System.currentTimeMillis() < suppressUntil) {
+                                return;
+                            }
+                        }
+                        PENDING_RESTORES.remove(lazyListState);
                     }
                 }
             }
@@ -165,11 +143,11 @@ public final class RememberPostScrollPositionPatch {
             return;
         }
 
-        if (!scrollPass || !hasRecentUserScroll(lazyListState)) {
-            return;
-        }
-
         try {
+            if (!scrollPass || Math.abs(getScrollDelta(layoutInfo)) < 0.5f) {
+                return;
+            }
+
             Position position = getPositionFromLayoutInfo(layoutInfo);
             if (position == null) {
                 return;
@@ -178,20 +156,6 @@ public final class RememberPostScrollPositionPatch {
             saveBoundPosition(lazyListState, position.index, position.offset, true);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position from layout", ex);
-        }
-    }
-
-    private static boolean hasRecentUserScroll(Object lazyListState) {
-        synchronized (USER_SCROLL_UNTIL) {
-            Long captureUntil = USER_SCROLL_UNTIL.get(lazyListState);
-            if (captureUntil == null) {
-                return false;
-            }
-            if (System.currentTimeMillis() <= captureUntil) {
-                return true;
-            }
-            USER_SCROLL_UNTIL.remove(lazyListState);
-            return false;
         }
     }
 
@@ -223,6 +187,9 @@ public final class RememberPostScrollPositionPatch {
             requestScrollToItem.invoke(lazyListState, position.index, position.offset);
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
+            }
+            synchronized (SUPPRESS_SAVE_UNTIL) {
+                SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position", ex);
@@ -286,6 +253,16 @@ public final class RememberPostScrollPositionPatch {
         int offset = offsetField.getInt(layoutInfo);
 
         return new Position(Math.max(0, index), Math.max(0, offset));
+    }
+
+    private static float getScrollDelta(Object layoutInfo) throws ReflectiveOperationException {
+        if (layoutInfo == null) {
+            return 0f;
+        }
+
+        Field scrollDeltaField = layoutInfo.getClass().getDeclaredField("d");
+        scrollDeltaField.setAccessible(true);
+        return scrollDeltaField.getFloat(layoutInfo);
     }
 
     private static final class RestoreAttempt {
