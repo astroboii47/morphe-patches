@@ -80,3 +80,10 @@ internal object WebBrowserActivityOnCreateFingerprint : Fingerprint(
     strings = listOf("com.reddit.extra.initial_url")
 )
 
+internal object BuildVersionPreferenceFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/screen/settings/preferences/b;",
+    name = "w0",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf()
+)

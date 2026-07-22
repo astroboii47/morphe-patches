@@ -15,8 +15,12 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+
 import app.morphe.extension.reddit.settings.preference.RedditPreferenceFragment;
 import app.morphe.extension.reddit.ui.MorpheSettingsIconVectorDrawable;
+import app.morphe.extension.shared.Logger;
 
 @SuppressWarnings({"deprecation", "unused"})
 public class RedditActivityHook {
@@ -92,6 +96,23 @@ public class RedditActivityHook {
     /**
      * Injection point.
      */
+    public static void hookBuildVersionPreference(Object preferencesFragment) {
+        try {
+            Object preference = getBuildVersionPreference(preferencesFragment);
+            if (preference == null) {
+                return;
+            }
+
+            callPreferenceMethod(preference, "A", String.class, "Morphe Settings");
+            setPreferenceClickListener(preference);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to hook Reddit build version preference", ex);
+        }
+    }
+
+    /**
+     * Injection point.
+     */
     public static boolean isAcknowledgment(Enum<?> e) {
         return e != null && "ACKNOWLEDGMENTS".equals(e.name());
     }
@@ -104,5 +125,54 @@ public class RedditActivityHook {
         intent.setClassName(context, "com.reddit.webembed.browser.WebBrowserActivity");
         intent.putExtra("com.reddit.extra.initial_url", MORPHE_LABEL);
         return intent;
+    }
+
+    private static Object getBuildVersionPreference(Object preferencesFragment) throws ReflectiveOperationException {
+        Class<?> fragmentClass = preferencesFragment.getClass();
+        Field buildVersionKey = getResourceField("string", "key_pref_build_version");
+
+        Method getStringKey = fragmentClass.getDeclaredMethod("m", int.class);
+        getStringKey.setAccessible(true);
+        Object key = getStringKey.invoke(preferencesFragment, buildVersionKey.getInt(null));
+
+        Method findPreference = fragmentClass.getMethod("e0", CharSequence.class);
+        findPreference.setAccessible(true);
+        return findPreference.invoke(preferencesFragment, key);
+    }
+
+    private static Field getResourceField(String type, String name) throws ReflectiveOperationException {
+        Class<?> resourceClass = Class.forName("com.reddit.frontpage.R$" + type);
+        Field field = resourceClass.getDeclaredField(name);
+        field.setAccessible(true);
+        return field;
+    }
+
+    private static void callPreferenceMethod(
+            Object preference,
+            String methodName,
+            Class<?> parameterType,
+            Object value
+    ) throws ReflectiveOperationException {
+        Method method = preference.getClass().getMethod(methodName, parameterType);
+        method.setAccessible(true);
+        method.invoke(preference, value);
+    }
+
+    private static void setPreferenceClickListener(Object preference) throws ReflectiveOperationException {
+        Class<?> listenerClass = Class.forName("m720");
+        Object listener = java.lang.reflect.Proxy.newProxyInstance(
+                listenerClass.getClassLoader(),
+                new Class<?>[]{listenerClass},
+                (proxy, method, args) -> {
+                    Object clickedPreference = args != null && args.length > 0 ? args[0] : preference;
+                    Field contextField = clickedPreference.getClass().getField("a");
+                    Context context = (Context) contextField.get(clickedPreference);
+                    context.startActivity(new Intent(context, MorpheSettingsActivity.class));
+                    return true;
+                }
+        );
+
+        Field clickListenerField = preference.getClass().getField("g");
+        clickListenerField.set(preference, listener);
     }
 }

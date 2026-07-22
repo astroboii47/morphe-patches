@@ -76,35 +76,7 @@ val settingsPatch = bytecodePatch(
                         setAttribute("android:exported", "true")
                         setAttribute("android:label", "Morphe Settings")
                     }
-                    val intentFilter = document.createElement("intent-filter").apply {
-                        appendChild(document.createElement("action").apply {
-                            setAttribute("android:name", "android.intent.action.MAIN")
-                        })
-                        appendChild(document.createElement("category").apply {
-                            setAttribute("android:name", "android.intent.category.LAUNCHER")
-                        })
-                    }
-
-                    settingsActivity.appendChild(intentFilter)
                     applicationNode.appendChild(settingsActivity)
-
-                    val settingsAlias = document.createElement("activity-alias").apply {
-                        setAttribute("android:name", "app.morphe.extension.reddit.settings.MorpheSettingsLauncher")
-                        setAttribute("android:targetActivity", "com.reddit.launch.main.MainActivity")
-                        setAttribute("android:exported", "true")
-                        setAttribute("android:label", "Morphe Settings")
-                    }
-                    val aliasIntentFilter = document.createElement("intent-filter").apply {
-                        appendChild(document.createElement("action").apply {
-                            setAttribute("android:name", "android.intent.action.MAIN")
-                        })
-                        appendChild(document.createElement("category").apply {
-                            setAttribute("android:name", "android.intent.category.LAUNCHER")
-                        })
-                    }
-
-                    settingsAlias.appendChild(aliasIntentFilter)
-                    applicationNode.appendChild(settingsAlias)
                 }
             }
         }
@@ -206,6 +178,22 @@ val settingsPatch = bytecodePatch(
                     """
                 )
             }
+        }
+
+        BuildVersionPreferenceFingerprint.method.apply {
+            val insertIndex = implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            }
+            check(insertIndex >= 0) {
+                "Could not find build version preference return"
+            }
+
+            addInstructions(
+                insertIndex,
+                """
+                    invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->hookBuildVersionPreference(Ljava/lang/Object;)V
+                """
+            )
         }
 
         redditActivityOnCreateHook.fingerprint.method.apply {

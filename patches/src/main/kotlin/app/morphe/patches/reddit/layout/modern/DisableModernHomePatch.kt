@@ -9,18 +9,15 @@ package app.morphe.patches.reddit.layout.modern
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
-import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.findInstructionIndicesReversedOrThrow
-import app.morphe.util.getReference
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import java.util.logging.Logger
 
 private const val EXTENSION_CLASS =
@@ -68,31 +65,7 @@ val disableModernHomePatch = bytecodePatch(
             )
         }.isSuccess
 
-        val modernHomeNavigationButtonPatched = runCatching {
-            MainNavigationButtonFingerprint.method.apply {
-                val layoutCheckIndex = instructions.indexOfFirst { instruction ->
-                    val reference = instruction.getReference<MethodReference>()
-
-                    instruction.opcode == Opcode.INVOKE_STATIC &&
-                        reference != null &&
-                        reference.definingClass == "Lhs0;" &&
-                        reference.name == "Z" &&
-                        reference.returnType == "Z"
-                }
-
-                if (layoutCheckIndex < 0) {
-                    error("Could not find v29 main navigation button layout check")
-                }
-
-                val layoutCheckResultRegister = getInstruction<OneRegisterInstruction>(
-                    layoutCheckIndex + 1
-                ).registerA
-
-                addInstructions(layoutCheckIndex + 2, "const/4 v$layoutCheckResultRegister, 0x0")
-            }
-        }.isSuccess
-
-        if (!legacyHomePatched && !modernHomeSearchBarPatched && !modernHomeNavigationButtonPatched) {
+        if (!legacyHomePatched && !modernHomeSearchBarPatched) {
             return@execute Logger.getLogger(this::class.java.name).warning(
                 "'Disable modern home' could not find a supported home UI hook"
             )

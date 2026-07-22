@@ -32,18 +32,3 @@ internal object HomeRevampM1SearchBarFingerprint : Fingerprint(
         "I"
     )
 )
-
-internal object MainNavigationButtonFingerprint : Fingerprint(
-    definingClass = "Lwnr;",
-    name = "n",
-    returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
-    parameters = listOf(
-        "Lvnr;",
-        "Loev;",
-        "Lcom/reddit/navdrawer/composables/c;",
-        "Licb;",
-        "I",
-        "I"
-    )
-)
