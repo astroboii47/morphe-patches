@@ -20,7 +20,6 @@ import app.morphe.util.getReference
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.RegisterRangeInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import java.util.logging.Logger
 
@@ -69,37 +68,31 @@ val disableModernHomePatch = bytecodePatch(
             )
         }.isSuccess
 
-        val modernHomeSidebarButtonPatched = runCatching {
-            HomeRevampTopBarBuilderFingerprint.method.apply {
-                val topBarCallIndex = instructions.indexOfFirst { instruction ->
+        val modernHomeNavigationButtonPatched = runCatching {
+            MainNavigationButtonFingerprint.method.apply {
+                val layoutCheckIndex = instructions.indexOfFirst { instruction ->
                     val reference = instruction.getReference<MethodReference>()
 
-                    instruction.opcode == Opcode.INVOKE_STATIC_RANGE &&
+                    instruction.opcode == Opcode.INVOKE_STATIC &&
                         reference != null &&
-                        reference.definingClass == "Lkz0;" &&
-                        reference.name == "G" &&
-                        reference.returnType == "V"
+                        reference.definingClass == "Lhs0;" &&
+                        reference.name == "Z" &&
+                        reference.returnType == "Z"
                 }
 
-                if (topBarCallIndex < 0) {
-                    error("Could not find v29 home top-bar call")
+                if (layoutCheckIndex < 0) {
+                    error("Could not find v29 main navigation button layout check")
                 }
 
-                val topBarCall = getInstruction<RegisterRangeInstruction>(topBarCallIndex)
-                val leftSlotRegister = topBarCall.startRegister + 2
+                val layoutCheckResultRegister = getInstruction<OneRegisterInstruction>(
+                    layoutCheckIndex + 1
+                ).registerA
 
-                addInstructionsWithLabels(
-                    topBarCallIndex,
-                    """
-                        invoke-static/range { p11 .. p13 }, $EXTENSION_CLASS->createAppBarSlot(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-                        move-result-object v$leftSlotRegister
-                        check-cast v$leftSlotRegister, Landroidx/compose/runtime/internal/a;
-                    """
-                )
+                addInstructions(layoutCheckIndex + 2, "const/4 v$layoutCheckResultRegister, 0x0")
             }
         }.isSuccess
 
-        if (!legacyHomePatched && !modernHomeSearchBarPatched && !modernHomeSidebarButtonPatched) {
+        if (!legacyHomePatched && !modernHomeSearchBarPatched && !modernHomeNavigationButtonPatched) {
             return@execute Logger.getLogger(this::class.java.name).warning(
                 "'Disable modern home' could not find a supported home UI hook"
             )

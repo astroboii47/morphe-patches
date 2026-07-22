@@ -32,10 +32,4 @@ public class DisableModernHomePatch {
         return isPatchIncluded() || Settings.DISABLE_MODERN_HOME.get();
     }
 
-    /**
-     * Injection point.
-     */
-    public static Object createAppBarSlot(Object fallbackSlot, Object unused, Object sidebarContent) {
-        return fallbackSlot;
-    }
 }

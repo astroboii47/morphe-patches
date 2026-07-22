@@ -79,8 +79,14 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
+            int safeIndex = Math.max(0, index);
+            int safeOffset = Math.max(0, offset);
+            if (safeIndex == 0 && safeOffset == 0) {
+                return;
+            }
+
             synchronized (POSITIONS) {
-                POSITIONS.put(key, new Position(Math.max(0, index), Math.max(0, offset)));
+                POSITIONS.put(key, new Position(safeIndex, safeOffset));
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position", ex);
@@ -150,10 +156,28 @@ public final class RememberPostScrollPositionPatch {
             return null;
         }
 
-        Field idField = params.getClass().getDeclaredField("a");
-        idField.setAccessible(true);
-        Object value = idField.get(params);
-        return value instanceof String && !((String) value).isEmpty() ? (String) value : null;
+        String linkId = getStringField(params, "d0");
+        if (linkId != null) {
+            return linkId;
+        }
+
+        String linkKindWithId = getStringField(params, "a");
+        if (linkKindWithId != null) {
+            return linkKindWithId;
+        }
+
+        return getStringField(params, "b");
+    }
+
+    private static String getStringField(Object instance, String fieldName) throws IllegalAccessException {
+        try {
+            Field field = instance.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            Object value = field.get(instance);
+            return value instanceof String && !((String) value).isEmpty() ? (String) value : null;
+        } catch (NoSuchFieldException ignored) {
+            return null;
+        }
     }
 
     private static Position getPositionFromLayoutInfo(Object layoutInfo) throws ReflectiveOperationException {

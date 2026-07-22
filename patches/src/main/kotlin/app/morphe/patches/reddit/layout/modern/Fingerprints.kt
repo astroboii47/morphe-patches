@@ -33,28 +33,17 @@ internal object HomeRevampM1SearchBarFingerprint : Fingerprint(
     )
 )
 
-internal object HomeRevampTopBarBuilderFingerprint : Fingerprint(
-    definingClass = "Li11;",
-    name = "B",
+internal object MainNavigationButtonFingerprint : Fingerprint(
+    definingClass = "Lwnr;",
+    name = "n",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     parameters = listOf(
-        "Lswn;",
-        "Landroidx/compose/foundation/pager/d;",
-        "Lemd0;",
-        "Lkotlin/jvm/functions/Function1;",
+        "Lvnr;",
         "Loev;",
-        "Z",
-        "Z",
-        "Z",
-        "Lkotlin/jvm/functions/Function0;",
-        "Lwmw;",
-        "Lkotlin/jvm/functions/Function0;",
-        "Landroidx/compose/runtime/internal/a;",
-        "Landroidx/compose/runtime/internal/a;",
-        "Lw1j;",
-        "Landroidx/compose/runtime/internal/a;",
+        "Lcom/reddit/navdrawer/composables/c;",
         "Licb;",
+        "I",
         "I"
     )
 )
