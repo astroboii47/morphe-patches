@@ -61,7 +61,7 @@ public class Settings extends BaseSettings {
         // region Migration
 
         SharedPrefCategory oldPrefs = new SharedPrefCategory("reddit_morphe");
-        for (Setting<?> setting : Setting.allLoadedSettings()) {
+        for (Setting<?> setting : new java.util.ArrayList<>(Setting.allLoadedSettings())) {
             Setting.migrateFromOldPreferences(oldPrefs, setting);
         }
 
