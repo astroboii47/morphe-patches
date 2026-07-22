@@ -29,6 +29,7 @@ import app.morphe.util.cloneParameters
 import app.morphe.util.copyResources
 import app.morphe.util.findFreeRegister
 import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import org.w3c.dom.Element
 
@@ -86,6 +87,24 @@ val settingsPatch = bytecodePatch(
 
                     settingsActivity.appendChild(intentFilter)
                     applicationNode.appendChild(settingsActivity)
+
+                    val settingsAlias = document.createElement("activity-alias").apply {
+                        setAttribute("android:name", "app.morphe.extension.reddit.settings.MorpheSettingsLauncher")
+                        setAttribute("android:targetActivity", "com.reddit.launch.main.MainActivity")
+                        setAttribute("android:exported", "true")
+                        setAttribute("android:label", "Morphe Settings")
+                    }
+                    val aliasIntentFilter = document.createElement("intent-filter").apply {
+                        appendChild(document.createElement("action").apply {
+                            setAttribute("android:name", "android.intent.action.MAIN")
+                        })
+                        appendChild(document.createElement("category").apply {
+                            setAttribute("android:name", "android.intent.category.LAUNCHER")
+                        })
+                    }
+
+                    settingsAlias.appendChild(aliasIntentFilter)
+                    applicationNode.appendChild(settingsAlias)
                 }
             }
         }
@@ -187,6 +206,28 @@ val settingsPatch = bytecodePatch(
                     """
                 )
             }
+        }
+
+        redditActivityOnCreateHook.fingerprint.method.apply {
+            val insertIndex = implementation!!.instructions.indexOfFirst {
+                it.opcode == Opcode.INVOKE_SUPER || it.opcode == Opcode.INVOKE_SUPER_RANGE
+            }
+            check(insertIndex >= 0) {
+                "Could not find MainActivity.onCreate super call"
+            }
+            val freeRegister = findFreeRegister(insertIndex)
+
+            addInstructionsWithLabels(
+                insertIndex + 1,
+                """
+                    invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->hookLauncher(Landroid/app/Activity;)Z
+                    move-result v$freeRegister
+                    if-eqz v$freeRegister, :ignore_morphe_settings_launcher
+                    return-void
+                    :ignore_morphe_settings_launcher
+                    nop
+                """
+            )
         }
     }
 }

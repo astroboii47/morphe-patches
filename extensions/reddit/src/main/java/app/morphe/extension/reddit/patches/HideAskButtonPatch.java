@@ -23,7 +23,9 @@ public final class HideAskButtonPatch {
      * Injection point.
      */
     public static boolean hideAskButton(String experimentName, boolean original) {
-        if (Settings.HIDE_ASK_BUTTON.get() && experimentName != null && experimentName.startsWith(ANDROID_SEARCH_BAR_ASK_BUTTON)) {
+        if ((isPatchIncluded() || Settings.HIDE_ASK_BUTTON.get())
+                && experimentName != null
+                && experimentName.startsWith(ANDROID_SEARCH_BAR_ASK_BUTTON)) {
             return false;
         }
 
@@ -34,6 +36,6 @@ public final class HideAskButtonPatch {
      * Injection point.
      */
     public static boolean shouldHideAskButton() {
-        return Settings.HIDE_ASK_BUTTON.get();
+        return isPatchIncluded() || Settings.HIDE_ASK_BUTTON.get();
     }
 }

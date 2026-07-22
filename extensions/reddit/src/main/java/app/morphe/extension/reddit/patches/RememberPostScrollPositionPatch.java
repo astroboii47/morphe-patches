@@ -25,7 +25,8 @@ public final class RememberPostScrollPositionPatch {
         }
     };
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
-    private static final Map<Object, String> RESTORED_LISTS = new WeakHashMap<>();
+    private static final Map<Object, RestoreAttempt> RESTORE_ATTEMPTS = new WeakHashMap<>();
+    private static final int MAX_RESTORE_ATTEMPTS = 12;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -41,7 +42,7 @@ public final class RememberPostScrollPositionPatch {
      * Injection point.
      */
     public static void bindAndRestorePosition(Object provider, Object lazyListState) {
-        if (!Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
+        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
             return;
         }
 
@@ -65,7 +66,7 @@ public final class RememberPostScrollPositionPatch {
      * Injection point.
      */
     public static void saveBoundPosition(Object lazyListState, int index, int offset) {
-        if (!Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
+        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
             return;
         }
 
@@ -86,13 +87,39 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
+    /**
+     * Injection point.
+     */
+    public static void saveBoundPositionFromLayout(Object lazyListState, Object layoutInfo) {
+        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
+            return;
+        }
+
+        try {
+            Position position = getPositionFromLayoutInfo(layoutInfo);
+            if (position == null) {
+                return;
+            }
+
+            saveBoundPosition(lazyListState, position.index, position.offset);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to save Reddit post scroll position from layout", ex);
+        }
+    }
+
     private static void restorePosition(String key, Object lazyListState) {
         try {
-            synchronized (RESTORED_LISTS) {
-                if (key.equals(RESTORED_LISTS.get(lazyListState))) {
+            synchronized (RESTORE_ATTEMPTS) {
+                RestoreAttempt attempt = RESTORE_ATTEMPTS.get(lazyListState);
+                if (attempt != null && key.equals(attempt.key) && attempt.count >= MAX_RESTORE_ATTEMPTS) {
                     return;
                 }
-                RESTORED_LISTS.put(lazyListState, key);
+
+                if (attempt == null || !key.equals(attempt.key)) {
+                    attempt = new RestoreAttempt(key);
+                }
+                attempt.count++;
+                RESTORE_ATTEMPTS.put(lazyListState, attempt);
             }
 
             Position position;
@@ -127,6 +154,43 @@ public final class RememberPostScrollPositionPatch {
         idField.setAccessible(true);
         Object value = idField.get(params);
         return value instanceof String && !((String) value).isEmpty() ? (String) value : null;
+    }
+
+    private static Position getPositionFromLayoutInfo(Object layoutInfo) throws ReflectiveOperationException {
+        if (layoutInfo == null) {
+            return null;
+        }
+
+        Field firstItemField = layoutInfo.getClass().getDeclaredField("a");
+        firstItemField.setAccessible(true);
+        Object firstItem = firstItemField.get(layoutInfo);
+        if (firstItem == null) {
+            return null;
+        }
+
+        Field indexField = firstItem.getClass().getDeclaredField("a");
+        indexField.setAccessible(true);
+        int index = indexField.getInt(firstItem);
+
+        int offset = 0;
+        try {
+            Field offsetField = firstItem.getClass().getDeclaredField("h");
+            offsetField.setAccessible(true);
+            offset = offsetField.getInt(firstItem);
+        } catch (NoSuchFieldException ignored) {
+            // Restoring to the first visible comment is still useful if offset storage changes.
+        }
+
+        return new Position(Math.max(0, index), Math.max(0, offset));
+    }
+
+    private static final class RestoreAttempt {
+        final String key;
+        int count;
+
+        RestoreAttempt(String key) {
+            this.key = key;
+        }
     }
 
     private static final class Position {

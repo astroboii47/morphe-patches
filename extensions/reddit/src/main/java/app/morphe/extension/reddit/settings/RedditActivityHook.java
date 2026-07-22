@@ -7,6 +7,7 @@
 package app.morphe.extension.reddit.settings;
 
 import android.app.Activity;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
@@ -21,6 +22,8 @@ import app.morphe.extension.reddit.ui.MorpheSettingsIconVectorDrawable;
 public class RedditActivityHook {
     private static final Drawable MORPHE_ICON = MorpheSettingsIconVectorDrawable.getIcon();
     private static final String MORPHE_LABEL = "Morphe";
+    private static final String MORPHE_SETTINGS_LAUNCHER =
+            "app.morphe.extension.reddit.settings.MorpheSettingsLauncher";
 
     /**
      * Injection point.
@@ -42,6 +45,19 @@ public class RedditActivityHook {
     public static boolean hook(Activity activity) {
         Intent intent = activity.getIntent();
         if (MORPHE_LABEL.equals(intent.getStringExtra("com.reddit.extra.initial_url"))) {
+            initialize(activity);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Injection point.
+     */
+    public static boolean hookLauncher(Activity activity) {
+        ComponentName componentName = activity.getComponentName();
+        if (componentName != null && MORPHE_SETTINGS_LAUNCHER.equals(componentName.getClassName())) {
             initialize(activity);
             return true;
         }

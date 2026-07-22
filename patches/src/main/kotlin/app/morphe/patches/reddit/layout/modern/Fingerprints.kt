@@ -18,10 +18,10 @@ internal object HomeRevampVariantFingerprint : Fingerprint(
     parameters = listOf()
 )
 
-internal object HomeRevampM1AppBarFingerprint : Fingerprint(
+internal object HomeRevampM1SearchBarFingerprint : Fingerprint(
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     filters = listOf(
-        string("home_revamp_m1_app_bar")
+        string("main_top_app_bar_search")
     )
 )

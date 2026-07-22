@@ -22,13 +22,13 @@ public class DisableModernHomePatch {
      * Injection point.
      */
     public static boolean disableModernHome(boolean original) {
-        return !Settings.DISABLE_MODERN_HOME.get() && original;
+        return isPatchIncluded() ? false : (!Settings.DISABLE_MODERN_HOME.get() && original);
     }
 
     /**
      * Injection point.
      */
     public static boolean shouldDisableModernHome() {
-        return Settings.DISABLE_MODERN_HOME.get();
+        return isPatchIncluded() || Settings.DISABLE_MODERN_HOME.get();
     }
 }

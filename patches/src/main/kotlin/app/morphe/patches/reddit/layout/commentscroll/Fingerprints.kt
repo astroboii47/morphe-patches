@@ -33,3 +33,11 @@ internal object LazyListStateUpdateScrollFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf("I", "I", "Z")
 )
+
+internal object LazyListStateLayoutUpdateFingerprint : Fingerprint(
+    definingClass = "Landroidx/compose/foundation/lazy/b;",
+    name = "g",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Lu2q;", "Z", "Z")
+)

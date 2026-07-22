@@ -48,8 +48,8 @@ val disableModernHomePatch = bytecodePatch(
             }
         }.isSuccess
 
-        val modernHomeAppBarPatched = runCatching {
-            HomeRevampM1AppBarFingerprint.method.addInstructionsWithLabels(
+        val modernHomeSearchBarPatched = runCatching {
+            HomeRevampM1SearchBarFingerprint.method.addInstructionsWithLabels(
                 0,
                 """
                     invoke-static { }, $EXTENSION_CLASS->shouldDisableModernHome()Z
@@ -62,7 +62,7 @@ val disableModernHomePatch = bytecodePatch(
             )
         }.isSuccess
 
-        if (!legacyHomePatched && !modernHomeAppBarPatched) {
+        if (!legacyHomePatched && !modernHomeSearchBarPatched) {
             return@execute Logger.getLogger(this::class.java.name).warning(
                 "'Disable modern home' could not find a supported home UI hook"
             )

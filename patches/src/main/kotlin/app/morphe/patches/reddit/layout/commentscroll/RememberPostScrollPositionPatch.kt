@@ -39,6 +39,13 @@ val rememberPostScrollPositionPatch = bytecodePatch(
             """
         )
 
+        LazyListStateLayoutUpdateFingerprint.method.addInstructions(
+            0,
+            """
+                invoke-static/range { p0 .. p1 }, $EXTENSION_CLASS->saveBoundPositionFromLayout(Ljava/lang/Object;Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
