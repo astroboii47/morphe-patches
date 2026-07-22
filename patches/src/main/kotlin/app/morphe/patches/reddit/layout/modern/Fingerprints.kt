@@ -32,15 +32,3 @@ internal object HomeRevampM1SearchBarFingerprint : Fingerprint(
         "I"
     )
 )
-
-internal object HomePagerMainNavigationButtonFingerprint : Fingerprint(
-    definingClass = "La4n;",
-    name = "invoke",
-    returnType = "Ljava/lang/Object;",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
-    parameters = listOf(
-        "Ljava/lang/Object;",
-        "Ljava/lang/Object;",
-        "Ljava/lang/Object;"
-    )
-)
