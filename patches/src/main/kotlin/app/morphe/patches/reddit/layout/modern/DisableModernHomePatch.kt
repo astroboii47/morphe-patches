@@ -6,6 +6,7 @@
  */
 package app.morphe.patches.reddit.layout.modern
 
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
@@ -16,6 +17,7 @@ import app.morphe.util.findInstructionIndicesReversedOrThrow
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import java.util.logging.Logger
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/DisableModernHomePatch;"
@@ -30,18 +32,40 @@ val disableModernHomePatch = bytecodePatch(
     dependsOn(settingsPatch, versionCheckPatch)
 
     execute {
-        HomeRevampVariantFingerprint.method.apply {
-            findInstructionIndicesReversedOrThrow(Opcode.RETURN).forEach { index ->
-                val register = getInstruction<OneRegisterInstruction>(index).registerA
+        val legacyHomePatched = runCatching {
+            HomeRevampVariantFingerprint.method.apply {
+                findInstructionIndicesReversedOrThrow(Opcode.RETURN).forEach { index ->
+                    val register = getInstruction<OneRegisterInstruction>(index).registerA
 
-                addInstructionsAtControlFlowLabel(
-                    index,
-                    """
-                        invoke-static { v$register }, $EXTENSION_CLASS->disableModernHome(Z)Z
-                        move-result v$register 
-                    """
-                )
+                    addInstructionsAtControlFlowLabel(
+                        index,
+                        """
+                            invoke-static { v$register }, $EXTENSION_CLASS->disableModernHome(Z)Z
+                            move-result v$register 
+                        """
+                    )
+                }
             }
+        }.isSuccess
+
+        val modernHomeAppBarPatched = runCatching {
+            HomeRevampM1AppBarFingerprint.method.addInstructionsWithLabels(
+                0,
+                """
+                    invoke-static { }, $EXTENSION_CLASS->shouldDisableModernHome()Z
+                    move-result v0
+                    if-eqz v0, :off
+                    return-void
+                    :off
+                    nop
+                """
+            )
+        }.isSuccess
+
+        if (!legacyHomePatched && !modernHomeAppBarPatched) {
+            return@execute Logger.getLogger(this::class.java.name).warning(
+                "'Disable modern home' could not find a supported home UI hook"
+            )
         }
 
         setExtensionIsPatchIncluded(EXTENSION_CLASS)

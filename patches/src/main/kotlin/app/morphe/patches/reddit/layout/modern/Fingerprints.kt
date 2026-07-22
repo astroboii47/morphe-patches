@@ -7,6 +7,7 @@
 package app.morphe.patches.reddit.layout.modern
 
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.AccessFlags
 
 internal object HomeRevampVariantFingerprint : Fingerprint(
@@ -15,4 +16,12 @@ internal object HomeRevampVariantFingerprint : Fingerprint(
     returnType = "Z",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf()
+)
+
+internal object HomeRevampM1AppBarFingerprint : Fingerprint(
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    filters = listOf(
+        string("home_revamp_m1_app_bar")
+    )
 )
