@@ -356,14 +356,6 @@ public final class RememberPostScrollPositionPatch {
     }
 
     private static void restoreScrollPosition(Object lazyListState, Position position) throws ReflectiveOperationException {
-        try {
-            Method updateScrollPosition = lazyListState.getClass()
-                    .getDeclaredMethod("k", int.class, int.class, boolean.class);
-            updateScrollPosition.setAccessible(true);
-            updateScrollPosition.invoke(lazyListState, position.index, position.offset, true);
-        } catch (NoSuchMethodException ignored) {
-        }
-
         Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
         requestScrollToItem.setAccessible(true);
         requestScrollToItem.invoke(lazyListState, position.index, position.offset);
