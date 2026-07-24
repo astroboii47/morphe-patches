@@ -211,13 +211,6 @@ public final class RememberPostScrollPositionPatch {
                 }
             }
 
-            Position position = null;
-            if (key != null) {
-                synchronized (DRAFT_POSITIONS) {
-                    position = DRAFT_POSITIONS.get(key);
-                }
-            }
-
             Object lazyListState;
             synchronized (PROVIDER_LISTS) {
                 lazyListState = PROVIDER_LISTS.get(provider);
@@ -231,6 +224,7 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
+            Position position = lazyListState != null ? getPositionFromLazyListState(lazyListState) : null;
             if (position == null && lazyListState != null) {
                 synchronized (LATEST_POSITIONS) {
                     position = LATEST_POSITIONS.get(lazyListState);
@@ -438,6 +432,28 @@ public final class RememberPostScrollPositionPatch {
         offsetField.setAccessible(true);
         int offset = offsetField.getInt(layoutInfo);
 
+        return new Position(Math.max(0, index), Math.max(0, offset));
+    }
+
+    private static Position getPositionFromLazyListState(Object lazyListState) throws ReflectiveOperationException {
+        if (lazyListState == null) {
+            return null;
+        }
+
+        Field scrollPositionField = lazyListState.getClass().getDeclaredField("e");
+        scrollPositionField.setAccessible(true);
+        Object scrollPosition = scrollPositionField.get(lazyListState);
+        if (scrollPosition == null) {
+            return null;
+        }
+
+        Method getIndex = scrollPosition.getClass().getDeclaredMethod("a");
+        getIndex.setAccessible(true);
+        Method getOffset = scrollPosition.getClass().getDeclaredMethod("b");
+        getOffset.setAccessible(true);
+
+        int index = ((Number) getIndex.invoke(scrollPosition)).intValue();
+        int offset = ((Number) getOffset.invoke(scrollPosition)).intValue();
         return new Position(Math.max(0, index), Math.max(0, offset));
     }
 
