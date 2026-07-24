@@ -6,6 +6,9 @@
  */
 package app.morphe.extension.reddit.patches;
 
+import android.content.Context;
+import android.content.SharedPreferences;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -14,6 +17,7 @@ import java.util.WeakHashMap;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
+import app.morphe.extension.shared.Utils;
 
 @SuppressWarnings("unused")
 public final class RememberPostScrollPositionPatch {
@@ -27,8 +31,10 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
+    private static final Map<Object, Position> INITIAL_RESTORES = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 2500L;
+    private static final String PREFERENCES_NAME = "morphe_reddit_post_scroll";
 
     private RememberPostScrollPositionPatch() {
     }
@@ -58,7 +64,15 @@ public final class RememberPostScrollPositionPatch {
                 BOUND_LISTS.put(lazyListState, key);
             }
 
-            restorePosition(key, lazyListState);
+            Position position = getSavedPosition(key);
+            if (position == null || (position.index <= 0 && position.offset <= 0)) {
+                return;
+            }
+
+            synchronized (INITIAL_RESTORES) {
+                INITIAL_RESTORES.put(lazyListState, position);
+            }
+            restorePosition(key, lazyListState, false);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -128,6 +142,7 @@ public final class RememberPostScrollPositionPatch {
             synchronized (POSITIONS) {
                 POSITIONS.put(key, incoming);
             }
+            persistPosition(key, incoming);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position", ex);
         }
@@ -142,6 +157,8 @@ public final class RememberPostScrollPositionPatch {
         }
 
         try {
+            restoreInitialPositionFromLayout(lazyListState);
+
             if (!scrollPass || Math.abs(getScrollDelta(layoutInfo)) < 0.5f) {
                 return;
             }
@@ -157,12 +174,36 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
-    private static void restorePosition(String key, Object lazyListState) {
+    private static void restoreInitialPositionFromLayout(Object lazyListState) {
         try {
             Position position;
-            synchronized (POSITIONS) {
-                position = POSITIONS.get(key);
+            synchronized (INITIAL_RESTORES) {
+                position = INITIAL_RESTORES.get(lazyListState);
             }
+            if (position == null) {
+                return;
+            }
+
+            String key;
+            synchronized (BOUND_LISTS) {
+                key = BOUND_LISTS.get(lazyListState);
+            }
+            if (key == null) {
+                return;
+            }
+
+            restorePosition(key, lazyListState, true);
+            synchronized (INITIAL_RESTORES) {
+                INITIAL_RESTORES.remove(lazyListState);
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to restore Reddit post scroll position from layout", ex);
+        }
+    }
+
+    private static void restorePosition(String key, Object lazyListState, boolean forceRemeasure) {
+        try {
+            Position position = getSavedPosition(key);
             if (position == null || (position.index <= 0 && position.offset <= 0)) {
                 return;
             }
@@ -177,7 +218,7 @@ public final class RememberPostScrollPositionPatch {
             Method updateScrollPosition = lazyListState.getClass()
                     .getDeclaredMethod("k", int.class, int.class, boolean.class);
             updateScrollPosition.setAccessible(true);
-            updateScrollPosition.invoke(lazyListState, position.index, position.offset, false);
+            updateScrollPosition.invoke(lazyListState, position.index, position.offset, forceRemeasure);
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
             }
@@ -187,6 +228,43 @@ public final class RememberPostScrollPositionPatch {
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position", ex);
         }
+    }
+
+    private static Position getSavedPosition(String key) {
+        synchronized (POSITIONS) {
+            Position position = POSITIONS.get(key);
+            if (position != null) {
+                return position;
+            }
+        }
+
+        SharedPreferences preferences = getPreferences();
+        if (preferences == null) {
+            return null;
+        }
+
+        String encoded = preferences.getString(key, null);
+        Position position = Position.decode(encoded);
+        if (position != null) {
+            synchronized (POSITIONS) {
+                POSITIONS.put(key, position);
+            }
+        }
+        return position;
+    }
+
+    private static void persistPosition(String key, Position position) {
+        SharedPreferences preferences = getPreferences();
+        if (preferences == null) {
+            return;
+        }
+
+        preferences.edit().putString(key, position.encode()).apply();
+    }
+
+    private static SharedPreferences getPreferences() {
+        Context context = Utils.getContext();
+        return context == null ? null : context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
     }
 
     private static String getPostKey(Object provider) throws ReflectiveOperationException {
@@ -275,6 +353,30 @@ public final class RememberPostScrollPositionPatch {
         boolean isNear(Position other) {
             return index == other.index &&
                     Math.abs(offset - other.offset) <= RESTORE_OFFSET_TOLERANCE_PX;
+        }
+
+        String encode() {
+            return index + ":" + offset;
+        }
+
+        static Position decode(String encoded) {
+            if (encoded == null) {
+                return null;
+            }
+
+            int separator = encoded.indexOf(':');
+            if (separator <= 0 || separator >= encoded.length() - 1) {
+                return null;
+            }
+
+            try {
+                return new Position(
+                        Math.max(0, Integer.parseInt(encoded.substring(0, separator))),
+                        Math.max(0, Integer.parseInt(encoded.substring(separator + 1)))
+                );
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
     }
 }
