@@ -46,7 +46,7 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 350L;
-    private static final long LAYOUT_SAVE_THROTTLE_MS = 250L;
+    private static final long LAYOUT_SAVE_THROTTLE_MS = 75L;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -95,10 +95,6 @@ public final class RememberPostScrollPositionPatch {
      */
     public static void saveBoundPosition(Object lazyListState, int index, int offset, boolean requestRemeasure) {
         if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
-            return;
-        }
-
-        if (!requestRemeasure) {
             return;
         }
 
