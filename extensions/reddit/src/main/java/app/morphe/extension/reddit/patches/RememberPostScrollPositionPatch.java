@@ -27,8 +27,10 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
+    private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 2500L;
+    private static final long LAYOUT_SAVE_THROTTLE_MS = 250L;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -142,7 +144,7 @@ public final class RememberPostScrollPositionPatch {
         }
 
         try {
-            if (!scrollPass || Math.abs(getScrollDelta(layoutInfo)) < 0.5f) {
+            if (!canSampleLayoutPosition(lazyListState)) {
                 return;
             }
 
@@ -154,6 +156,18 @@ public final class RememberPostScrollPositionPatch {
             saveBoundPosition(lazyListState, position.index, position.offset, true);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position from layout", ex);
+        }
+    }
+
+    private static boolean canSampleLayoutPosition(Object lazyListState) {
+        long now = System.currentTimeMillis();
+        synchronized (LAST_LAYOUT_SAVE_MS) {
+            Long lastSampleMs = LAST_LAYOUT_SAVE_MS.get(lazyListState);
+            if (lastSampleMs != null && now - lastSampleMs < LAYOUT_SAVE_THROTTLE_MS) {
+                return false;
+            }
+            LAST_LAYOUT_SAVE_MS.put(lazyListState, now);
+            return true;
         }
     }
 
