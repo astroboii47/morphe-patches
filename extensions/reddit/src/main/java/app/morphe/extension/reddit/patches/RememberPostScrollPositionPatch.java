@@ -25,6 +25,7 @@ public final class RememberPostScrollPositionPatch {
         }
     };
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
+    private static final Map<Object, String> RESTORE_CHECKED_LISTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
@@ -60,7 +61,9 @@ public final class RememberPostScrollPositionPatch {
                 BOUND_LISTS.put(lazyListState, key);
             }
 
-            restorePosition(key, lazyListState);
+            if (markRestoreChecked(lazyListState, key)) {
+                restorePosition(key, lazyListState);
+            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -156,6 +159,17 @@ public final class RememberPostScrollPositionPatch {
             saveBoundPosition(lazyListState, position.index, position.offset, true);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position from layout", ex);
+        }
+    }
+
+    private static boolean markRestoreChecked(Object lazyListState, String key) {
+        synchronized (RESTORE_CHECKED_LISTS) {
+            String checkedKey = RESTORE_CHECKED_LISTS.get(lazyListState);
+            if (key.equals(checkedKey)) {
+                return false;
+            }
+            RESTORE_CHECKED_LISTS.put(lazyListState, key);
+            return true;
         }
     }
 
