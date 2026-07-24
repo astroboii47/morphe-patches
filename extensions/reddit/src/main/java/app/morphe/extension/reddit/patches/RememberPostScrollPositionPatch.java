@@ -42,9 +42,11 @@ public final class RememberPostScrollPositionPatch {
     };
     private static final Map<Object, String> RESTORE_CHECKED_RENDER_HANDLERS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
+    private static final Map<Object, Integer> RESTORE_RETRIES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
+    private static final int MAX_RESTORE_RETRIES = 2;
     private static final long RESTORE_SETTLE_MS = 350L;
     private static final long LAYOUT_SAVE_THROTTLE_MS = 75L;
 
@@ -126,6 +128,9 @@ public final class RememberPostScrollPositionPatch {
                 if (pending != null) {
                     if (incoming.isNear(pending)) {
                         PENDING_RESTORES.remove(lazyListState);
+                        synchronized (RESTORE_RETRIES) {
+                            RESTORE_RETRIES.remove(lazyListState);
+                        }
                         synchronized (SUPPRESS_SAVE_UNTIL) {
                             SUPPRESS_SAVE_UNTIL.put(
                                     lazyListState,
@@ -136,10 +141,16 @@ public final class RememberPostScrollPositionPatch {
                         synchronized (SUPPRESS_SAVE_UNTIL) {
                             Long suppressUntil = SUPPRESS_SAVE_UNTIL.get(lazyListState);
                             if (suppressUntil != null && System.currentTimeMillis() < suppressUntil) {
+                                if (incoming.isBefore(pending) && retryRestore(lazyListState, pending)) {
+                                    return;
+                                }
                                 return;
                             }
                         }
                         PENDING_RESTORES.remove(lazyListState);
+                        synchronized (RESTORE_RETRIES) {
+                            RESTORE_RETRIES.remove(lazyListState);
+                        }
                     }
                 }
             }
@@ -318,11 +329,38 @@ public final class RememberPostScrollPositionPatch {
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
             }
+            synchronized (RESTORE_RETRIES) {
+                RESTORE_RETRIES.put(lazyListState, 0);
+            }
             synchronized (SUPPRESS_SAVE_UNTIL) {
                 SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position", ex);
+        }
+    }
+
+    private static boolean retryRestore(Object lazyListState, Position position) {
+        synchronized (RESTORE_RETRIES) {
+            Integer retries = RESTORE_RETRIES.get(lazyListState);
+            int retryCount = retries != null ? retries : 0;
+            if (retryCount >= MAX_RESTORE_RETRIES) {
+                return false;
+            }
+            RESTORE_RETRIES.put(lazyListState, retryCount + 1);
+        }
+
+        try {
+            Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
+            requestScrollToItem.setAccessible(true);
+            requestScrollToItem.invoke(lazyListState, position.index, position.offset);
+            synchronized (SUPPRESS_SAVE_UNTIL) {
+                SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
+            }
+            return true;
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to retry Reddit post scroll restore", ex);
+            return false;
         }
     }
 
