@@ -46,8 +46,8 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
-    private static final int MAX_RESTORE_RETRIES = 2;
-    private static final long RESTORE_SETTLE_MS = 350L;
+    private static final int MAX_RESTORE_RETRIES = 4;
+    private static final long RESTORE_SETTLE_MS = 1800L;
     private static final long LAYOUT_SAVE_THROTTLE_MS = 75L;
 
     private RememberPostScrollPositionPatch() {
@@ -126,31 +126,19 @@ public final class RememberPostScrollPositionPatch {
             synchronized (PENDING_RESTORES) {
                 Position pending = PENDING_RESTORES.get(lazyListState);
                 if (pending != null) {
-                    if (incoming.isNear(pending)) {
-                        PENDING_RESTORES.remove(lazyListState);
-                        synchronized (RESTORE_RETRIES) {
-                            RESTORE_RETRIES.remove(lazyListState);
-                        }
-                        synchronized (SUPPRESS_SAVE_UNTIL) {
-                            SUPPRESS_SAVE_UNTIL.put(
-                                    lazyListState,
-                                    System.currentTimeMillis() + RESTORE_SETTLE_MS
-                            );
-                        }
-                    } else {
-                        synchronized (SUPPRESS_SAVE_UNTIL) {
-                            Long suppressUntil = SUPPRESS_SAVE_UNTIL.get(lazyListState);
-                            if (suppressUntil != null && System.currentTimeMillis() < suppressUntil) {
-                                if (incoming.isBefore(pending) && retryRestore(lazyListState, pending)) {
-                                    return;
-                                }
+                    synchronized (SUPPRESS_SAVE_UNTIL) {
+                        Long suppressUntil = SUPPRESS_SAVE_UNTIL.get(lazyListState);
+                        if (suppressUntil != null && System.currentTimeMillis() < suppressUntil) {
+                            if (!incoming.isNear(pending) && incoming.isBefore(pending) &&
+                                    retryRestore(lazyListState, pending)) {
                                 return;
                             }
+                            return;
                         }
-                        PENDING_RESTORES.remove(lazyListState);
-                        synchronized (RESTORE_RETRIES) {
-                            RESTORE_RETRIES.remove(lazyListState);
-                        }
+                    }
+                    PENDING_RESTORES.remove(lazyListState);
+                    synchronized (RESTORE_RETRIES) {
+                        RESTORE_RETRIES.remove(lazyListState);
                     }
                 }
             }
