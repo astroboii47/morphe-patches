@@ -40,13 +40,7 @@ public final class RememberPostScrollPositionPatch {
             return size() > MAX_POSITIONS;
         }
     };
-    private static final Map<Object, String> RESTORE_CHECKED_PROVIDERS = new WeakHashMap<>();
-    private static final Map<String, Boolean> RESTORE_CHECKED_KEYS = new LinkedHashMap<String, Boolean>(MAX_POSITIONS, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
-            return size() > MAX_POSITIONS;
-        }
-    };
+    private static final Map<Object, String> RESTORE_CHECKED_RENDER_HANDLERS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
@@ -91,7 +85,6 @@ public final class RememberPostScrollPositionPatch {
                 LISTS_BY_KEY.put(key, lazyListState);
             }
 
-            beginRestoreIfNeeded(provider, key, lazyListState);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -259,12 +252,6 @@ public final class RememberPostScrollPositionPatch {
             synchronized (POSITIONS) {
                 POSITIONS.put(key, position);
             }
-            synchronized (RESTORE_CHECKED_PROVIDERS) {
-                RESTORE_CHECKED_PROVIDERS.remove(provider);
-            }
-            synchronized (RESTORE_CHECKED_KEYS) {
-                RESTORE_CHECKED_KEYS.remove(key);
-            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position on exit", ex);
         }
@@ -297,39 +284,17 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
-            synchronized (RESTORE_CHECKED_KEYS) {
-                if (RESTORE_CHECKED_KEYS.containsKey(key)) {
+            synchronized (RESTORE_CHECKED_RENDER_HANDLERS) {
+                String checked = RESTORE_CHECKED_RENDER_HANDLERS.get(handler);
+                if (key.equals(checked)) {
                     return;
                 }
-                RESTORE_CHECKED_KEYS.put(key, Boolean.TRUE);
+                RESTORE_CHECKED_RENDER_HANDLERS.put(handler, key);
             }
             requestRestore(lazyListState, position);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position on comments rendered", ex);
         }
-    }
-
-    private static void beginRestoreIfNeeded(Object provider, String key, Object lazyListState) {
-        Position position = getSavedPosition(key);
-        if (position == null || (position.index <= 0 && position.offset <= 0)) {
-            return;
-        }
-
-        synchronized (RESTORE_CHECKED_PROVIDERS) {
-            String checked = RESTORE_CHECKED_PROVIDERS.get(provider);
-            if (key.equals(checked)) {
-                return;
-            }
-            RESTORE_CHECKED_PROVIDERS.put(provider, key);
-        }
-        synchronized (RESTORE_CHECKED_KEYS) {
-            if (RESTORE_CHECKED_KEYS.containsKey(key)) {
-                return;
-            }
-            RESTORE_CHECKED_KEYS.put(key, Boolean.TRUE);
-        }
-
-        requestRestore(lazyListState, position);
     }
 
     private static boolean canSampleLayoutPosition(Object lazyListState) {
