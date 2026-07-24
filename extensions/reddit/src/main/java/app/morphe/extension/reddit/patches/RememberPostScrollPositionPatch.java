@@ -6,6 +6,10 @@
  */
 package app.morphe.extension.reddit.patches;
 
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Choreographer;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -47,6 +51,7 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final int MAX_RESTORE_RETRIES = 4;
+    private static final int FRAME_RESTORE_PASSES = 2;
     private static final long RESTORE_SETTLE_MS = 1800L;
     private static final long LAYOUT_SAVE_THROTTLE_MS = 75L;
 
@@ -312,6 +317,7 @@ public final class RememberPostScrollPositionPatch {
     private static void requestRestore(Object lazyListState, Position position) {
         try {
             restoreScrollPosition(lazyListState, position);
+            scheduleFrameRestore(lazyListState, position, FRAME_RESTORE_PASSES);
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
             }
@@ -338,6 +344,7 @@ public final class RememberPostScrollPositionPatch {
 
         try {
             restoreScrollPosition(lazyListState, position);
+            scheduleFrameRestore(lazyListState, position, 1);
             synchronized (SUPPRESS_SAVE_UNTIL) {
                 SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
             }
@@ -360,6 +367,31 @@ public final class RememberPostScrollPositionPatch {
         Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
         requestScrollToItem.setAccessible(true);
         requestScrollToItem.invoke(lazyListState, position.index, position.offset);
+    }
+
+    private static void scheduleFrameRestore(Object lazyListState, Position position, int passesRemaining) {
+        if (passesRemaining <= 0) {
+            return;
+        }
+
+        Runnable restore = () -> {
+            try {
+                restoreScrollPosition(lazyListState, position);
+            } catch (Throwable ex) {
+                Logger.printException(() -> "Failed to restore Reddit post scroll position on frame", ex);
+                return;
+            }
+            scheduleFrameRestore(lazyListState, position, passesRemaining - 1);
+        };
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Choreographer.getInstance().postFrameCallback(frameTimeNanos -> restore.run());
+            return;
+        }
+
+        new Handler(Looper.getMainLooper()).post(() ->
+                Choreographer.getInstance().postFrameCallback(frameTimeNanos -> restore.run())
+        );
     }
 
     private static Position getSavedPosition(String key) {
