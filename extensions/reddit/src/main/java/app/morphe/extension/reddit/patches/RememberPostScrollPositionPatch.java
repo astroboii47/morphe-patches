@@ -6,6 +6,9 @@
  */
 package app.morphe.extension.reddit.patches;
 
+import android.os.Handler;
+import android.os.Looper;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -28,9 +31,13 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, RestoreAttempt> RESTORE_ATTEMPTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
+    private static final Map<Object, RestorePlan> RESTORE_PLANS = new WeakHashMap<>();
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final int MAX_RESTORE_ATTEMPTS = 12;
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 2500L;
+    private static final long RESTORE_RETRY_WINDOW_MS = 1800L;
+    private static final long[] RESTORE_RETRY_DELAYS_MS = {0L, 180L, 420L, 850L, 1400L};
 
     private RememberPostScrollPositionPatch() {
     }
@@ -60,7 +67,7 @@ public final class RememberPostScrollPositionPatch {
                 BOUND_LISTS.put(lazyListState, key);
             }
 
-            restorePosition(key, lazyListState);
+            scheduleRestorePosition(key, lazyListState);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -156,6 +163,37 @@ public final class RememberPostScrollPositionPatch {
             saveBoundPosition(lazyListState, position.index, position.offset, true);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position from layout", ex);
+        }
+    }
+
+    private static void scheduleRestorePosition(String key, Object lazyListState) {
+        try {
+            Position position;
+            synchronized (POSITIONS) {
+                position = POSITIONS.get(key);
+            }
+            if (position == null || (position.index <= 0 && position.offset <= 0)) {
+                return;
+            }
+
+            synchronized (RESTORE_PLANS) {
+                RestorePlan existing = RESTORE_PLANS.get(lazyListState);
+                if (existing != null && existing.matches(key, position) &&
+                        System.currentTimeMillis() < existing.expiresAtMs) {
+                    return;
+                }
+
+                RESTORE_PLANS.put(
+                        lazyListState,
+                        new RestorePlan(key, position, System.currentTimeMillis() + RESTORE_RETRY_WINDOW_MS)
+                );
+            }
+
+            for (long delayMs : RESTORE_RETRY_DELAYS_MS) {
+                MAIN_HANDLER.postDelayed(() -> restorePosition(key, lazyListState), delayMs);
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to schedule Reddit post scroll position restore", ex);
         }
     }
 
@@ -271,6 +309,22 @@ public final class RememberPostScrollPositionPatch {
 
         RestoreAttempt(String key) {
             this.key = key;
+        }
+    }
+
+    private static final class RestorePlan {
+        final String key;
+        final Position position;
+        final long expiresAtMs;
+
+        RestorePlan(String key, Position position, long expiresAtMs) {
+            this.key = key;
+            this.position = position;
+            this.expiresAtMs = expiresAtMs;
+        }
+
+        boolean matches(String otherKey, Position otherPosition) {
+            return key.equals(otherKey) && position.isNear(otherPosition);
         }
     }
 
