@@ -6,6 +6,9 @@
  */
 package app.morphe.extension.reddit.patches;
 
+import android.os.Handler;
+import android.os.Looper;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -25,14 +28,12 @@ public final class RememberPostScrollPositionPatch {
         }
     };
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
-    private static final Map<Object, RestoreMarker> RESTORE_CHECKED_LISTS = new WeakHashMap<>();
-    private static final Map<Object, RestoreState> ACTIVE_RESTORES = new WeakHashMap<>();
+    private static final Map<Object, RestoreMarker> RESTORE_CHECKED_PROVIDERS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
-    private static final int MAX_RESTORE_ATTEMPTS = 6;
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
-    private static final long RESTORE_RETRY_WINDOW_MS = 1200L;
     private static final long RESTORE_SETTLE_MS = 350L;
     private static final long LAYOUT_SAVE_THROTTLE_MS = 250L;
 
@@ -64,7 +65,7 @@ public final class RememberPostScrollPositionPatch {
                 BOUND_LISTS.put(lazyListState, key);
             }
 
-            beginRestoreIfNeeded(key, lazyListState);
+            beginRestoreIfNeeded(provider, key, lazyListState);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -98,10 +99,6 @@ public final class RememberPostScrollPositionPatch {
             }
 
             Position incoming = new Position(safeIndex, safeOffset);
-            if (handleActiveRestore(lazyListState, incoming)) {
-                return;
-            }
-
             synchronized (PENDING_RESTORES) {
                 Position pending = PENDING_RESTORES.get(lazyListState);
                 if (pending != null) {
@@ -167,69 +164,23 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
-    private static void beginRestoreIfNeeded(String key, Object lazyListState) {
+    private static void beginRestoreIfNeeded(Object provider, String key, Object lazyListState) {
         Position position = getSavedPosition(key);
         if (position == null || (position.index <= 0 && position.offset <= 0)) {
             return;
         }
 
-        synchronized (RESTORE_CHECKED_LISTS) {
-            RestoreMarker checked = RESTORE_CHECKED_LISTS.get(lazyListState);
+        synchronized (RESTORE_CHECKED_PROVIDERS) {
+            RestoreMarker checked = RESTORE_CHECKED_PROVIDERS.get(provider);
             if (checked != null && checked.matches(key, position)) {
                 return;
             }
+            RESTORE_CHECKED_PROVIDERS.put(provider, new RestoreMarker(key, position));
         }
 
-        synchronized (ACTIVE_RESTORES) {
-            RestoreState active = ACTIVE_RESTORES.get(lazyListState);
-            if (active != null && active.matches(key, position)) {
-                return;
-            }
-
-            RestoreState next = new RestoreState(key, position);
-            ACTIVE_RESTORES.put(lazyListState, next);
-            requestRestore(lazyListState, next);
-        }
-    }
-
-    private static boolean handleActiveRestore(Object lazyListState, Position incoming) {
-        RestoreState active;
-        synchronized (ACTIVE_RESTORES) {
-            active = ACTIVE_RESTORES.get(lazyListState);
-        }
-        if (active == null) {
-            return false;
-        }
-
-        if (incoming.isNear(active.position)) {
-            synchronized (ACTIVE_RESTORES) {
-                ACTIVE_RESTORES.remove(lazyListState);
-            }
-            markRestoreChecked(lazyListState, active.key, active.position);
-            synchronized (PENDING_RESTORES) {
-                PENDING_RESTORES.remove(lazyListState);
-            }
-            synchronized (SUPPRESS_SAVE_UNTIL) {
-                SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
-            }
-            return true;
-        }
-
-        if (active.canRetry()) {
-            requestRestore(lazyListState, active);
-            return true;
-        }
-
-        synchronized (ACTIVE_RESTORES) {
-            ACTIVE_RESTORES.remove(lazyListState);
-        }
-        return false;
-    }
-
-    private static void markRestoreChecked(Object lazyListState, String key, Position position) {
-        synchronized (RESTORE_CHECKED_LISTS) {
-            RESTORE_CHECKED_LISTS.put(lazyListState, new RestoreMarker(key, position));
-        }
+        requestRestore(lazyListState, position);
+        MAIN_HANDLER.post(() -> requestRestore(lazyListState, position));
+        MAIN_HANDLER.postDelayed(() -> requestRestore(lazyListState, position), 80L);
     }
 
     private static boolean canSampleLayoutPosition(Object lazyListState) {
@@ -244,21 +195,16 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
-    private static void requestRestore(Object lazyListState, RestoreState restore) {
+    private static void requestRestore(Object lazyListState, Position position) {
         try {
-            if (!restore.canRetry()) {
-                return;
-            }
-
-            restore.attempts++;
             Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
             requestScrollToItem.setAccessible(true);
-            requestScrollToItem.invoke(lazyListState, restore.position.index, restore.position.offset);
+            requestScrollToItem.invoke(lazyListState, position.index, position.offset);
             synchronized (PENDING_RESTORES) {
-                PENDING_RESTORES.put(lazyListState, restore.position);
+                PENDING_RESTORES.put(lazyListState, position);
             }
             synchronized (SUPPRESS_SAVE_UNTIL) {
-                SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_RETRY_WINDOW_MS);
+                SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position", ex);
@@ -371,28 +317,6 @@ public final class RememberPostScrollPositionPatch {
 
         boolean matches(String otherKey, Position otherPosition) {
             return key.equals(otherKey) && position.isNear(otherPosition);
-        }
-    }
-
-    private static final class RestoreState {
-        final String key;
-        final Position position;
-        final long startedAtMs;
-        int attempts;
-
-        RestoreState(String key, Position position) {
-            this.key = key;
-            this.position = position;
-            this.startedAtMs = System.currentTimeMillis();
-        }
-
-        boolean matches(String otherKey, Position otherPosition) {
-            return key.equals(otherKey) && position.isNear(otherPosition);
-        }
-
-        boolean canRetry() {
-            return attempts < MAX_RESTORE_ATTEMPTS &&
-                    System.currentTimeMillis() - startedAtMs <= RESTORE_RETRY_WINDOW_MS;
         }
     }
 }
