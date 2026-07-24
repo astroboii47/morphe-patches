@@ -311,9 +311,7 @@ public final class RememberPostScrollPositionPatch {
 
     private static void requestRestore(Object lazyListState, Position position) {
         try {
-            Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
-            requestScrollToItem.setAccessible(true);
-            requestScrollToItem.invoke(lazyListState, position.index, position.offset);
+            restoreScrollPosition(lazyListState, position);
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
             }
@@ -339,9 +337,7 @@ public final class RememberPostScrollPositionPatch {
         }
 
         try {
-            Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
-            requestScrollToItem.setAccessible(true);
-            requestScrollToItem.invoke(lazyListState, position.index, position.offset);
+            restoreScrollPosition(lazyListState, position);
             synchronized (SUPPRESS_SAVE_UNTIL) {
                 SUPPRESS_SAVE_UNTIL.put(lazyListState, System.currentTimeMillis() + RESTORE_SETTLE_MS);
             }
@@ -350,6 +346,21 @@ public final class RememberPostScrollPositionPatch {
             Logger.printException(() -> "Failed to retry Reddit post scroll restore", ex);
             return false;
         }
+    }
+
+    private static void restoreScrollPosition(Object lazyListState, Position position) throws ReflectiveOperationException {
+        try {
+            Method updateScrollPosition = lazyListState.getClass()
+                    .getDeclaredMethod("k", int.class, int.class, boolean.class);
+            updateScrollPosition.setAccessible(true);
+            updateScrollPosition.invoke(lazyListState, position.index, position.offset, true);
+            return;
+        } catch (NoSuchMethodException ignored) {
+        }
+
+        Method requestScrollToItem = lazyListState.getClass().getDeclaredMethod("i", int.class, int.class);
+        requestScrollToItem.setAccessible(true);
+        requestScrollToItem.invoke(lazyListState, position.index, position.offset);
     }
 
     private static Position getSavedPosition(String key) {
