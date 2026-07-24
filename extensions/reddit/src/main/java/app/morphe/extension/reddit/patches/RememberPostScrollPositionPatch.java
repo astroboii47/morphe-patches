@@ -6,9 +6,6 @@
  */
 package app.morphe.extension.reddit.patches;
 
-import android.content.Context;
-import android.content.SharedPreferences;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -17,14 +14,13 @@ import java.util.WeakHashMap;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
-import app.morphe.extension.shared.Utils;
 
 @SuppressWarnings("unused")
 public final class RememberPostScrollPositionPatch {
     private static final int MAX_POSITIONS = 64;
-    private static final Map<String, Position> POSITIONS = new LinkedHashMap<String, Position>(MAX_POSITIONS, 0.75f, true) {
+    private static final Map<String, SavedPosition> POSITIONS = new LinkedHashMap<String, SavedPosition>(MAX_POSITIONS, 0.75f, true) {
         @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Position> eldest) {
+        protected boolean removeEldestEntry(Map.Entry<String, SavedPosition> eldest) {
             return size() > MAX_POSITIONS;
         }
     };
@@ -34,7 +30,7 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, Position> INITIAL_RESTORES = new WeakHashMap<>();
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 2500L;
-    private static final String PREFERENCES_NAME = "morphe_reddit_post_scroll";
+    private static final long POSITION_TTL_MS = 5 * 60 * 1000L;
 
     private RememberPostScrollPositionPatch() {
     }
@@ -140,9 +136,8 @@ public final class RememberPostScrollPositionPatch {
             }
 
             synchronized (POSITIONS) {
-                POSITIONS.put(key, incoming);
+                POSITIONS.put(key, new SavedPosition(incoming));
             }
-            persistPosition(key, incoming);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position", ex);
         }
@@ -232,39 +227,16 @@ public final class RememberPostScrollPositionPatch {
 
     private static Position getSavedPosition(String key) {
         synchronized (POSITIONS) {
-            Position position = POSITIONS.get(key);
-            if (position != null) {
-                return position;
+            SavedPosition savedPosition = POSITIONS.get(key);
+            if (savedPosition == null) {
+                return null;
             }
-        }
-
-        SharedPreferences preferences = getPreferences();
-        if (preferences == null) {
-            return null;
-        }
-
-        String encoded = preferences.getString(key, null);
-        Position position = Position.decode(encoded);
-        if (position != null) {
-            synchronized (POSITIONS) {
-                POSITIONS.put(key, position);
+            if (System.currentTimeMillis() > savedPosition.expiresAtMs) {
+                POSITIONS.remove(key);
+                return null;
             }
+            return savedPosition.position;
         }
-        return position;
-    }
-
-    private static void persistPosition(String key, Position position) {
-        SharedPreferences preferences = getPreferences();
-        if (preferences == null) {
-            return;
-        }
-
-        preferences.edit().putString(key, position.encode()).apply();
-    }
-
-    private static SharedPreferences getPreferences() {
-        Context context = Utils.getContext();
-        return context == null ? null : context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
     }
 
     private static String getPostKey(Object provider) throws ReflectiveOperationException {
@@ -354,29 +326,15 @@ public final class RememberPostScrollPositionPatch {
             return index == other.index &&
                     Math.abs(offset - other.offset) <= RESTORE_OFFSET_TOLERANCE_PX;
         }
+    }
 
-        String encode() {
-            return index + ":" + offset;
-        }
+    private static final class SavedPosition {
+        final Position position;
+        final long expiresAtMs;
 
-        static Position decode(String encoded) {
-            if (encoded == null) {
-                return null;
-            }
-
-            int separator = encoded.indexOf(':');
-            if (separator <= 0 || separator >= encoded.length() - 1) {
-                return null;
-            }
-
-            try {
-                return new Position(
-                        Math.max(0, Integer.parseInt(encoded.substring(0, separator))),
-                        Math.max(0, Integer.parseInt(encoded.substring(separator + 1)))
-                );
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
+        SavedPosition(Position position) {
+            this.position = position;
+            this.expiresAtMs = System.currentTimeMillis() + POSITION_TTL_MS;
         }
     }
 }
