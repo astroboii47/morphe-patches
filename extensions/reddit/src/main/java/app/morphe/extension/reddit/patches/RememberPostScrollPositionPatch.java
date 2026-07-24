@@ -159,6 +159,9 @@ public final class RememberPostScrollPositionPatch {
                 }
             }
 
+            synchronized (POSITIONS) {
+                POSITIONS.put(key, incoming);
+            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position", ex);
         }
