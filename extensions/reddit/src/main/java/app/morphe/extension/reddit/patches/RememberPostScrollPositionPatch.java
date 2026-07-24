@@ -25,7 +25,7 @@ public final class RememberPostScrollPositionPatch {
         }
     };
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
-    private static final Map<Object, String> RESTORE_CHECKED_LISTS = new WeakHashMap<>();
+    private static final Map<Object, RestoreMarker> RESTORE_CHECKED_LISTS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
@@ -61,7 +61,8 @@ public final class RememberPostScrollPositionPatch {
                 BOUND_LISTS.put(lazyListState, key);
             }
 
-            if (markRestoreChecked(lazyListState, key)) {
+            Position restorePosition = getSavedPosition(key);
+            if (restorePosition != null && markRestoreChecked(lazyListState, key, restorePosition)) {
                 restorePosition(key, lazyListState);
             }
         } catch (Throwable ex) {
@@ -162,13 +163,13 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
-    private static boolean markRestoreChecked(Object lazyListState, String key) {
+    private static boolean markRestoreChecked(Object lazyListState, String key, Position position) {
         synchronized (RESTORE_CHECKED_LISTS) {
-            String checkedKey = RESTORE_CHECKED_LISTS.get(lazyListState);
-            if (key.equals(checkedKey)) {
+            RestoreMarker checked = RESTORE_CHECKED_LISTS.get(lazyListState);
+            if (checked != null && checked.matches(key, position)) {
                 return false;
             }
-            RESTORE_CHECKED_LISTS.put(lazyListState, key);
+            RESTORE_CHECKED_LISTS.put(lazyListState, new RestoreMarker(key, position));
             return true;
         }
     }
@@ -187,10 +188,7 @@ public final class RememberPostScrollPositionPatch {
 
     private static void restorePosition(String key, Object lazyListState) {
         try {
-            Position position;
-            synchronized (POSITIONS) {
-                position = POSITIONS.get(key);
-            }
+            Position position = getSavedPosition(key);
             if (position == null || (position.index <= 0 && position.offset <= 0)) {
                 return;
             }
@@ -206,6 +204,12 @@ public final class RememberPostScrollPositionPatch {
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to restore Reddit post scroll position", ex);
+        }
+    }
+
+    private static Position getSavedPosition(String key) {
+        synchronized (POSITIONS) {
+            return POSITIONS.get(key);
         }
     }
 
@@ -295,6 +299,20 @@ public final class RememberPostScrollPositionPatch {
         boolean isNear(Position other) {
             return index == other.index &&
                     Math.abs(offset - other.offset) <= RESTORE_OFFSET_TOLERANCE_PX;
+        }
+    }
+
+    private static final class RestoreMarker {
+        final String key;
+        final Position position;
+
+        RestoreMarker(String key, Position position) {
+            this.key = key;
+            this.position = position;
+        }
+
+        boolean matches(String otherKey, Position otherPosition) {
+            return key.equals(otherKey) && position.isNear(otherPosition);
         }
     }
 }
