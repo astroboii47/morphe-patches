@@ -354,7 +354,6 @@ public final class RememberPostScrollPositionPatch {
                     .getDeclaredMethod("k", int.class, int.class, boolean.class);
             updateScrollPosition.setAccessible(true);
             updateScrollPosition.invoke(lazyListState, position.index, position.offset, true);
-            return;
         } catch (NoSuchMethodException ignored) {
         }
 
