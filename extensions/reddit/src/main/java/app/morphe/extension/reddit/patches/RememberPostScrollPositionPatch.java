@@ -142,10 +142,6 @@ public final class RememberPostScrollPositionPatch {
         }
 
         try {
-            if (!scrollPass || Math.abs(getScrollDelta(layoutInfo)) < 0.5f) {
-                return;
-            }
-
             Position position = getPositionFromLayoutInfo(layoutInfo);
             if (position == null) {
                 return;
