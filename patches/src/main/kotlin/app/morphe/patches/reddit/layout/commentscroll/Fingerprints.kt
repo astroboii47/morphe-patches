@@ -93,3 +93,15 @@ internal object ArticleCommentsScreenDetachFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf("Landroid/view/View;")
 )
+
+internal object CommentsRenderedHandlerFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/comments/events/handler/j0;",
+    name = "a",
+    returnType = "Ljava/lang/Object;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(
+        "Lytx;",
+        "Lkotlin/jvm/functions/Function1;",
+        "Lkotlin/coroutines/jvm/internal/ContinuationImpl;"
+    )
+)

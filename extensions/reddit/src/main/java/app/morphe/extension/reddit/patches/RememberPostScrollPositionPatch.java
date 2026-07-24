@@ -28,6 +28,18 @@ public final class RememberPostScrollPositionPatch {
     private static final Map<Object, Object> PROVIDER_LISTS = new WeakHashMap<>();
     private static final Map<Object, String> PROVIDER_KEYS = new WeakHashMap<>();
     private static final Map<Object, Position> LATEST_POSITIONS = new WeakHashMap<>();
+    private static final Map<String, Object> LISTS_BY_KEY = new LinkedHashMap<String, Object>(MAX_POSITIONS, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Object> eldest) {
+            return size() > MAX_POSITIONS;
+        }
+    };
+    private static final Map<String, Position> DRAFT_POSITIONS = new LinkedHashMap<String, Position>(MAX_POSITIONS, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Position> eldest) {
+            return size() > MAX_POSITIONS;
+        }
+    };
     private static final Map<Object, RestoreMarker> RESTORE_CHECKED_PROVIDERS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
@@ -69,6 +81,9 @@ public final class RememberPostScrollPositionPatch {
             synchronized (PROVIDER_KEYS) {
                 PROVIDER_KEYS.put(provider, key);
             }
+            synchronized (LISTS_BY_KEY) {
+                LISTS_BY_KEY.put(key, lazyListState);
+            }
 
             beginRestoreIfNeeded(provider, key, lazyListState);
         } catch (Throwable ex) {
@@ -106,6 +121,9 @@ public final class RememberPostScrollPositionPatch {
             Position incoming = new Position(safeIndex, safeOffset);
             synchronized (LATEST_POSITIONS) {
                 LATEST_POSITIONS.put(lazyListState, incoming);
+            }
+            synchronized (DRAFT_POSITIONS) {
+                DRAFT_POSITIONS.put(key, incoming);
             }
 
             synchronized (PENDING_RESTORES) {
@@ -184,19 +202,29 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
+            String key = null;
+            try {
+                key = getPostKey(provider);
+            } catch (Throwable ignored) {
+            }
+            if (key == null) {
+                synchronized (PROVIDER_KEYS) {
+                    key = PROVIDER_KEYS.get(provider);
+                }
+            }
+
+            Position position = null;
+            if (key != null) {
+                synchronized (DRAFT_POSITIONS) {
+                    position = DRAFT_POSITIONS.get(key);
+                }
+            }
+
             Object lazyListState;
             synchronized (PROVIDER_LISTS) {
                 lazyListState = PROVIDER_LISTS.get(provider);
             }
-            if (lazyListState == null) {
-                return;
-            }
-
-            String key;
-            synchronized (PROVIDER_KEYS) {
-                key = PROVIDER_KEYS.get(provider);
-            }
-            if (key == null) {
+            if (key == null && lazyListState != null) {
                 synchronized (BOUND_LISTS) {
                     key = BOUND_LISTS.get(lazyListState);
                 }
@@ -205,9 +233,15 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
-            Position position;
-            synchronized (LATEST_POSITIONS) {
-                position = LATEST_POSITIONS.get(lazyListState);
+            if (position == null && lazyListState != null) {
+                synchronized (LATEST_POSITIONS) {
+                    position = LATEST_POSITIONS.get(lazyListState);
+                }
+            }
+            if (position == null) {
+                synchronized (DRAFT_POSITIONS) {
+                    position = DRAFT_POSITIONS.get(key);
+                }
             }
             if (position == null || (position.index <= 0 && position.offset <= 0)) {
                 return;
@@ -221,6 +255,39 @@ public final class RememberPostScrollPositionPatch {
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position on exit", ex);
+        }
+    }
+
+    /**
+     * Injection point.
+     */
+    public static void restoreOnCommentsRendered(Object handler) {
+        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
+            return;
+        }
+
+        try {
+            String key = getPostKeyFromCommentsParamsField(handler, "a");
+            if (key == null) {
+                return;
+            }
+
+            Position position = getSavedPosition(key);
+            if (position == null || (position.index <= 0 && position.offset <= 0)) {
+                return;
+            }
+
+            Object lazyListState;
+            synchronized (LISTS_BY_KEY) {
+                lazyListState = LISTS_BY_KEY.get(key);
+            }
+            if (lazyListState == null) {
+                return;
+            }
+
+            requestRestore(lazyListState, position);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to restore Reddit post scroll position on comments rendered", ex);
         }
     }
 
@@ -312,6 +379,16 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
+    private static String getPostKeyFromCommentsParamsField(Object instance, String fieldName) throws ReflectiveOperationException {
+        if (instance == null) {
+            return null;
+        }
+
+        Field field = instance.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return getPostKeyFromCommentsParams(field.get(instance));
+    }
+
     private static String getPostKey(Object provider) throws ReflectiveOperationException {
         if (provider == null) {
             return null;
@@ -320,6 +397,14 @@ public final class RememberPostScrollPositionPatch {
         Field paramsField = provider.getClass().getDeclaredField("f");
         paramsField.setAccessible(true);
         Object params = paramsField.get(provider);
+        if (params == null) {
+            return null;
+        }
+
+        return getPostKeyFromCommentsParams(params);
+    }
+
+    private static String getPostKeyFromCommentsParams(Object params) throws IllegalAccessException {
         if (params == null) {
             return null;
         }

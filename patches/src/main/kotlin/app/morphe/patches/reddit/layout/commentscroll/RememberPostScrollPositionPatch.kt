@@ -76,6 +76,13 @@ val rememberPostScrollPositionPatch = bytecodePatch(
             )
         }
 
+        CommentsRenderedHandlerFingerprint.method.addInstructions(
+            0,
+            """
+                invoke-static { p0 }, $EXTENSION_CLASS->restoreOnCommentsRendered(Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
