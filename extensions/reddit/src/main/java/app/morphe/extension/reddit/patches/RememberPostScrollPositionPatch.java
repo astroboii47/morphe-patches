@@ -68,7 +68,6 @@ public final class RememberPostScrollPositionPatch {
             synchronized (INITIAL_RESTORES) {
                 INITIAL_RESTORES.put(lazyListState, position);
             }
-            restorePosition(key, lazyListState, false);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to bind Reddit post scroll position", ex);
         }
@@ -187,7 +186,7 @@ public final class RememberPostScrollPositionPatch {
                 return;
             }
 
-            restorePosition(key, lazyListState, true);
+            restorePosition(key, lazyListState);
             synchronized (INITIAL_RESTORES) {
                 INITIAL_RESTORES.remove(lazyListState);
             }
@@ -196,7 +195,7 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
-    private static void restorePosition(String key, Object lazyListState, boolean forceRemeasure) {
+    private static void restorePosition(String key, Object lazyListState) {
         try {
             Position position = getSavedPosition(key);
             if (position == null || (position.index <= 0 && position.offset <= 0)) {
@@ -210,10 +209,10 @@ public final class RememberPostScrollPositionPatch {
                 }
             }
 
-            Method updateScrollPosition = lazyListState.getClass()
-                    .getDeclaredMethod("k", int.class, int.class, boolean.class);
-            updateScrollPosition.setAccessible(true);
-            updateScrollPosition.invoke(lazyListState, position.index, position.offset, forceRemeasure);
+            Method requestScrollToItem = lazyListState.getClass()
+                    .getDeclaredMethod("i", int.class, int.class);
+            requestScrollToItem.setAccessible(true);
+            requestScrollToItem.invoke(lazyListState, position.index, position.offset);
             synchronized (PENDING_RESTORES) {
                 PENDING_RESTORES.put(lazyListState, position);
             }
