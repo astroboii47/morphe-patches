@@ -69,3 +69,27 @@ internal object LazyListStateLayoutUpdateFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf("Lu2q;", "Z", "Z")
 )
+
+internal object CommentsScreenDetachFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/postdetail/comment/refactor/CommentsScreen;",
+    name = "f4",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Landroid/view/View;")
+)
+
+internal object AdaptiveCommentsScreenDetachFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/postdetail/comment/refactor/adaptive/AdaptiveFBPScreen;",
+    name = "f4",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Landroid/view/View;")
+)
+
+internal object ArticleCommentsScreenDetachFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/postdetail/comment/refactor/article/ArticleCommentScreen;",
+    name = "f4",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Landroid/view/View;")
+)

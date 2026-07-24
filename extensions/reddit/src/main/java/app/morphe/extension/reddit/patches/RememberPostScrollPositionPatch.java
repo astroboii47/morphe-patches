@@ -6,9 +6,6 @@
  */
 package app.morphe.extension.reddit.patches;
 
-import android.os.Handler;
-import android.os.Looper;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
@@ -28,11 +25,13 @@ public final class RememberPostScrollPositionPatch {
         }
     };
     private static final Map<Object, String> BOUND_LISTS = new WeakHashMap<>();
+    private static final Map<Object, Object> PROVIDER_LISTS = new WeakHashMap<>();
+    private static final Map<Object, String> PROVIDER_KEYS = new WeakHashMap<>();
+    private static final Map<Object, Position> LATEST_POSITIONS = new WeakHashMap<>();
     private static final Map<Object, RestoreMarker> RESTORE_CHECKED_PROVIDERS = new WeakHashMap<>();
     private static final Map<Object, Position> PENDING_RESTORES = new WeakHashMap<>();
     private static final Map<Object, Long> SUPPRESS_SAVE_UNTIL = new WeakHashMap<>();
     private static final Map<Object, Long> LAST_LAYOUT_SAVE_MS = new WeakHashMap<>();
-    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final int RESTORE_OFFSET_TOLERANCE_PX = 24;
     private static final long RESTORE_SETTLE_MS = 350L;
     private static final long LAYOUT_SAVE_THROTTLE_MS = 250L;
@@ -63,6 +62,12 @@ public final class RememberPostScrollPositionPatch {
 
             synchronized (BOUND_LISTS) {
                 BOUND_LISTS.put(lazyListState, key);
+            }
+            synchronized (PROVIDER_LISTS) {
+                PROVIDER_LISTS.put(provider, lazyListState);
+            }
+            synchronized (PROVIDER_KEYS) {
+                PROVIDER_KEYS.put(provider, key);
             }
 
             beginRestoreIfNeeded(provider, key, lazyListState);
@@ -99,6 +104,10 @@ public final class RememberPostScrollPositionPatch {
             }
 
             Position incoming = new Position(safeIndex, safeOffset);
+            synchronized (LATEST_POSITIONS) {
+                LATEST_POSITIONS.put(lazyListState, incoming);
+            }
+
             synchronized (PENDING_RESTORES) {
                 Position pending = PENDING_RESTORES.get(lazyListState);
                 if (pending != null) {
@@ -132,9 +141,6 @@ public final class RememberPostScrollPositionPatch {
                 }
             }
 
-            synchronized (POSITIONS) {
-                POSITIONS.put(key, incoming);
-            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to save Reddit post scroll position", ex);
         }
@@ -164,6 +170,60 @@ public final class RememberPostScrollPositionPatch {
         }
     }
 
+    /**
+     * Injection point.
+     */
+    public static void saveOnPostExit(Object screen) {
+        if (!isPatchIncluded() && !Settings.REMEMBER_POST_SCROLL_POSITION.get()) {
+            return;
+        }
+
+        try {
+            Object provider = getCommentsProvider(screen);
+            if (provider == null) {
+                return;
+            }
+
+            Object lazyListState;
+            synchronized (PROVIDER_LISTS) {
+                lazyListState = PROVIDER_LISTS.get(provider);
+            }
+            if (lazyListState == null) {
+                return;
+            }
+
+            String key;
+            synchronized (PROVIDER_KEYS) {
+                key = PROVIDER_KEYS.get(provider);
+            }
+            if (key == null) {
+                synchronized (BOUND_LISTS) {
+                    key = BOUND_LISTS.get(lazyListState);
+                }
+            }
+            if (key == null) {
+                return;
+            }
+
+            Position position;
+            synchronized (LATEST_POSITIONS) {
+                position = LATEST_POSITIONS.get(lazyListState);
+            }
+            if (position == null || (position.index <= 0 && position.offset <= 0)) {
+                return;
+            }
+
+            synchronized (POSITIONS) {
+                POSITIONS.put(key, position);
+            }
+            synchronized (RESTORE_CHECKED_PROVIDERS) {
+                RESTORE_CHECKED_PROVIDERS.remove(provider);
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to save Reddit post scroll position on exit", ex);
+        }
+    }
+
     private static void beginRestoreIfNeeded(Object provider, String key, Object lazyListState) {
         Position position = getSavedPosition(key);
         if (position == null || (position.index <= 0 && position.offset <= 0)) {
@@ -179,8 +239,6 @@ public final class RememberPostScrollPositionPatch {
         }
 
         requestRestore(lazyListState, position);
-        MAIN_HANDLER.post(() -> requestRestore(lazyListState, position));
-        MAIN_HANDLER.postDelayed(() -> requestRestore(lazyListState, position), 80L);
     }
 
     private static boolean canSampleLayoutPosition(Object lazyListState) {
@@ -214,6 +272,43 @@ public final class RememberPostScrollPositionPatch {
     private static Position getSavedPosition(String key) {
         synchronized (POSITIONS) {
             return POSITIONS.get(key);
+        }
+    }
+
+    private static Object getCommentsProvider(Object screen) throws ReflectiveOperationException {
+        Object provider = invokeNoArg(screen, "n5");
+        if (provider == null) {
+            provider = invokeNoArg(screen, "o5");
+        }
+        return unwrapLazy(provider);
+    }
+
+    private static Object invokeNoArg(Object instance, String methodName) throws ReflectiveOperationException {
+        if (instance == null) {
+            return null;
+        }
+
+        try {
+            Method method = instance.getClass().getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(instance);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Object unwrapLazy(Object provider) {
+        if (provider == null) {
+            return null;
+        }
+
+        try {
+            Method get = provider.getClass().getDeclaredMethod("get");
+            get.setAccessible(true);
+            Object value = get.invoke(provider);
+            return value != null ? value : provider;
+        } catch (Throwable ignored) {
+            return provider;
         }
     }
 

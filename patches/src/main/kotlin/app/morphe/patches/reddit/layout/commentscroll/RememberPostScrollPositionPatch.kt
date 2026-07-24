@@ -63,6 +63,19 @@ val rememberPostScrollPositionPatch = bytecodePatch(
             """
         )
 
+        listOf(
+            CommentsScreenDetachFingerprint.method,
+            AdaptiveCommentsScreenDetachFingerprint.method,
+            ArticleCommentsScreenDetachFingerprint.method
+        ).forEach { method ->
+            method.addInstructions(
+                0,
+                """
+                    invoke-static { p0 }, $EXTENSION_CLASS->saveOnPostExit(Ljava/lang/Object;)V
+                """
+            )
+        }
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
