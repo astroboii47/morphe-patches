@@ -223,8 +223,19 @@ public final class RememberPostScrollPositionPatch {
             if (key == null) {
                 return;
             }
+            if (lazyListState == null) {
+                synchronized (LISTS_BY_KEY) {
+                    lazyListState = LISTS_BY_KEY.get(key);
+                }
+            }
 
-            Position position = lazyListState != null ? getPositionFromLazyListState(lazyListState) : null;
+            Position position = null;
+            if (lazyListState != null) {
+                try {
+                    position = getPositionFromLazyListState(lazyListState);
+                } catch (Throwable ignored) {
+                }
+            }
             if (position == null && lazyListState != null) {
                 synchronized (LATEST_POSITIONS) {
                     position = LATEST_POSITIONS.get(lazyListState);
