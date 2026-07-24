@@ -96,7 +96,7 @@ internal object ArticleCommentsScreenDetachFingerprint : Fingerprint(
 
 internal object CommentsRenderedHandlerFingerprint : Fingerprint(
     definingClass = "Lcom/reddit/comments/events/handler/j0;",
-    name = "a",
+    name = "b",
     returnType = "Ljava/lang/Object;",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     parameters = listOf(
