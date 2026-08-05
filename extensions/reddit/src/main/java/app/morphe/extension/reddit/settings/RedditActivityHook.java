@@ -220,6 +220,7 @@ public class RedditActivityHook {
     }
 
     private static boolean attachBuildVersionLongPressToTree(View view) {
+        boolean attached = false;
         if (view instanceof TextView) {
             CharSequence text = ((TextView) view).getText();
             if (isBuildVersionText(text)) {
@@ -229,21 +230,21 @@ public class RedditActivityHook {
                     ((TextView) view).setTextIsSelectable(false);
                 }
                 attachOpenSettingsHold(view);
-                return true;
+                attached = true;
             }
         }
 
         if (!(view instanceof ViewGroup)) {
-            return false;
+            return attached;
         }
 
         ViewGroup group = (ViewGroup) view;
         for (int i = 0; i < group.getChildCount(); i++) {
             if (attachBuildVersionLongPressToTree(group.getChildAt(i))) {
-                return true;
+                attached = true;
             }
         }
-        return false;
+        return attached;
     }
 
     private static boolean isBuildVersionText(CharSequence text) {
@@ -254,6 +255,7 @@ public class RedditActivityHook {
         String value = text.toString();
         return MORPHE_LABEL.equals(value)
                 || "Morphe Settings".equals(value)
+                || value.toLowerCase().contains("build information")
                 || value.contains("2026.")
                 || value.toLowerCase().contains("build version");
     }
@@ -276,16 +278,19 @@ public class RedditActivityHook {
         float[] downX = new float[1];
         float[] downY = new float[1];
         boolean[] opened = new boolean[1];
+        boolean[] moved = new boolean[1];
         Runnable[] openSettings = new Runnable[1];
 
         view.setLongClickable(false);
         view.setOnLongClickListener(null);
+        view.setClickable(true);
         view.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     downX[0] = event.getX();
                     downY[0] = event.getY();
                     opened[0] = false;
+                    moved[0] = false;
                     openSettings[0] = () -> {
                         opened[0] = true;
                         v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
@@ -297,6 +302,7 @@ public class RedditActivityHook {
                 case MotionEvent.ACTION_MOVE:
                     if (Math.abs(event.getX() - downX[0]) > touchSlop
                             || Math.abs(event.getY() - downY[0]) > touchSlop) {
+                        moved[0] = true;
                         if (openSettings[0] != null) {
                             handler.removeCallbacks(openSettings[0]);
                         }
@@ -307,6 +313,11 @@ public class RedditActivityHook {
                 case MotionEvent.ACTION_CANCEL:
                     if (openSettings[0] != null) {
                         handler.removeCallbacks(openSettings[0]);
+                    }
+                    if (event.getActionMasked() == MotionEvent.ACTION_UP && !opened[0] && !moved[0]) {
+                        v.performClick();
+                        openMorpheSettings(v.getContext());
+                        return true;
                     }
                     return opened[0];
 
