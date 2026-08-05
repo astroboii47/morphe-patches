@@ -43,6 +43,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.List;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -114,6 +116,10 @@ public final class LongPressImagePreviewPatch {
     public static void registerPostMedia(String title, Object mediaPreview) {
         String url = extractUrl(mediaPreview);
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
+            if (title != null && title.length() != 0 && mediaPreview != null) {
+                Log.i(LOG_TAG, "cache miss title=\"" + title + "\" mediaClass="
+                        + mediaPreview.getClass().getName() + " media=" + mediaPreview);
+            }
             return;
         }
 
@@ -606,7 +612,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         try {
-            Object value = mediaPreview.getClass().getMethod("b").invoke(mediaPreview);
+            Method method = mediaPreview.getClass().getDeclaredMethod("b");
+            method.setAccessible(true);
+            Object value = method.invoke(mediaPreview);
             if (value instanceof String) {
                 return (String) value;
             }
@@ -614,7 +622,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         try {
-            Object value = mediaPreview.getClass().getField("a").get(mediaPreview);
+            Field field = mediaPreview.getClass().getDeclaredField("a");
+            field.setAccessible(true);
+            Object value = field.get(mediaPreview);
             if (value instanceof String) {
                 return (String) value;
             }
@@ -623,7 +633,9 @@ public final class LongPressImagePreviewPatch {
 
         for (String fieldName : new String[]{"c", "i", "j", "k", "f"}) {
             try {
-                Object value = mediaPreview.getClass().getField(fieldName).get(mediaPreview);
+                Field field = mediaPreview.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                Object value = field.get(mediaPreview);
                 if (value instanceof String) {
                     String stringValue = (String) value;
                     if (looksLikeMediaUrl(stringValue)) {
