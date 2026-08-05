@@ -11,9 +11,13 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -103,11 +107,13 @@ public class RedditActivityHook {
         try {
             Object preference = getBuildVersionPreference(preferencesFragment);
             if (preference == null) {
+                attachBuildVersionLongPress(preferencesFragment);
                 return;
             }
 
             callPreferenceMethod(preference, "A", String.class, "Morphe Settings");
             setPreferenceClickListener(preference);
+            attachBuildVersionLongPress(preferencesFragment);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to hook Reddit build version preference", ex);
         }
@@ -170,12 +176,107 @@ public class RedditActivityHook {
                     Object clickedPreference = args != null && args.length > 0 ? args[0] : preference;
                     Field contextField = clickedPreference.getClass().getField("a");
                     Context context = (Context) contextField.get(clickedPreference);
-                    context.startActivity(new Intent(context, MorpheSettingsActivity.class));
+                    openMorpheSettings(context);
                     return true;
                 }
         );
 
         Field clickListenerField = preference.getClass().getField("g");
         clickListenerField.set(preference, listener);
+    }
+
+    private static void attachBuildVersionLongPress(Object preferencesFragment) {
+        try {
+            View root = getFragmentView(preferencesFragment);
+            if (root == null) {
+                return;
+            }
+
+            Handler handler = new Handler(Looper.getMainLooper());
+            for (int delay : new int[]{0, 250, 750, 1500}) {
+                handler.postDelayed(() -> {
+                    try {
+                        attachBuildVersionLongPressToTree(root);
+                    } catch (Throwable ex) {
+                        Logger.printException(() -> "Failed to attach Morphe build version long press", ex);
+                    }
+                }, delay);
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to schedule Morphe build version long press", ex);
+        }
+    }
+
+    private static View getFragmentView(Object preferencesFragment) {
+        try {
+            Method getView = preferencesFragment.getClass().getMethod("getView");
+            getView.setAccessible(true);
+            return (View) getView.invoke(preferencesFragment);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static boolean attachBuildVersionLongPressToTree(View view) {
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            if (isBuildVersionText(text)) {
+                View target = findPreferenceRow(view);
+                target.setLongClickable(true);
+                target.setOnLongClickListener(v -> {
+                    openMorpheSettings(v.getContext());
+                    return true;
+                });
+                view.setLongClickable(true);
+                view.setOnLongClickListener(v -> {
+                    openMorpheSettings(v.getContext());
+                    return true;
+                });
+                return true;
+            }
+        }
+
+        if (!(view instanceof ViewGroup)) {
+            return false;
+        }
+
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            if (attachBuildVersionLongPressToTree(group.getChildAt(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isBuildVersionText(CharSequence text) {
+        if (text == null) {
+            return false;
+        }
+
+        String value = text.toString();
+        return MORPHE_LABEL.equals(value)
+                || "Morphe Settings".equals(value)
+                || value.contains("2026.")
+                || value.toLowerCase().contains("build version");
+    }
+
+    private static View findPreferenceRow(View view) {
+        View current = view;
+        for (int i = 0; i < 4 && current.getParent() instanceof View; i++) {
+            current = (View) current.getParent();
+            if (current.isClickable() || current.getHeight() >= view.getHeight() * 2) {
+                return current;
+            }
+        }
+        return view;
+    }
+
+    private static void openMorpheSettings(Context context) {
+        Intent intent = new Intent(context, MorpheSettingsActivity.class);
+        if (!(context instanceof Activity)) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        }
+        context.startActivity(intent);
     }
 }
