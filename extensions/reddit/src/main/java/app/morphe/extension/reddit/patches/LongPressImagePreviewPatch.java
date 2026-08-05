@@ -67,7 +67,7 @@ public final class LongPressImagePreviewPatch {
             "feed_media_content_self_",
             "feed_promoted_letterbox_media_content_video_"
     };
-    private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
+    private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 48;
     private static final int MAX_CACHED_MEDIA_URLS = 300;
     private static final String LOG_TAG = "MorphePreview";
     private static View activePreview;
@@ -282,6 +282,28 @@ public final class LongPressImagePreviewPatch {
 
         synchronized (TITLE_MEDIA_URLS) {
             cacheTitleMediaUrl(title, normalizeUrl(url));
+        }
+    }
+
+    public static void registerClassicCell(Object cell) {
+        String linkId = extractStringField(cell, "a");
+        String title = extractTitleCellTitle(readField(cell, "b"));
+        Object thumbnailCell = readField(readField(cell, "e"), "b");
+        String url = extractUrl(readField(thumbnailCell, "d"));
+        if (url == null) {
+            url = extractUrl(thumbnailCell);
+        }
+
+        Log.i(LOG_TAG, "classic cell hook linkId=" + linkId
+                + " title=\"" + title + "\" url=" + summarizeUrl(url));
+        if (title != null && title.length() != 0) {
+            registerPostTitle(linkId, title);
+        }
+        registerMediaUrl(linkId, url);
+        if (title != null && title.length() != 0 && url != null && url.length() != 0) {
+            synchronized (TITLE_MEDIA_URLS) {
+                cacheTitleMediaUrl(title, normalizeUrl(url));
+            }
         }
     }
 
@@ -507,8 +529,7 @@ public final class LongPressImagePreviewPatch {
         }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
-            return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
+            return null;
         }
 
         String text = description.toString();

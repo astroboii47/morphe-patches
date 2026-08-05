@@ -175,6 +175,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            ClassicCellFragmentConstructorFingerprint,
+            """
+                invoke-static { p0 }, $EXTENSION_CLASS->registerClassicCell(Ljava/lang/Object;)V
+            """
+        )
+
         hookMethodStart(
             ComposePostImageMethodFingerprint,
             """

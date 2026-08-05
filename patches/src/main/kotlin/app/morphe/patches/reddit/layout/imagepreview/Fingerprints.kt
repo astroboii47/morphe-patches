@@ -349,6 +349,21 @@ internal object TitleWithThumbnailCollapsedCellFragmentConstructorFingerprint : 
     )
 )
 
+internal object ClassicCellFragmentConstructorFingerprint : Fingerprint(
+    definingClass = "Lk78;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Lj78;",
+        "Lg78;",
+        "Lh78;",
+        "Li78;",
+        "Lf78;"
+    )
+)
+
 internal object ComposePostImageMethodFingerprint : Fingerprint(
     definingClass = "Lufr;",
     name = "f",
