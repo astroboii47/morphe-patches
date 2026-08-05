@@ -19,6 +19,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.KeyboardShortcutGroup;
 import android.view.Menu;
@@ -69,6 +70,7 @@ public final class LongPressImagePreviewPatch {
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final ExecutorService IMAGE_LOADER = Executors.newSingleThreadExecutor();
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
+    private static boolean REDISPATCHING_FEED_KEY;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -1297,14 +1299,17 @@ public final class LongPressImagePreviewPatch {
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
             return false;
         }
+        if (REDISPATCHING_FEED_KEY) {
+            return false;
+        }
 
         View root = activity.getWindow().getDecorView();
-        return focusFeedContent(root, keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+        return focusFeedContent(activity, root, event, keyCode == KeyEvent.KEYCODE_DPAD_DOWN
                 ? View.FOCUS_DOWN
                 : View.FOCUS_UP);
     }
 
-    private static boolean focusFeedContent(View root, int direction) {
+    private static boolean focusFeedContent(Activity activity, View root, KeyEvent event, int direction) {
         if (root == null) {
             return false;
         }
@@ -1316,7 +1321,8 @@ public final class LongPressImagePreviewPatch {
 
         focusVisiblePostNode(root, direction);
         synthesizeFeedFocusTouch(root, direction);
-        return false;
+        redispatchFeedKey(activity, event);
+        return true;
     }
 
     private static boolean isFeedFocus(View view, View root) {
@@ -1454,11 +1460,13 @@ public final class LongPressImagePreviewPatch {
             MotionEvent cancel = MotionEvent.obtain(
                     now,
                     now + 8,
-                    MotionEvent.ACTION_CANCEL,
+                    MotionEvent.ACTION_UP,
                     x,
                     y,
                     0
             );
+            down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            cancel.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             try {
                 root.dispatchTouchEvent(down);
                 root.dispatchTouchEvent(cancel);
@@ -1469,6 +1477,45 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to synthesize Reddit feed focus touch", ex);
         }
+    }
+
+    private static void redispatchFeedKey(Activity activity, KeyEvent event) {
+        MAIN_HANDLER.postDelayed(() -> {
+            REDISPATCHING_FEED_KEY = true;
+            try {
+                long now = SystemClock.uptimeMillis();
+                KeyEvent down = new KeyEvent(
+                        now,
+                        now,
+                        KeyEvent.ACTION_DOWN,
+                        event.getKeyCode(),
+                        0,
+                        event.getMetaState(),
+                        event.getDeviceId(),
+                        event.getScanCode(),
+                        event.getFlags(),
+                        event.getSource()
+                );
+                KeyEvent up = new KeyEvent(
+                        now,
+                        now + 8,
+                        KeyEvent.ACTION_UP,
+                        event.getKeyCode(),
+                        0,
+                        event.getMetaState(),
+                        event.getDeviceId(),
+                        event.getScanCode(),
+                        event.getFlags(),
+                        event.getSource()
+                );
+                activity.dispatchKeyEvent(down);
+                activity.dispatchKeyEvent(up);
+            } catch (Throwable ex) {
+                Logger.printException(() -> "Failed to redispatch Reddit feed key", ex);
+            } finally {
+                REDISPATCHING_FEED_KEY = false;
+            }
+        }, 80);
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
