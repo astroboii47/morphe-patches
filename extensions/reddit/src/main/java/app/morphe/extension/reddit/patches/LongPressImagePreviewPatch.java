@@ -55,6 +55,7 @@ public final class LongPressImagePreviewPatch {
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
+    private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
@@ -108,11 +109,44 @@ public final class LongPressImagePreviewPatch {
             return;
         }
 
+        String normalizedUrl = normalizeUrl(url);
         synchronized (MEDIA_URLS) {
             if (MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
                 MEDIA_URLS.clear();
             }
-            MEDIA_URLS.put(linkId, normalizeUrl(url));
+            MEDIA_URLS.put(linkId, normalizedUrl);
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            String title;
+            synchronized (LINK_TITLES) {
+                title = LINK_TITLES.get(linkId);
+            }
+            if (title != null) {
+                cacheTitleMediaUrl(title, normalizedUrl);
+            }
+        }
+    }
+
+    public static void registerPostTitle(String linkId, String title) {
+        if (linkId == null || title == null || title.length() == 0) {
+            return;
+        }
+
+        synchronized (LINK_TITLES) {
+            if (LINK_TITLES.size() > MAX_CACHED_MEDIA_URLS) {
+                LINK_TITLES.clear();
+            }
+            LINK_TITLES.put(linkId, title);
+        }
+
+        synchronized (MEDIA_URLS) {
+            String url = MEDIA_URLS.get(linkId);
+            if (url != null) {
+                synchronized (TITLE_MEDIA_URLS) {
+                    cacheTitleMediaUrl(title, url);
+                }
+            }
         }
     }
 
@@ -127,11 +161,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         synchronized (TITLE_MEDIA_URLS) {
-            if (TITLE_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
-                TITLE_MEDIA_URLS.clear();
-            }
-            TITLE_MEDIA_URLS.put(title, normalizeUrl(url));
-            Log.i(LOG_TAG, "cached title=\"" + title + "\" url=" + summarizeUrl(url));
+            cacheTitleMediaUrl(title, normalizeUrl(url));
         }
     }
 
@@ -374,6 +404,12 @@ public final class LongPressImagePreviewPatch {
             }
         }
 
+        AccessibilityNodeInfo viewNode = view.createAccessibilityNodeInfo();
+        String linkId = findMediaLinkIdInNode(null, viewNode, rawX, rawY, 0);
+        if (linkId != null) {
+            return linkId;
+        }
+
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = group.getChildCount() - 1; i >= 0; i--) {
@@ -422,6 +458,12 @@ public final class LongPressImagePreviewPatch {
             }
         }
 
+        AccessibilityNodeInfo viewNode = view.createAccessibilityNodeInfo();
+        CharSequence description = findPostDescriptionInNode(null, viewNode, rawX, rawY, 0);
+        if (description != null) {
+            return description;
+        }
+
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = group.getChildCount() - 1; i >= 0; i--) {
@@ -467,7 +509,7 @@ public final class LongPressImagePreviewPatch {
             } catch (Throwable ignored) {
             }
 
-            if (child == null) {
+            if (child == null && provider != null) {
                 int virtualId = getChildVirtualId(node, i);
                 if (virtualId != Integer.MIN_VALUE) {
                     child = provider.createAccessibilityNodeInfo(virtualId);
@@ -532,7 +574,7 @@ public final class LongPressImagePreviewPatch {
             } catch (Throwable ignored) {
             }
 
-            if (child == null) {
+            if (child == null && provider != null) {
                 int virtualId = getChildVirtualId(node, i);
                 if (virtualId != Integer.MIN_VALUE) {
                     child = provider.createAccessibilityNodeInfo(virtualId);
@@ -635,6 +677,15 @@ public final class LongPressImagePreviewPatch {
             return null;
         }
 
+        if (mediaPreview instanceof Iterable<?>) {
+            for (Object item : (Iterable<?>) mediaPreview) {
+                String url = extractUrl(item, depth + 1);
+                if (url != null) {
+                    return url;
+                }
+            }
+        }
+
         try {
             Method method = mediaPreview.getClass().getDeclaredMethod("b");
             method.setAccessible(true);
@@ -676,6 +727,14 @@ public final class LongPressImagePreviewPatch {
         }
 
         return null;
+    }
+
+    private static void cacheTitleMediaUrl(String title, String url) {
+        if (TITLE_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
+            TITLE_MEDIA_URLS.clear();
+        }
+        TITLE_MEDIA_URLS.put(title, url);
+        Log.i(LOG_TAG, "cached title=\"" + title + "\" url=" + summarizeUrl(url));
     }
 
     private static boolean looksLikeMediaUrl(String value) {

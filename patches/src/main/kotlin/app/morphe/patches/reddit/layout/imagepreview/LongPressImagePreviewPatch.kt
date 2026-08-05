@@ -91,6 +91,27 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            PostTitleElementConstructorFingerprint,
+            """
+                invoke-static { p1, p5 }, $EXTENSION_CLASS->registerPostTitle(Ljava/lang/String;Ljava/lang/String;)V
+            """
+        )
+
+        hookConstructor(
+            PostMediaWebsiteElementConstructorFingerprint,
+            """
+                invoke-static { p4, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            GalleryElementConstructorFingerprint,
+            """
+                invoke-static { p1, p6 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }

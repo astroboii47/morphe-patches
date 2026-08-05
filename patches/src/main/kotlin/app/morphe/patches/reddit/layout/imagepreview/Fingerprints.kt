@@ -137,3 +137,61 @@ internal object CompactLinkConstructorFingerprint : Fingerprint(
         "Z"
     )
 )
+
+internal object PostTitleElementConstructorFingerprint : Fingerprint(
+    definingClass = "Lsr10;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Lqu00;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Z",
+        "I",
+        "Ljava/lang/String;",
+        "Z",
+        "Ljava/lang/Integer;",
+        "Z"
+    )
+)
+
+internal object PostMediaWebsiteElementConstructorFingerprint : Fingerprint(
+    definingClass = "Lw110;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Lst6;",
+        "Lqu00;",
+        "Lcom/reddit/feeds/caching/data/DataSourceType;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z"
+    )
+)
+
+internal object GalleryElementConstructorFingerprint : Fingerprint(
+    definingClass = "Lz4j;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Lqu00;",
+        "I",
+        "Ljava/util/List;",
+        "I",
+        "Z",
+        "Lcom/reddit/feeds/caching/data/DataSourceType;"
+    )
+)
