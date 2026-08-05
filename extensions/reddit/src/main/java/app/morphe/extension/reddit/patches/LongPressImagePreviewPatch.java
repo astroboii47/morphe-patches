@@ -1313,44 +1313,8 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
-        View feedFocus = findBestFeedFocus(root, root);
-        if (feedFocus == null || feedFocus == focused) {
-            return false;
-        }
-
-        feedFocus.requestFocus(direction);
+        focusVisiblePostNode(root, direction);
         return false;
-    }
-
-    private static View findBestFeedFocus(View view, View root) {
-        if (view == null || view.getVisibility() != View.VISIBLE) {
-            return null;
-        }
-
-        View best = null;
-        int bestScore = Integer.MIN_VALUE;
-        if (isGoodFeedFocusTarget(view, root)) {
-            best = view;
-            bestScore = scoreFeedFocusTarget(view, root);
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View child = findBestFeedFocus(group.getChildAt(i), root);
-                if (child == null) {
-                    continue;
-                }
-
-                int score = scoreFeedFocusTarget(child, root);
-                if (score > bestScore) {
-                    best = child;
-                    bestScore = score;
-                }
-            }
-        }
-
-        return best;
     }
 
     private static boolean isFeedFocus(View view, View root) {
@@ -1383,18 +1347,89 @@ public final class LongPressImagePreviewPatch {
                 || view.canScrollVertically(-1);
     }
 
-    private static int scoreFeedFocusTarget(View view, View root) {
-        int area = view.getWidth() * view.getHeight();
-        int centerBonus = 0;
-        int[] location = new int[2];
-        view.getLocationOnScreen(location);
-        int centerX = location[0] + view.getWidth() / 2;
-        int centerY = location[1] + view.getHeight() / 2;
-        int rootCenterX = root.getWidth() / 2;
-        int rootCenterY = root.getHeight() / 2;
-        centerBonus -= Math.abs(centerX - rootCenterX);
-        centerBonus -= Math.abs(centerY - rootCenterY);
-        return area / 1024 + centerBonus;
+    private static boolean focusVisiblePostNode(View root, int direction) {
+        AccessibilityFocusCandidate candidate = new AccessibilityFocusCandidate();
+        AccessibilityNodeInfo node = null;
+        try {
+            node = root.createAccessibilityNodeInfo();
+            collectFocusablePostNode(root, node, candidate, direction, 0);
+            if (candidate.node == null) {
+                return false;
+            }
+
+            return candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    || candidate.node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to focus Reddit feed post", ex);
+            return false;
+        } finally {
+            if (candidate.node != null) {
+                candidate.node.recycle();
+            }
+        }
+    }
+
+    private static void collectFocusablePostNode(
+            View root,
+            AccessibilityNodeInfo node,
+            AccessibilityFocusCandidate candidate,
+            int direction,
+            int depth
+    ) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return;
+        }
+
+        boolean keepNode = false;
+        try {
+            CharSequence description = node.getContentDescription();
+            if (isPostDescription(description)) {
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                int score = scorePostFocusCandidate(root, bounds, direction);
+                if (score > candidate.score) {
+                    if (candidate.node != null) {
+                        candidate.node.recycle();
+                    }
+                    candidate.node = node;
+                    candidate.score = score;
+                    keepNode = true;
+                }
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+                collectFocusablePostNode(root, child, candidate, direction, depth + 1);
+            }
+        } finally {
+            if (!keepNode && candidate.node != node) {
+                node.recycle();
+            }
+        }
+    }
+
+    private static int scorePostFocusCandidate(View root, Rect bounds, int direction) {
+        if (bounds.isEmpty()) {
+            return Integer.MIN_VALUE;
+        }
+
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        int relativeCenterY = bounds.centerY() - rootLocation[1];
+        int topLimit = dp(root, 96);
+        int bottomLimit = root.getHeight() - dp(root, 96);
+        if (relativeCenterY < topLimit || relativeCenterY > bottomLimit) {
+            return Integer.MIN_VALUE;
+        }
+
+        int targetY = direction == View.FOCUS_UP ? bottomLimit : topLimit;
+        int distance = Math.abs(relativeCenterY - targetY);
+        return 100000 - distance + Math.min(bounds.height(), root.getHeight());
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
@@ -1596,5 +1631,10 @@ public final class LongPressImagePreviewPatch {
             this.description = description;
             this.bounds = bounds;
         }
+    }
+
+    private static final class AccessibilityFocusCandidate {
+        AccessibilityNodeInfo node;
+        int score = Integer.MIN_VALUE;
     }
 }
