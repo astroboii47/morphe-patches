@@ -164,7 +164,8 @@ val longPressImagePreviewPatch = bytecodePatch(
         hookMethodStart(
             ComposePostImageMethodFingerprint,
             """
-                invoke-static { p1 }, $EXTENSION_CLASS->registerMediaSourceObject(Ljava/lang/Object;)V
+                move-object/from16 v0, p1
+                invoke-static { v0 }, $EXTENSION_CLASS->registerMediaSourceObject(Ljava/lang/Object;)V
             """
         )
 
