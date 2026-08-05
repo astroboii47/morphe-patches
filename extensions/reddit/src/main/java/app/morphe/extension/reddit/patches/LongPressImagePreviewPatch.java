@@ -8,6 +8,7 @@ package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
@@ -34,8 +35,6 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -46,6 +45,12 @@ import java.util.WeakHashMap;
 import java.util.List;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -61,6 +66,8 @@ public final class LongPressImagePreviewPatch {
     private static final List<String> RECENT_MEDIA_TITLES = new ArrayList<>();
     private static final List<String> RECENT_MEDIA_URLS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+    private static final ExecutorService IMAGE_LOADER = Executors.newSingleThreadExecutor();
+    private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -70,6 +77,7 @@ public final class LongPressImagePreviewPatch {
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 48;
     private static final int MAX_CACHED_MEDIA_URLS = 300;
     private static final String LOG_TAG = "MorphePreview";
+    private static final boolean DEBUG_LOGS = false;
     private static View activePreview;
 
     private LongPressImagePreviewPatch() {
@@ -106,7 +114,7 @@ public final class LongPressImagePreviewPatch {
 
     public static void registerMediaPreview(String linkId, Object mediaPreview) {
         String url = extractUrl(mediaPreview);
-        Log.i(LOG_TAG, "media hook linkId=" + linkId + " mediaClass="
+        debugLog("media hook linkId=" + linkId + " mediaClass="
                 + (mediaPreview != null ? mediaPreview.getClass().getName() : "null")
                 + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
@@ -162,7 +170,7 @@ public final class LongPressImagePreviewPatch {
         String url = extractUrl(mediaPreview);
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             if (title != null && title.length() != 0 && mediaPreview != null) {
-                Log.i(LOG_TAG, "cache miss title=\"" + title + "\" mediaClass="
+                debugLog("cache miss title=\"" + title + "\" mediaClass="
                         + mediaPreview.getClass().getName() + " media=" + mediaPreview);
             }
             return;
@@ -174,7 +182,7 @@ public final class LongPressImagePreviewPatch {
     }
 
     public static void registerTitleThumbnailElement(Object titleElement, Object thumbnail) {
-        Log.i(LOG_TAG, "title thumbnail hook titleClass="
+        debugLog("title thumbnail hook titleClass="
                 + (titleElement != null ? titleElement.getClass().getName() : "null")
                 + " thumbnailClass=" + (thumbnail != null ? thumbnail.getClass().getName() : "null"));
         registerPostMedia(extractTitle(titleElement), thumbnail);
@@ -187,7 +195,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(preview);
         }
 
-        Log.i(LOG_TAG, "compact preview hook linkId=" + linkId
+        debugLog("compact preview hook linkId=" + linkId
                 + " title=\"" + title + "\" url=" + summarizeUrl(url));
 
         if (title != null) {
@@ -215,7 +223,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(onProfilePost);
         }
 
-        Log.i(LOG_TAG, "post preview base hook title=\"" + title + "\" url=" + summarizeUrl(url));
+        debugLog("post preview base hook title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             return;
         }
@@ -235,7 +243,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(imageElement);
         }
 
-        Log.i(LOG_TAG, "image section hook linkId=" + linkId + " url=" + summarizeUrl(url));
+        debugLog("image section hook linkId=" + linkId + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
     }
 
@@ -252,7 +260,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(videoElement);
         }
 
-        Log.i(LOG_TAG, "video section hook linkId=" + linkId + " url=" + summarizeUrl(url));
+        debugLog("video section hook linkId=" + linkId + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
     }
 
@@ -269,13 +277,13 @@ public final class LongPressImagePreviewPatch {
                 RECENT_MEDIA_URLS.remove(0);
             }
         }
-        Log.i(LOG_TAG, "cell media source hook url=" + summarizeUrl(url));
+        debugLog("cell media source hook url=" + summarizeUrl(url));
     }
 
     public static void registerTitleWithThumbnailCell(Object cell) {
         String title = extractTitleCellTitle(readField(cell, "b"));
         String url = extractUrl(readField(cell, "c"));
-        Log.i(LOG_TAG, "title thumbnail cell hook title=\"" + title + "\" url=" + summarizeUrl(url));
+        debugLog("title thumbnail cell hook title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             return;
         }
@@ -294,7 +302,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(thumbnailCell);
         }
 
-        Log.i(LOG_TAG, "classic cell hook linkId=" + linkId
+        debugLog("classic cell hook linkId=" + linkId
                 + " title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title != null && title.length() != 0) {
             registerPostTitle(linkId, title);
@@ -328,7 +336,7 @@ public final class LongPressImagePreviewPatch {
                 RECENT_MEDIA_URLS.remove(0);
             }
         }
-        Log.i(LOG_TAG, "media source hook size=" + width + "x" + height + " url=" + summarizeUrl(url));
+        debugLog("media source hook size=" + width + "x" + height + " url=" + summarizeUrl(url));
     }
 
     public static void registerMediaSourceObject(Object mediaSource) {
@@ -444,23 +452,11 @@ public final class LongPressImagePreviewPatch {
                 return;
             }
 
-            Log.i(LOG_TAG, "showing url=" + summarizeUrl(mediaUrl));
-            WebView preview = new WebView(activity);
+            Log.i(LOG_TAG, "showing image preview");
+            ImageView preview = new ImageView(activity);
             preview.setBackgroundColor(Color.TRANSPARENT);
-            preview.setVerticalScrollBarEnabled(false);
-            preview.setHorizontalScrollBarEnabled(false);
-            WebSettings settings = preview.getSettings();
-            settings.setLoadWithOverviewMode(true);
-            settings.setUseWideViewPort(true);
-            settings.setBuiltInZoomControls(false);
-            settings.setDisplayZoomControls(false);
-            preview.loadDataWithBaseURL(
-                    "https://www.reddit.com/",
-                    buildPreviewHtml(mediaUrl),
-                    "text/html",
-                    "UTF-8",
-                    null
-            );
+            preview.setAdjustViewBounds(true);
+            preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
             overlay.addView(preview, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -472,8 +468,49 @@ public final class LongPressImagePreviewPatch {
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
             activePreview = overlay;
+            loadPreviewImage(mediaUrl, preview, PREVIEW_GENERATION.incrementAndGet());
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to show Reddit image preview", ex);
+        }
+    }
+
+    private static void loadPreviewImage(String mediaUrl, ImageView preview, int generation) {
+        IMAGE_LOADER.execute(() -> {
+            Bitmap bitmap = null;
+            try {
+                bitmap = downloadBitmap(mediaUrl);
+            } catch (Throwable ex) {
+                Logger.printException(() -> "Failed to load Reddit image preview", ex);
+            }
+
+            Bitmap loadedBitmap = bitmap;
+            MAIN_HANDLER.post(() -> {
+                if (activePreview == null || PREVIEW_GENERATION.get() != generation) {
+                    if (loadedBitmap != null) {
+                        loadedBitmap.recycle();
+                    }
+                    return;
+                }
+
+                if (loadedBitmap != null) {
+                    preview.setImageBitmap(loadedBitmap);
+                } else {
+                    hidePreview();
+                }
+            });
+        });
+    }
+
+    private static Bitmap downloadBitmap(String mediaUrl) throws Exception {
+        URL url = new URL(mediaUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(3000);
+        connection.setReadTimeout(5000);
+        connection.setInstanceFollowRedirects(true);
+        try (InputStream inputStream = connection.getInputStream()) {
+            return BitmapFactory.decodeStream(inputStream);
+        } finally {
+            connection.disconnect();
         }
     }
 
@@ -1000,7 +1037,7 @@ public final class LongPressImagePreviewPatch {
         if (RECENT_MEDIA_TITLES.size() > MAX_CACHED_MEDIA_URLS) {
             RECENT_MEDIA_TITLES.remove(0);
         }
-        Log.i(LOG_TAG, "cached title=\"" + title + "\" url=" + summarizeUrl(url));
+        debugLog("cached title=\"" + title + "\" url=" + summarizeUrl(url));
     }
 
     private static String getRecentMediaUrlAtPoint(View root, int rawX, int rawY) {
@@ -1020,7 +1057,7 @@ public final class LongPressImagePreviewPatch {
             int row = clamp((rawY - top) * visibleCount / (bottom - top), 0, visibleCount - 1);
             String title = RECENT_MEDIA_TITLES.get(firstIndex + row);
             String url = TITLE_MEDIA_URLS.get(title);
-            Log.i(LOG_TAG, "recent media fallback title=\"" + title + "\" url=" + summarizeUrl(url));
+            debugLog("recent media fallback title=\"" + title + "\" url=" + summarizeUrl(url));
             return url;
         }
     }
@@ -1041,7 +1078,7 @@ public final class LongPressImagePreviewPatch {
             int bottom = Math.max(top + 1, root.getHeight() - dp(root, 80));
             int row = clamp((rawY - top) * visibleCount / (bottom - top), 0, visibleCount - 1);
             String url = RECENT_MEDIA_URLS.get(firstIndex + row);
-            Log.i(LOG_TAG, "recent source fallback url=" + summarizeUrl(url));
+            debugLog("recent source fallback url=" + summarizeUrl(url));
             return url;
         }
     }
@@ -1089,6 +1126,12 @@ public final class LongPressImagePreviewPatch {
             return url;
         }
         return url.substring(0, 140) + "...";
+    }
+
+    private static void debugLog(String message) {
+        if (DEBUG_LOGS) {
+            Log.i(LOG_TAG, message);
+        }
     }
 
     private static Rect findCompactMediaBounds(View root, int x, int y) {
@@ -1165,6 +1208,7 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void hidePreview() {
+        PREVIEW_GENERATION.incrementAndGet();
         View preview = activePreview;
         if (preview == null) {
             return;
