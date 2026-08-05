@@ -413,9 +413,9 @@ public final class LongPressImagePreviewPatch {
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = group.getChildCount() - 1; i >= 0; i--) {
-                String linkId = findMediaLinkIdInView(group.getChildAt(i), rawX, rawY);
-                if (linkId != null) {
-                    return linkId;
+                String childLinkId = findMediaLinkIdInView(group.getChildAt(i), rawX, rawY);
+                if (childLinkId != null) {
+                    return childLinkId;
                 }
             }
         }
@@ -467,9 +467,9 @@ public final class LongPressImagePreviewPatch {
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = group.getChildCount() - 1; i >= 0; i--) {
-                CharSequence description = findPostDescriptionInView(group.getChildAt(i), rawX, rawY);
-                if (description != null) {
-                    return description;
+                CharSequence childDescription = findPostDescriptionInView(group.getChildAt(i), rawX, rawY);
+                if (childDescription != null) {
+                    return childDescription;
                 }
             }
         }
