@@ -15,6 +15,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
@@ -1314,6 +1315,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         focusVisiblePostNode(root, direction);
+        synthesizeFeedFocusTouch(root, direction);
         return false;
     }
 
@@ -1430,6 +1432,43 @@ public final class LongPressImagePreviewPatch {
         int targetY = direction == View.FOCUS_UP ? bottomLimit : topLimit;
         int distance = Math.abs(relativeCenterY - targetY);
         return 100000 - distance + Math.min(bounds.height(), root.getHeight());
+    }
+
+    private static void synthesizeFeedFocusTouch(View root, int direction) {
+        try {
+            float x = root.getWidth() * 0.5f;
+            float y = direction == View.FOCUS_UP
+                    ? root.getHeight() * 0.72f
+                    : root.getHeight() * 0.32f;
+            y = clamp(Math.round(y), dp(root, 128), root.getHeight() - dp(root, 128));
+
+            long now = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(
+                    now,
+                    now,
+                    MotionEvent.ACTION_DOWN,
+                    x,
+                    y,
+                    0
+            );
+            MotionEvent cancel = MotionEvent.obtain(
+                    now,
+                    now + 8,
+                    MotionEvent.ACTION_CANCEL,
+                    x,
+                    y,
+                    0
+            );
+            try {
+                root.dispatchTouchEvent(down);
+                root.dispatchTouchEvent(cancel);
+            } finally {
+                down.recycle();
+                cancel.recycle();
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to synthesize Reddit feed focus touch", ex);
+        }
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
