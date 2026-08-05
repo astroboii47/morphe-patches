@@ -10,6 +10,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -91,12 +92,13 @@ public final class LongPressImagePreviewPatch {
         window.setCallback(new PreviewWindowCallback(activity, callback));
     }
 
-    private static void handleTouchEvent(Activity activity, MotionEvent event) {
+    private static boolean handleTouchEvent(Activity activity, MotionEvent event) {
         if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
             hidePreview();
-            return;
+            return false;
         }
 
+        boolean hadPreview = activePreview != null;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 TouchState state = new TouchState(
@@ -131,6 +133,8 @@ public final class LongPressImagePreviewPatch {
             default:
                 break;
         }
+
+        return hadPreview || activePreview != null;
     }
 
     private static void showPreviewIfStillHolding(
@@ -209,12 +213,96 @@ public final class LongPressImagePreviewPatch {
         int x = rawX - rootLocation[0];
         int y = rawY - rootLocation[1];
 
-        int cropWidth = Math.min(width, Math.max(dp(root, 280), width - (dp(root, 24) * 2)));
-        int cropHeight = Math.min(height, Math.max(dp(root, 220), height / 2));
+        Rect cropBounds = findCompactMediaBounds(root, x, y);
+        if (cropBounds != null) {
+            return Bitmap.createBitmap(
+                    full,
+                    cropBounds.left,
+                    cropBounds.top,
+                    cropBounds.width(),
+                    cropBounds.height()
+            );
+        }
+
+        int cropWidth = Math.min(width, dp(root, 180));
+        int cropHeight = Math.min(height, dp(root, 180));
         int left = clamp(x - cropWidth / 2, 0, Math.max(0, width - cropWidth));
         int top = clamp(y - cropHeight / 2, 0, Math.max(0, height - cropHeight));
 
         return Bitmap.createBitmap(full, left, top, cropWidth, cropHeight);
+    }
+
+    private static Rect findCompactMediaBounds(View root, int x, int y) {
+        Rect bounds = new Rect();
+        if (!findSmallestViewBoundsContainingPoint(root, root, x, y, bounds)) {
+            return null;
+        }
+
+        int minMediaSize = dp(root, 56);
+        int maxMediaSize = dp(root, 260);
+        int width = bounds.width();
+        int height = bounds.height();
+        if (width < minMediaSize || height < minMediaSize ||
+                width > maxMediaSize || height > maxMediaSize) {
+            return null;
+        }
+
+        int inset = dp(root, 2);
+        bounds.inset(-inset, -inset);
+        bounds.left = clamp(bounds.left, 0, root.getWidth() - 1);
+        bounds.top = clamp(bounds.top, 0, root.getHeight() - 1);
+        bounds.right = clamp(bounds.right, bounds.left + 1, root.getWidth());
+        bounds.bottom = clamp(bounds.bottom, bounds.top + 1, root.getHeight());
+        return bounds;
+    }
+
+    private static boolean findSmallestViewBoundsContainingPoint(
+            View root,
+            View view,
+            int x,
+            int y,
+            Rect outBounds
+    ) {
+        if (view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return false;
+        }
+
+        int[] rootLocation = new int[2];
+        int[] viewLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        view.getLocationOnScreen(viewLocation);
+
+        Rect viewBounds = new Rect(
+                viewLocation[0] - rootLocation[0],
+                viewLocation[1] - rootLocation[1],
+                viewLocation[0] - rootLocation[0] + view.getWidth(),
+                viewLocation[1] - rootLocation[1] + view.getHeight()
+        );
+        if (!viewBounds.contains(x, y)) {
+            return false;
+        }
+
+        boolean foundChild = false;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                foundChild = findSmallestViewBoundsContainingPoint(
+                        root,
+                        group.getChildAt(i),
+                        x,
+                        y,
+                        outBounds
+                ) || foundChild;
+                if (foundChild) {
+                    break;
+                }
+            }
+        }
+
+        if (!foundChild) {
+            outBounds.set(viewBounds);
+        }
+        return true;
     }
 
     private static void hidePreview() {
@@ -259,7 +347,9 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent event) {
-            handleTouchEvent(activity, event);
+            if (handleTouchEvent(activity, event)) {
+                return true;
+            }
             return delegate != null && delegate.dispatchTouchEvent(event);
         }
 
