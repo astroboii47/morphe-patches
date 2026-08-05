@@ -1286,6 +1286,113 @@ public final class LongPressImagePreviewPatch {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
+    private static boolean handleKeyboardScrollKey(Activity activity, KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN
+                && keyCode != KeyEvent.KEYCODE_DPAD_UP
+                && keyCode != KeyEvent.KEYCODE_PAGE_DOWN
+                && keyCode != KeyEvent.KEYCODE_PAGE_UP) {
+            return false;
+        }
+
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            return true;
+        }
+        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            return false;
+        }
+
+        int direction = keyCode == KeyEvent.KEYCODE_DPAD_UP
+                || keyCode == KeyEvent.KEYCODE_PAGE_UP ? -1 : 1;
+        View root = activity.getWindow().getDecorView();
+        return scrollFocusedOrVisibleContent(root, direction);
+    }
+
+    private static boolean scrollFocusedOrVisibleContent(View root, int direction) {
+        if (root == null) {
+            return false;
+        }
+
+        View focused = root.findFocus();
+        if (scrollView(focused, direction)) {
+            return true;
+        }
+
+        View scrollable = findBestScrollableView(root, direction, root);
+        return scrollView(scrollable, direction);
+    }
+
+    private static View findBestScrollableView(View view, int direction, View root) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return null;
+        }
+
+        View best = null;
+        int bestScore = Integer.MIN_VALUE;
+        if (isGoodKeyboardScrollTarget(view, direction, root)) {
+            best = view;
+            bestScore = scoreKeyboardScrollTarget(view, root);
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = findBestScrollableView(group.getChildAt(i), direction, root);
+                if (child == null) {
+                    continue;
+                }
+
+                int score = scoreKeyboardScrollTarget(child, root);
+                if (score > bestScore) {
+                    best = child;
+                    bestScore = score;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    private static boolean isGoodKeyboardScrollTarget(View view, int direction, View root) {
+        if (!view.canScrollVertically(direction)) {
+            return false;
+        }
+
+        int minHeight = Math.min(root.getHeight() / 3, dp(root, 360));
+        int minWidth = Math.min(root.getWidth() / 3, dp(root, 360));
+        return view.getHeight() >= minHeight && view.getWidth() >= minWidth;
+    }
+
+    private static int scoreKeyboardScrollTarget(View view, View root) {
+        int area = view.getWidth() * view.getHeight();
+        int centerBonus = 0;
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        int centerX = location[0] + view.getWidth() / 2;
+        int centerY = location[1] + view.getHeight() / 2;
+        int rootCenterX = root.getWidth() / 2;
+        int rootCenterY = root.getHeight() / 2;
+        centerBonus -= Math.abs(centerX - rootCenterX);
+        centerBonus -= Math.abs(centerY - rootCenterY);
+        return area / 1024 + centerBonus;
+    }
+
+    private static boolean scrollView(View view, int direction) {
+        if (view == null || !view.canScrollVertically(direction)) {
+            return false;
+        }
+
+        int action = direction > 0
+                ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+        if (view.performAccessibilityAction(action, null)) {
+            return true;
+        }
+
+        view.scrollBy(0, direction * Math.max(dp(view, 96), view.getHeight() / 3));
+        return true;
+    }
+
     private static final class PreviewWindowCallback implements Window.Callback {
         Activity activity;
         private final Window.Callback delegate;
@@ -1297,6 +1404,9 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
+            if (handleKeyboardScrollKey(activity, event)) {
+                return true;
+            }
             return delegate != null && delegate.dispatchKeyEvent(event);
         }
 
