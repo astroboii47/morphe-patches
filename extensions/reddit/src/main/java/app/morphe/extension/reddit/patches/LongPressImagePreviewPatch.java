@@ -566,7 +566,11 @@ public final class LongPressImagePreviewPatch {
         }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            return null;
+            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
+            if (recentUrl != null) {
+                return recentUrl;
+            }
+            return getRecentSourceUrlAtPoint(root, rawX, rawY);
         }
 
         String text = description.toString();
@@ -580,8 +584,16 @@ public final class LongPressImagePreviewPatch {
             }
 
             Log.i(LOG_TAG, "matched title=\"" + bestTitle + "\"");
-            return bestTitle != null ? TITLE_MEDIA_URLS.get(bestTitle) : null;
+            if (bestTitle != null) {
+                return TITLE_MEDIA_URLS.get(bestTitle);
+            }
         }
+
+        String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
+        if (recentUrl != null) {
+            return recentUrl;
+        }
+        return getRecentSourceUrlAtPoint(root, rawX, rawY);
     }
 
     private static String findMediaLinkIdAtPoint(View root, int rawX, int rawY) {
