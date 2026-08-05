@@ -195,6 +195,30 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    public static void registerPostPreviewBase(
+            String title,
+            Object onPost,
+            Object onSubredditPost,
+            Object onProfilePost
+    ) {
+        String url = extractUrl(onPost);
+        if (url == null) {
+            url = extractUrl(onSubredditPost);
+        }
+        if (url == null) {
+            url = extractUrl(onProfilePost);
+        }
+
+        Log.i(LOG_TAG, "post preview base hook title=\"" + title + "\" url=" + summarizeUrl(url));
+        if (title == null || title.length() == 0 || url == null || url.length() == 0) {
+            return;
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            cacheTitleMediaUrl(title, normalizeUrl(url));
+        }
+    }
+
     private static void ensureWindowCallback(Activity activity) {
         Window window = activity.getWindow();
         Window.Callback callback = window.getCallback();
@@ -748,7 +772,7 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable ignored) {
         }
 
-        for (String fieldName : new String[]{"h", "c", "i", "j", "k", "f"}) {
+        for (String fieldName : new String[]{"h", "c", "i", "j", "k", "f", "b", "d", "e"}) {
             try {
                 Field field = mediaPreview.getClass().getDeclaredField(fieldName);
                 field.setAccessible(true);

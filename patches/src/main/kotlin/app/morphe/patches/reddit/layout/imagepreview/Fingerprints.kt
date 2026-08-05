@@ -234,3 +234,22 @@ internal object CompactPostPreviewConstructorFingerprint : Fingerprint(
         "Luya;"
     )
 )
+
+internal object CompactPostPreviewBaseInfoConstructorFingerprint : Fingerprint(
+    definingClass = "Lnza;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/time/Instant;",
+        "Ljava/lang/Float;",
+        "Z",
+        "Ljava/lang/Float;",
+        "Ljava/lang/String;",
+        "Laza;",
+        "Leza;",
+        "Lcza;"
+    )
+)
