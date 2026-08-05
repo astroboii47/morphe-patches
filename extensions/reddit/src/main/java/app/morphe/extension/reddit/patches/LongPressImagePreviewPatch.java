@@ -1286,63 +1286,63 @@ public final class LongPressImagePreviewPatch {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
-    private static boolean handleKeyboardScrollKey(Activity activity, KeyEvent event) {
+    private static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
         int keyCode = event.getKeyCode();
         if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN
-                && keyCode != KeyEvent.KEYCODE_DPAD_UP
-                && keyCode != KeyEvent.KEYCODE_PAGE_DOWN
-                && keyCode != KeyEvent.KEYCODE_PAGE_UP) {
+                && keyCode != KeyEvent.KEYCODE_DPAD_UP) {
             return false;
         }
 
-        if (event.getAction() == KeyEvent.ACTION_UP) {
-            return true;
-        }
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
             return false;
         }
 
-        int direction = keyCode == KeyEvent.KEYCODE_DPAD_UP
-                || keyCode == KeyEvent.KEYCODE_PAGE_UP ? -1 : 1;
         View root = activity.getWindow().getDecorView();
-        return scrollFocusedOrVisibleContent(root, direction);
+        return focusFeedContent(root, keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                ? View.FOCUS_DOWN
+                : View.FOCUS_UP);
     }
 
-    private static boolean scrollFocusedOrVisibleContent(View root, int direction) {
+    private static boolean focusFeedContent(View root, int direction) {
         if (root == null) {
             return false;
         }
 
         View focused = root.findFocus();
-        if (scrollView(focused, direction)) {
-            return true;
+        if (isFeedFocus(focused, root)) {
+            return false;
         }
 
-        View scrollable = findBestScrollableView(root, direction, root);
-        return scrollView(scrollable, direction);
+        View feedFocus = findBestFeedFocus(root, root);
+        if (feedFocus == null || feedFocus == focused) {
+            return false;
+        }
+
+        feedFocus.requestFocus(direction);
+        return false;
     }
 
-    private static View findBestScrollableView(View view, int direction, View root) {
+    private static View findBestFeedFocus(View view, View root) {
         if (view == null || view.getVisibility() != View.VISIBLE) {
             return null;
         }
 
         View best = null;
         int bestScore = Integer.MIN_VALUE;
-        if (isGoodKeyboardScrollTarget(view, direction, root)) {
+        if (isGoodFeedFocusTarget(view, root)) {
             best = view;
-            bestScore = scoreKeyboardScrollTarget(view, root);
+            bestScore = scoreFeedFocusTarget(view, root);
         }
 
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) {
-                View child = findBestScrollableView(group.getChildAt(i), direction, root);
+                View child = findBestFeedFocus(group.getChildAt(i), root);
                 if (child == null) {
                     continue;
                 }
 
-                int score = scoreKeyboardScrollTarget(child, root);
+                int score = scoreFeedFocusTarget(child, root);
                 if (score > bestScore) {
                     best = child;
                     bestScore = score;
@@ -1353,17 +1353,37 @@ public final class LongPressImagePreviewPatch {
         return best;
     }
 
-    private static boolean isGoodKeyboardScrollTarget(View view, int direction, View root) {
-        if (!view.canScrollVertically(direction)) {
+    private static boolean isFeedFocus(View view, View root) {
+        return view != null && isGoodFeedFocusTarget(view, root);
+    }
+
+    private static boolean isGoodFeedFocusTarget(View view, View root) {
+        if (!view.isFocusable() && !view.isFocusableInTouchMode() && !view.isClickable()) {
             return false;
         }
 
-        int minHeight = Math.min(root.getHeight() / 3, dp(root, 360));
-        int minWidth = Math.min(root.getWidth() / 3, dp(root, 360));
-        return view.getHeight() >= minHeight && view.getWidth() >= minWidth;
+        CharSequence description = view.getContentDescription();
+        if (isPostDescription(description)) {
+            return true;
+        }
+
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        int topChrome = dp(root, 96);
+        int bottomChrome = root.getHeight() - dp(root, 96);
+        int centerY = location[1] + view.getHeight() / 2;
+        if (centerY < topChrome || centerY > bottomChrome) {
+            return false;
+        }
+
+        String name = view.getClass().getName().toLowerCase();
+        return name.contains("recycler")
+                || name.contains("compose")
+                || view.canScrollVertically(1)
+                || view.canScrollVertically(-1);
     }
 
-    private static int scoreKeyboardScrollTarget(View view, View root) {
+    private static int scoreFeedFocusTarget(View view, View root) {
         int area = view.getWidth() * view.getHeight();
         int centerBonus = 0;
         int[] location = new int[2];
@@ -1377,22 +1397,6 @@ public final class LongPressImagePreviewPatch {
         return area / 1024 + centerBonus;
     }
 
-    private static boolean scrollView(View view, int direction) {
-        if (view == null || !view.canScrollVertically(direction)) {
-            return false;
-        }
-
-        int action = direction > 0
-                ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
-        if (view.performAccessibilityAction(action, null)) {
-            return true;
-        }
-
-        view.scrollBy(0, direction * Math.max(dp(view, 96), view.getHeight() / 3));
-        return true;
-    }
-
     private static final class PreviewWindowCallback implements Window.Callback {
         Activity activity;
         private final Window.Callback delegate;
@@ -1404,7 +1408,7 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
-            if (handleKeyboardScrollKey(activity, event)) {
+            if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
             return delegate != null && delegate.dispatchKeyEvent(event);
