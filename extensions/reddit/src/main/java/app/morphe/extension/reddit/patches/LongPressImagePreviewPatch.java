@@ -39,6 +39,7 @@ import android.webkit.WebView;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -57,6 +58,7 @@ public final class LongPressImagePreviewPatch {
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
+    private static final List<String> RECENT_MEDIA_TITLES = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
@@ -170,6 +172,27 @@ public final class LongPressImagePreviewPatch {
                 + (titleElement != null ? titleElement.getClass().getName() : "null")
                 + " thumbnailClass=" + (thumbnail != null ? thumbnail.getClass().getName() : "null"));
         registerPostMedia(extractTitle(titleElement), thumbnail);
+    }
+
+    public static void registerCompactPostPreview(String linkId, Object preview) {
+        String title = extractStringField(preview, "e");
+        String url = extractUrl(readField(preview, "h"));
+        if (url == null) {
+            url = extractUrl(preview);
+        }
+
+        Log.i(LOG_TAG, "compact preview hook linkId=" + linkId
+                + " title=\"" + title + "\" url=" + summarizeUrl(url));
+
+        if (title != null) {
+            registerPostTitle(linkId, title);
+        }
+        registerMediaUrl(linkId, url);
+        if (title != null && url != null) {
+            synchronized (TITLE_MEDIA_URLS) {
+                cacheTitleMediaUrl(title, normalizeUrl(url));
+            }
+        }
     }
 
     private static void ensureWindowCallback(Activity activity) {
@@ -351,7 +374,7 @@ public final class LongPressImagePreviewPatch {
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            return null;
+            return getRecentMediaUrlAtPoint(root, rawX, rawY);
         }
 
         String text = description.toString();
@@ -672,6 +695,25 @@ public final class LongPressImagePreviewPatch {
         return end > start ? value.substring(start, end) : null;
     }
 
+    private static String extractStringField(Object instance, String fieldName) {
+        Object value = readField(instance, fieldName);
+        return value instanceof String ? (String) value : null;
+    }
+
+    private static Object readField(Object instance, String fieldName) {
+        if (instance == null) {
+            return null;
+        }
+
+        try {
+            Field field = instance.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field.get(instance);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static String extractUrl(Object mediaPreview, int depth) {
         if (mediaPreview == null) {
             return null;
@@ -700,13 +742,13 @@ public final class LongPressImagePreviewPatch {
             Field field = mediaPreview.getClass().getDeclaredField("a");
             field.setAccessible(true);
             Object value = field.get(mediaPreview);
-            if (value instanceof String) {
+            if (value instanceof String && looksLikeMediaUrl((String) value)) {
                 return (String) value;
             }
         } catch (Throwable ignored) {
         }
 
-        for (String fieldName : new String[]{"c", "i", "j", "k", "f"}) {
+        for (String fieldName : new String[]{"h", "c", "i", "j", "k", "f"}) {
             try {
                 Field field = mediaPreview.getClass().getDeclaredField(fieldName);
                 field.setAccessible(true);
@@ -732,9 +774,37 @@ public final class LongPressImagePreviewPatch {
     private static void cacheTitleMediaUrl(String title, String url) {
         if (TITLE_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
             TITLE_MEDIA_URLS.clear();
+            RECENT_MEDIA_TITLES.clear();
         }
         TITLE_MEDIA_URLS.put(title, url);
+        RECENT_MEDIA_TITLES.remove(title);
+        RECENT_MEDIA_TITLES.add(title);
+        if (RECENT_MEDIA_TITLES.size() > MAX_CACHED_MEDIA_URLS) {
+            RECENT_MEDIA_TITLES.remove(0);
+        }
         Log.i(LOG_TAG, "cached title=\"" + title + "\" url=" + summarizeUrl(url));
+    }
+
+    private static String getRecentMediaUrlAtPoint(View root, int rawX, int rawY) {
+        if (rawX < root.getWidth() * 0.55f) {
+            return null;
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            if (RECENT_MEDIA_TITLES.isEmpty()) {
+                return null;
+            }
+
+            int visibleCount = Math.min(RECENT_MEDIA_TITLES.size(), 6);
+            int firstIndex = RECENT_MEDIA_TITLES.size() - visibleCount;
+            int top = dp(root, 120);
+            int bottom = Math.max(top + 1, root.getHeight() - dp(root, 80));
+            int row = clamp((rawY - top) * visibleCount / (bottom - top), 0, visibleCount - 1);
+            String title = RECENT_MEDIA_TITLES.get(firstIndex + row);
+            String url = TITLE_MEDIA_URLS.get(title);
+            Log.i(LOG_TAG, "recent media fallback title=\"" + title + "\" url=" + summarizeUrl(url));
+            return url;
+        }
     }
 
     private static boolean looksLikeMediaUrl(String value) {

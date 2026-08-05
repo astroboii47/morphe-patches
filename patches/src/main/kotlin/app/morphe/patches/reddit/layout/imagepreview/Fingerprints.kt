@@ -195,3 +195,23 @@ internal object GalleryElementConstructorFingerprint : Fingerprint(
         "Lcom/reddit/feeds/caching/data/DataSourceType;"
     )
 )
+
+internal object CompactPostPreviewItemConstructorFingerprint : Fingerprint(
+    definingClass = "Li0b;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Luya;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Z"
+    )
+)
