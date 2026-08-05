@@ -52,6 +52,7 @@ public final class LongPressImagePreviewPatch {
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
+    private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
@@ -105,6 +106,20 @@ public final class LongPressImagePreviewPatch {
                 MEDIA_URLS.clear();
             }
             MEDIA_URLS.put(linkId, normalizeUrl(url));
+        }
+    }
+
+    public static void registerPostMedia(String title, Object mediaPreview) {
+        String url = extractUrl(mediaPreview);
+        if (title == null || title.length() == 0 || url == null || url.length() == 0) {
+            return;
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            if (TITLE_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
+                TITLE_MEDIA_URLS.clear();
+            }
+            TITLE_MEDIA_URLS.put(title, normalizeUrl(url));
         }
     }
 
@@ -286,12 +301,30 @@ public final class LongPressImagePreviewPatch {
 
     private static String getMediaUrlAtPoint(View root, int rawX, int rawY) {
         String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
-        if (linkId == null) {
+        if (linkId != null) {
+            synchronized (MEDIA_URLS) {
+                String mediaUrl = MEDIA_URLS.get(linkId);
+                if (mediaUrl != null) {
+                    return mediaUrl;
+                }
+            }
+        }
+
+        CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
+        if (description == null) {
             return null;
         }
 
-        synchronized (MEDIA_URLS) {
-            return MEDIA_URLS.get(linkId);
+        String text = description.toString();
+        synchronized (TITLE_MEDIA_URLS) {
+            String bestTitle = null;
+            for (String title : TITLE_MEDIA_URLS.keySet()) {
+                if (text.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                    bestTitle = title;
+                }
+            }
+
+            return bestTitle != null ? TITLE_MEDIA_URLS.get(bestTitle) : null;
         }
     }
 
@@ -341,6 +374,113 @@ public final class LongPressImagePreviewPatch {
         }
 
         return extractLinkIdFromText(view.getContentDescription());
+    }
+
+    private static CharSequence findPostDescriptionAtPoint(View root, int rawX, int rawY) {
+        try {
+            return findPostDescriptionInView(root, rawX, rawY);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to find Reddit post accessibility node", ex);
+            return null;
+        }
+    }
+
+    private static CharSequence findPostDescriptionInView(View view, int rawX, int rawY) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return null;
+        }
+
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        Rect bounds = new Rect(
+                location[0],
+                location[1],
+                location[0] + view.getWidth(),
+                location[1] + view.getHeight()
+        );
+        if (!bounds.contains(rawX, rawY)) {
+            return null;
+        }
+
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        if (provider != null) {
+            AccessibilityNodeInfo rootNode = provider.createAccessibilityNodeInfo(View.NO_ID);
+            CharSequence description = findPostDescriptionInNode(provider, rootNode, rawX, rawY, 0);
+            if (description != null) {
+                return description;
+            }
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                CharSequence description = findPostDescriptionInView(group.getChildAt(i), rawX, rawY);
+                if (description != null) {
+                    return description;
+                }
+            }
+        }
+
+        return isPostDescription(view.getContentDescription()) ? view.getContentDescription() : null;
+    }
+
+    private static CharSequence findPostDescriptionInNode(
+            AccessibilityNodeProvider provider,
+            AccessibilityNodeInfo node,
+            int rawX,
+            int rawY,
+            int depth
+    ) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return null;
+        }
+
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (!bounds.isEmpty() && !bounds.contains(rawX, rawY)) {
+            node.recycle();
+            return null;
+        }
+
+        CharSequence contentDescription = node.getContentDescription();
+        if (isPostDescription(contentDescription)) {
+            node.recycle();
+            return contentDescription;
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = childCount - 1; i >= 0; i--) {
+            AccessibilityNodeInfo child = null;
+            try {
+                child = node.getChild(i);
+            } catch (Throwable ignored) {
+            }
+
+            if (child == null) {
+                int virtualId = getChildVirtualId(node, i);
+                if (virtualId != Integer.MIN_VALUE) {
+                    child = provider.createAccessibilityNodeInfo(virtualId);
+                }
+            }
+
+            CharSequence description = findPostDescriptionInNode(provider, child, rawX, rawY, depth + 1);
+            if (description != null) {
+                node.recycle();
+                return description;
+            }
+        }
+
+        node.recycle();
+        return null;
+    }
+
+    private static boolean isPostDescription(CharSequence value) {
+        if (value == null) {
+            return false;
+        }
+
+        String text = value.toString();
+        return text.startsWith("From ") && text.contains(", Posted ") && text.contains(" upvote");
     }
 
     private static String findMediaLinkIdInNode(
@@ -449,6 +589,10 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static String extractUrl(Object mediaPreview) {
+        return extractUrl(mediaPreview, 0);
+    }
+
+    private static String extractUrl(Object mediaPreview, int depth) {
         if (mediaPreview == null) {
             return null;
         }
@@ -469,7 +613,31 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable ignored) {
         }
 
+        for (String fieldName : new String[]{"c", "i", "j", "k", "f"}) {
+            try {
+                Object value = mediaPreview.getClass().getField(fieldName).get(mediaPreview);
+                if (value instanceof String) {
+                    String stringValue = (String) value;
+                    if (looksLikeMediaUrl(stringValue)) {
+                        return stringValue;
+                    }
+                } else if (depth < 3) {
+                    String url = extractUrl(value, depth + 1);
+                    if (url != null) {
+                        return url;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+
         return null;
+    }
+
+    private static boolean looksLikeMediaUrl(String value) {
+        String lower = value.toLowerCase();
+        return lower.startsWith("http://") || lower.startsWith("https://")
+                || lower.startsWith("file://") || lower.startsWith("content://");
     }
 
     private static String normalizeUrl(String url) {

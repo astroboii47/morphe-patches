@@ -81,3 +81,23 @@ internal object ThumbnailUiModelConstructorFingerprint : Fingerprint(
         "Ljava/lang/String;"
     )
 )
+
+internal object PostTitleWithThumbnailSectionConstructorFingerprint : Fingerprint(
+    definingClass = "Lwr10;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Ljava/lang/String;",
+        "I",
+        "Lhpr;",
+        "Lq9o;",
+        "Z",
+        "Lwvh;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;"
+    )
+)

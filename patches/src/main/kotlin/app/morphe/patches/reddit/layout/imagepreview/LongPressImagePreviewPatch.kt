@@ -70,6 +70,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            PostTitleWithThumbnailSectionConstructorFingerprint,
+            """
+                invoke-static { p2, p6 }, $EXTENSION_CLASS->registerPostMedia(Ljava/lang/String;Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
