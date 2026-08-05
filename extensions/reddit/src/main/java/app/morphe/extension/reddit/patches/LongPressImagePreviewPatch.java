@@ -13,13 +13,21 @@ import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.ActionMode;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.KeyboardShortcutGroup;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.SearchEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewParent;
-import android.view.ViewTreeObserver;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.accessibility.AccessibilityEvent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -27,6 +35,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.List;
 
 import app.morphe.extension.reddit.settings.Settings;
 import app.morphe.extension.shared.Logger;
@@ -35,9 +44,7 @@ import app.morphe.extension.shared.Logger;
 public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
-    private static final Set<View> ATTACHED_VIEWS =
-            Collections.newSetFromMap(new WeakHashMap<>());
-    private static final Map<View, TouchState> TOUCH_STATES = new WeakHashMap<>();
+    private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static View activePreview;
 
@@ -64,136 +71,82 @@ public final class LongPressImagePreviewPatch {
                 ATTACHED_ACTIVITIES.add(activity);
             }
 
-            View root = activity.getWindow().getDecorView();
-            root.getViewTreeObserver().addOnGlobalLayoutListener(
-                    new ViewTreeObserver.OnGlobalLayoutListener() {
-                        private long lastScanMs;
-
-                        @Override
-                        public void onGlobalLayout() {
-                            if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
-                                return;
-                            }
-
-                            long now = System.currentTimeMillis();
-                            if (now - lastScanMs < 300L) {
-                                return;
-                            }
-                            lastScanMs = now;
-                            attachVisibleViews(activity, root, root);
-                        }
-                    }
+            ensureWindowCallback(activity);
+            activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() ->
+                    ensureWindowCallback(activity)
             );
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to attach Reddit image preview", ex);
         }
     }
 
-    private static void attachVisibleViews(Activity activity, View root, View view) {
-        if (isPreviewCandidate(root, view)) {
-            attachTouchListener(activity, root, view);
-        }
-
-        if (!(view instanceof ViewGroup)) {
+    private static void ensureWindowCallback(Activity activity) {
+        Window window = activity.getWindow();
+        Window.Callback callback = window.getCallback();
+        if (callback instanceof PreviewWindowCallback) {
+            ((PreviewWindowCallback) callback).activity = activity;
             return;
         }
 
-        ViewGroup group = (ViewGroup) view;
-        for (int i = 0; i < group.getChildCount(); i++) {
-            attachVisibleViews(activity, root, group.getChildAt(i));
-        }
+        window.setCallback(new PreviewWindowCallback(activity, callback));
     }
 
-    private static boolean isPreviewCandidate(View root, View view) {
-        if (view == activePreview || view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0f) {
-            return false;
+    private static void handleTouchEvent(Activity activity, MotionEvent event) {
+        if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
+            hidePreview();
+            return;
         }
 
-        int width = view.getWidth();
-        int height = view.getHeight();
-        if (width <= 0 || height <= 0) {
-            return false;
-        }
-
-        int minSizePx = dp(root, 96);
-        if (width < minSizePx || height < minSizePx) {
-            return false;
-        }
-
-        int screenWidth = root.getResources().getDisplayMetrics().widthPixels;
-        return view == root || width >= screenWidth / 3 || height >= screenWidth / 3;
-    }
-
-    private static void attachTouchListener(Activity activity, View root, View view) {
-        synchronized (ATTACHED_VIEWS) {
-            if (ATTACHED_VIEWS.contains(view)) {
-                return;
-            }
-            ATTACHED_VIEWS.add(view);
-        }
-
-        int touchSlop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
-        int longPressTimeout = ViewConfiguration.getLongPressTimeout();
-        view.setOnTouchListener((touchedView, event) -> {
-            if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                TouchState state = new TouchState(
+                        event.getRawX(),
+                        event.getRawY(),
+                        ViewConfiguration.get(activity).getScaledTouchSlop()
+                );
+                synchronized (TOUCH_STATES) {
+                    TOUCH_STATES.put(activity, state);
+                }
+                MAIN_HANDLER.postDelayed(
+                        () -> showPreviewIfStillHolding(activity, state),
+                        ViewConfiguration.getLongPressTimeout()
+                );
+                break;
+            case MotionEvent.ACTION_MOVE:
+                TouchState moveState;
+                synchronized (TOUCH_STATES) {
+                    moveState = TOUCH_STATES.get(activity);
+                }
+                if (moveState != null) {
+                    moveState.update(event.getRawX(), event.getRawY());
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                synchronized (TOUCH_STATES) {
+                    TOUCH_STATES.remove(activity);
+                }
                 hidePreview();
-                return false;
-            }
-
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    TouchState state = new TouchState(
-                            event.getRawX(),
-                            event.getRawY(),
-                            touchSlop
-                    );
-                    synchronized (TOUCH_STATES) {
-                        TOUCH_STATES.put(touchedView, state);
-                    }
-                    MAIN_HANDLER.postDelayed(
-                            () -> showPreviewIfStillHolding(activity, root, touchedView, state),
-                            longPressTimeout
-                    );
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    TouchState moveState;
-                    synchronized (TOUCH_STATES) {
-                        moveState = TOUCH_STATES.get(touchedView);
-                    }
-                    if (moveState != null) {
-                        moveState.update(event.getRawX(), event.getRawY());
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    synchronized (TOUCH_STATES) {
-                        TOUCH_STATES.remove(touchedView);
-                    }
-                    hidePreview();
-                    break;
-                default:
-                    break;
-            }
-
-            return false;
-        });
+                break;
+            default:
+                break;
+        }
     }
 
     private static void showPreviewIfStillHolding(
             Activity activity,
-            View root,
-            View touchedView,
             TouchState state
     ) {
         TouchState current;
         synchronized (TOUCH_STATES) {
-            current = TOUCH_STATES.get(touchedView);
+            current = TOUCH_STATES.get(activity);
         }
 
         if (current != state || state.movedTooFar || !Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
             return;
         }
 
+        View root = activity.getWindow().getDecorView();
         showPreview(activity, root, Math.round(state.rawX), Math.round(state.rawY));
     }
 
@@ -283,6 +236,166 @@ public final class LongPressImagePreviewPatch {
 
     private static int dp(View view, int value) {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
+    }
+
+    private static final class PreviewWindowCallback implements Window.Callback {
+        Activity activity;
+        private final Window.Callback delegate;
+
+        PreviewWindowCallback(Activity activity, Window.Callback delegate) {
+            this.activity = activity;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean dispatchKeyEvent(KeyEvent event) {
+            return delegate != null && delegate.dispatchKeyEvent(event);
+        }
+
+        @Override
+        public boolean dispatchKeyShortcutEvent(KeyEvent event) {
+            return delegate != null && delegate.dispatchKeyShortcutEvent(event);
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            handleTouchEvent(activity, event);
+            return delegate != null && delegate.dispatchTouchEvent(event);
+        }
+
+        @Override
+        public boolean dispatchTrackballEvent(MotionEvent event) {
+            return delegate != null && delegate.dispatchTrackballEvent(event);
+        }
+
+        @Override
+        public boolean dispatchGenericMotionEvent(MotionEvent event) {
+            return delegate != null && delegate.dispatchGenericMotionEvent(event);
+        }
+
+        @Override
+        public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+            return delegate != null && delegate.dispatchPopulateAccessibilityEvent(event);
+        }
+
+        @Override
+        public View onCreatePanelView(int featureId) {
+            return delegate != null ? delegate.onCreatePanelView(featureId) : null;
+        }
+
+        @Override
+        public boolean onCreatePanelMenu(int featureId, Menu menu) {
+            return delegate != null && delegate.onCreatePanelMenu(featureId, menu);
+        }
+
+        @Override
+        public boolean onPreparePanel(int featureId, View view, Menu menu) {
+            return delegate != null && delegate.onPreparePanel(featureId, view, menu);
+        }
+
+        @Override
+        public boolean onMenuOpened(int featureId, Menu menu) {
+            return delegate != null && delegate.onMenuOpened(featureId, menu);
+        }
+
+        @Override
+        public boolean onMenuItemSelected(int featureId, MenuItem item) {
+            return delegate != null && delegate.onMenuItemSelected(featureId, item);
+        }
+
+        @Override
+        public void onWindowAttributesChanged(WindowManager.LayoutParams attrs) {
+            if (delegate != null) {
+                delegate.onWindowAttributesChanged(attrs);
+            }
+        }
+
+        @Override
+        public void onContentChanged() {
+            if (delegate != null) {
+                delegate.onContentChanged();
+            }
+        }
+
+        @Override
+        public void onWindowFocusChanged(boolean hasFocus) {
+            if (delegate != null) {
+                delegate.onWindowFocusChanged(hasFocus);
+            }
+        }
+
+        @Override
+        public void onAttachedToWindow() {
+            if (delegate != null) {
+                delegate.onAttachedToWindow();
+            }
+        }
+
+        @Override
+        public void onDetachedFromWindow() {
+            if (delegate != null) {
+                delegate.onDetachedFromWindow();
+            }
+        }
+
+        @Override
+        public void onPanelClosed(int featureId, Menu menu) {
+            if (delegate != null) {
+                delegate.onPanelClosed(featureId, menu);
+            }
+        }
+
+        @Override
+        public boolean onSearchRequested() {
+            return delegate != null && delegate.onSearchRequested();
+        }
+
+        @Override
+        public boolean onSearchRequested(SearchEvent searchEvent) {
+            return delegate != null && delegate.onSearchRequested(searchEvent);
+        }
+
+        @Override
+        public ActionMode onWindowStartingActionMode(ActionMode.Callback callback) {
+            return delegate != null ? delegate.onWindowStartingActionMode(callback) : null;
+        }
+
+        @Override
+        public ActionMode onWindowStartingActionMode(ActionMode.Callback callback, int type) {
+            return delegate != null ? delegate.onWindowStartingActionMode(callback, type) : null;
+        }
+
+        @Override
+        public void onActionModeStarted(ActionMode mode) {
+            if (delegate != null) {
+                delegate.onActionModeStarted(mode);
+            }
+        }
+
+        @Override
+        public void onActionModeFinished(ActionMode mode) {
+            if (delegate != null) {
+                delegate.onActionModeFinished(mode);
+            }
+        }
+
+        @Override
+        public void onProvideKeyboardShortcuts(
+                List<KeyboardShortcutGroup> data,
+                Menu menu,
+                int deviceId
+        ) {
+            if (delegate != null) {
+                delegate.onProvideKeyboardShortcuts(data, menu, deviceId);
+            }
+        }
+
+        @Override
+        public void onPointerCaptureChanged(boolean hasCapture) {
+            if (delegate != null) {
+                delegate.onPointerCaptureChanged(hasCapture);
+            }
+        }
     }
 
     private static final class TouchState {
