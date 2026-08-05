@@ -154,6 +154,27 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            CellMediaSourceFragmentConstructorFingerprint,
+            """
+                invoke-static { p0 }, $EXTENSION_CLASS->registerCellMediaSource(Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            TitleWithThumbnailCellFragmentConstructorFingerprint,
+            """
+                invoke-static { p0 }, $EXTENSION_CLASS->registerTitleWithThumbnailCell(Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            TitleWithThumbnailCollapsedCellFragmentConstructorFingerprint,
+            """
+                invoke-static { p0 }, $EXTENSION_CLASS->registerTitleWithThumbnailCell(Ljava/lang/Object;)V
+            """
+        )
+
         hookMethodStart(
             ComposePostImageMethodFingerprint,
             """

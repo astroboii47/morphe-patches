@@ -61,7 +61,12 @@ public final class LongPressImagePreviewPatch {
     private static final List<String> RECENT_MEDIA_TITLES = new ArrayList<>();
     private static final List<String> RECENT_MEDIA_URLS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
-    private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
+    private static final String[] MEDIA_TAG_PREFIXES = new String[]{
+            "feed_media_content_self_image_",
+            "feed_media_content_video_",
+            "feed_media_content_self_",
+            "feed_promoted_letterbox_media_content_video_"
+    };
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
     private static final int MAX_CACHED_MEDIA_URLS = 300;
     private static final String LOG_TAG = "MorphePreview";
@@ -222,7 +227,10 @@ public final class LongPressImagePreviewPatch {
 
     public static void registerFeedImageSection(Object imageElement) {
         String linkId = extractStringField(imageElement, "e");
-        String url = extractUrl(readField(imageElement, "i"));
+        String url = extractUrl(readField(readField(imageElement, "a"), "i"));
+        if (url == null) {
+            url = extractUrl(readField(imageElement, "i"));
+        }
         if (url == null) {
             url = extractUrl(imageElement);
         }
@@ -246,6 +254,35 @@ public final class LongPressImagePreviewPatch {
 
         Log.i(LOG_TAG, "video section hook linkId=" + linkId + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
+    }
+
+    public static void registerCellMediaSource(Object source) {
+        String url = extractUrl(source);
+        if (url == null || url.length() == 0) {
+            return;
+        }
+
+        synchronized (RECENT_MEDIA_URLS) {
+            RECENT_MEDIA_URLS.remove(url);
+            RECENT_MEDIA_URLS.add(normalizeUrl(url));
+            if (RECENT_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
+                RECENT_MEDIA_URLS.remove(0);
+            }
+        }
+        Log.i(LOG_TAG, "cell media source hook url=" + summarizeUrl(url));
+    }
+
+    public static void registerTitleWithThumbnailCell(Object cell) {
+        String title = extractTitleCellTitle(readField(cell, "b"));
+        String url = extractUrl(readField(cell, "c"));
+        Log.i(LOG_TAG, "title thumbnail cell hook title=\"" + title + "\" url=" + summarizeUrl(url));
+        if (title == null || title.length() == 0 || url == null || url.length() == 0) {
+            return;
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            cacheTitleMediaUrl(title, normalizeUrl(url));
+        }
     }
 
     public static void registerMediaSource(String path, String obfuscatedPath, boolean shouldObfuscate, Object size) {
@@ -465,6 +502,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
+        if (description == null) {
+            description = findNearestPostDescription(root, rawY);
+        }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
             String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
@@ -740,12 +780,20 @@ public final class LongPressImagePreviewPatch {
         }
 
         String text = value.toString();
-        int index = text.indexOf(SELF_IMAGE_TAG_PREFIX);
+        String matchedPrefix = null;
+        int index = -1;
+        for (String prefix : MEDIA_TAG_PREFIXES) {
+            index = text.indexOf(prefix);
+            if (index >= 0) {
+                matchedPrefix = prefix;
+                break;
+            }
+        }
         if (index < 0) {
             return null;
         }
 
-        int start = index + SELF_IMAGE_TAG_PREFIX.length();
+        int start = index + matchedPrefix.length();
         int end = start;
         while (end < text.length()) {
             char ch = text.charAt(end);
@@ -787,6 +835,56 @@ public final class LongPressImagePreviewPatch {
         start += marker.length();
         int end = value.indexOf(", translatedTitle=", start);
         return end > start ? value.substring(start, end) : null;
+    }
+
+    private static String extractTitleCellTitle(Object titleCell) {
+        Object titleCellFragment = readField(titleCell, "b");
+        String title = extractStringField(titleCellFragment, "b");
+        if (title != null) {
+            return title;
+        }
+        return extractTitle(titleCell);
+    }
+
+    private static CharSequence findNearestPostDescription(View root, int rawY) {
+        ArrayList<DescriptionBounds> descriptions = new ArrayList<>();
+        collectPostDescriptions(root, descriptions);
+        DescriptionBounds best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (DescriptionBounds item : descriptions) {
+            int centerY = item.bounds.centerY();
+            int distance = Math.abs(centerY - rawY);
+            boolean sameRow = rawY >= item.bounds.top - dp(root, 72)
+                    && rawY <= item.bounds.bottom + dp(root, 72);
+            if ((sameRow || best == null) && distance < bestDistance) {
+                best = item;
+                bestDistance = distance;
+            }
+        }
+        return best != null ? best.description : null;
+    }
+
+    private static void collectPostDescriptions(View view, List<DescriptionBounds> out) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        CharSequence description = view.getContentDescription();
+        if (isPostDescription(description)) {
+            int[] location = new int[2];
+            view.getLocationOnScreen(location);
+            out.add(new DescriptionBounds(
+                    description,
+                    new Rect(location[0], location[1], location[0] + view.getWidth(), location[1] + view.getHeight())
+            ));
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectPostDescriptions(group.getChildAt(i), out);
+            }
+        }
     }
 
     private static String extractStringField(Object instance, String fieldName) {
@@ -1251,6 +1349,16 @@ public final class LongPressImagePreviewPatch {
             float deltaX = rawX - startRawX;
             float deltaY = rawY - startRawY;
             movedTooFar = movedTooFar || deltaX * deltaX + deltaY * deltaY > touchSlop * touchSlop;
+        }
+    }
+
+    private static final class DescriptionBounds {
+        final CharSequence description;
+        final Rect bounds;
+
+        DescriptionBounds(CharSequence description, Rect bounds) {
+            this.description = description;
+            this.bounds = bounds;
         }
     }
 }

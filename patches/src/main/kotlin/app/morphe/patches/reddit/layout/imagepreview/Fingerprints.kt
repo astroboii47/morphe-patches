@@ -309,6 +309,46 @@ internal object FeedVideoSectionConstructorFingerprint : Fingerprint(
     )
 )
 
+internal object CellMediaSourceFragmentConstructorFingerprint : Fingerprint(
+    definingClass = "Lut6;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Z",
+        "Ljava/lang/String;",
+        "Ltt6;"
+    )
+)
+
+internal object TitleWithThumbnailCellFragmentConstructorFingerprint : Fingerprint(
+    definingClass = "Lljg0;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Lkjg0;",
+        "Ljjg0;",
+        "Lhjg0;",
+        "Lejg0;"
+    )
+)
+
+internal object TitleWithThumbnailCollapsedCellFragmentConstructorFingerprint : Fingerprint(
+    definingClass = "Lckg0;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Lbkg0;",
+        "Lakg0;",
+        "Lwjg0;"
+    )
+)
+
 internal object ComposePostImageMethodFingerprint : Fingerprint(
     definingClass = "Lufr;",
     name = "f",
