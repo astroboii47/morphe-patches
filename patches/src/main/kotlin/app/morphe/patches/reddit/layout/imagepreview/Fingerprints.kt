@@ -253,3 +253,58 @@ internal object CompactPostPreviewBaseInfoConstructorFingerprint : Fingerprint(
         "Lcza;"
     )
 )
+
+internal object FeedImageSectionConstructorFingerprint : Fingerprint(
+    definingClass = "Lptn;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Lck10;",
+        "Z",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Z",
+        "Z",
+        "Lxbb;",
+        "Lg3b;",
+        "Z",
+        "Z",
+        "Lg3b;",
+        "Lero;",
+        "Z",
+        "Ljava/lang/Float;",
+        "Z",
+        "Ldk10;"
+    )
+)
+
+internal object FeedVideoSectionConstructorFingerprint : Fingerprint(
+    definingClass = "Lg2l0;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Lhyk0;",
+        "Lh2l0;",
+        "Lcom/reddit/videoplayer/player/RedditPlayerResizeMode;",
+        "Ljava/lang/String;",
+        "Z",
+        "Lf8f;",
+        "Lkotlin/jvm/functions/Function0;",
+        "Z",
+        "Lcom/reddit/ads/analytics/AdAnalyticsInfo;",
+        "Lg3b;",
+        "Z",
+        "Lsu0;",
+        "Z",
+        "Lg3b;",
+        "Lero;",
+        "Ljava/lang/Float;",
+        "Z",
+        "Z",
+        "Lmvk0;"
+    )
+)

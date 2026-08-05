@@ -219,6 +219,34 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    public static void registerFeedImageSection(Object imageElement) {
+        String linkId = extractStringField(imageElement, "e");
+        String url = extractUrl(readField(imageElement, "i"));
+        if (url == null) {
+            url = extractUrl(imageElement);
+        }
+
+        Log.i(LOG_TAG, "image section hook linkId=" + linkId + " url=" + summarizeUrl(url));
+        registerMediaUrl(linkId, url);
+    }
+
+    public static void registerFeedVideoSection(Object videoElement) {
+        String linkId = extractStringField(videoElement, "e");
+        String url = extractStringField(videoElement, "k");
+        if (url == null || !looksLikeMediaUrl(url)) {
+            url = extractUrl(readField(videoElement, "w"));
+        }
+        if (url == null) {
+            url = extractUrl(readField(videoElement, "j"));
+        }
+        if (url == null) {
+            url = extractUrl(videoElement);
+        }
+
+        Log.i(LOG_TAG, "video section hook linkId=" + linkId + " url=" + summarizeUrl(url));
+        registerMediaUrl(linkId, url);
+    }
+
     private static void ensureWindowCallback(Activity activity) {
         Window window = activity.getWindow();
         Window.Callback callback = window.getCallback();

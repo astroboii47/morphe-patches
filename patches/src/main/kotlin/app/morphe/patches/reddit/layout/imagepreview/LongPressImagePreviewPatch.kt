@@ -133,6 +133,20 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            FeedImageSectionConstructorFingerprint,
+            """
+                invoke-static { p1 }, $EXTENSION_CLASS->registerFeedImageSection(Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            FeedVideoSectionConstructorFingerprint,
+            """
+                invoke-static { p1 }, $EXTENSION_CLASS->registerFeedVideoSection(Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
