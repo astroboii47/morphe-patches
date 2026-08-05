@@ -119,6 +119,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            CompactPostPreviewConstructorFingerprint,
+            """
+                invoke-static { p5, p8 }, $EXTENSION_CLASS->registerPostMedia(Ljava/lang/String;Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
