@@ -10,13 +10,13 @@ import app.morphe.patcher.Fingerprint
 import com.android.tools.smali.dexlib2.AccessFlags
 
 internal object CompactSelfImageConstructorFingerprint : Fingerprint(
-    definingClass = "Ldefpackage/adg0;",
+    definingClass = "Ladg0;",
     name = "<init>",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
     parameters = listOf(
-        "Ldefpackage/st6;",
-        "Ldefpackage/qu00;",
+        "Lst6;",
+        "Lqu00;",
         "Lcom/reddit/feeds/caching/data/DataSourceType;",
         "Ljava/lang/String;",
         "Ljava/lang/String;",
@@ -26,22 +26,22 @@ internal object CompactSelfImageConstructorFingerprint : Fingerprint(
 )
 
 internal object CompactVideoConstructorFingerprint : Fingerprint(
-    definingClass = "Ldefpackage/bdg0;",
+    definingClass = "Lbdg0;",
     name = "<init>",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
     parameters = listOf(
-        "Ldefpackage/st6;",
+        "Lst6;",
         "Ljava/lang/String;",
         "Ljava/lang/String;",
         "Z",
-        "Ldefpackage/qu00;",
+        "Lqu00;",
         "Ljava/lang/String;"
     )
 )
 
 internal object PostSelfImageElementConstructorFingerprint : Fingerprint(
-    definingClass = "Ldefpackage/ck10;",
+    definingClass = "Lck10;",
     name = "<init>",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
@@ -49,20 +49,20 @@ internal object PostSelfImageElementConstructorFingerprint : Fingerprint(
         "Ljava/lang/String;",
         "Ljava/lang/String;",
         "Z",
-        "Ldefpackage/qu00;",
-        "Ldefpackage/st6;",
-        "Ldefpackage/no0;",
-        "Ldefpackage/st6;",
+        "Lqu00;",
+        "Lst6;",
+        "Lno0;",
+        "Lst6;",
         "Z",
         "Z",
-        "Ldefpackage/swn;",
+        "Lswn;",
         "Z",
         "Lcom/reddit/feeds/caching/data/DataSourceType;"
     )
 )
 
 internal object ThumbnailUiModelConstructorFingerprint : Fingerprint(
-    definingClass = "Ldefpackage/cl9;",
+    definingClass = "Lcl9;",
     name = "<init>",
     returnType = "V",
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
