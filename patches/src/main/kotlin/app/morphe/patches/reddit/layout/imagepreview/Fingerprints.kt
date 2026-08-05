@@ -309,19 +309,6 @@ internal object FeedVideoSectionConstructorFingerprint : Fingerprint(
     )
 )
 
-internal object CellMediaSourceConstructorFingerprint : Fingerprint(
-    definingClass = "Lst6;",
-    name = "<init>",
-    returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
-    parameters = listOf(
-        "Ljava/lang/String;",
-        "Ljava/lang/String;",
-        "Z",
-        "Luxc0;"
-    )
-)
-
 internal object ComposePostImageMethodFingerprint : Fingerprint(
     definingClass = "Lufr;",
     name = "f",
