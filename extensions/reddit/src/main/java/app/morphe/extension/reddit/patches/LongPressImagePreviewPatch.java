@@ -59,6 +59,7 @@ public final class LongPressImagePreviewPatch {
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
     private static final List<String> RECENT_MEDIA_TITLES = new ArrayList<>();
+    private static final List<String> RECENT_MEDIA_URLS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
@@ -247,6 +248,30 @@ public final class LongPressImagePreviewPatch {
         registerMediaUrl(linkId, url);
     }
 
+    public static void registerMediaSource(String path, String obfuscatedPath, boolean shouldObfuscate, Object size) {
+        String url = shouldObfuscate && obfuscatedPath != null && obfuscatedPath.length() != 0
+                ? obfuscatedPath
+                : path;
+        if (url == null || !looksLikeMediaUrl(url)) {
+            return;
+        }
+
+        int width = extractIntField(size, "a");
+        int height = extractIntField(size, "b");
+        if (Math.max(width, height) < 96) {
+            return;
+        }
+
+        synchronized (RECENT_MEDIA_URLS) {
+            RECENT_MEDIA_URLS.remove(url);
+            RECENT_MEDIA_URLS.add(normalizeUrl(url));
+            if (RECENT_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
+                RECENT_MEDIA_URLS.remove(0);
+            }
+        }
+        Log.i(LOG_TAG, "media source hook size=" + width + "x" + height + " url=" + summarizeUrl(url));
+    }
+
     private static void ensureWindowCallback(Activity activity) {
         Window window = activity.getWindow();
         Window.Callback callback = window.getCallback();
@@ -426,7 +451,8 @@ public final class LongPressImagePreviewPatch {
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            return getRecentMediaUrlAtPoint(root, rawX, rawY);
+            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
+            return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
         }
 
         String text = description.toString();
@@ -766,6 +792,11 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static int extractIntField(Object instance, String fieldName) {
+        Object value = readField(instance, fieldName);
+        return value instanceof Integer ? (Integer) value : 0;
+    }
+
     private static String extractUrl(Object mediaPreview, int depth) {
         if (mediaPreview == null) {
             return null;
@@ -855,6 +886,27 @@ public final class LongPressImagePreviewPatch {
             String title = RECENT_MEDIA_TITLES.get(firstIndex + row);
             String url = TITLE_MEDIA_URLS.get(title);
             Log.i(LOG_TAG, "recent media fallback title=\"" + title + "\" url=" + summarizeUrl(url));
+            return url;
+        }
+    }
+
+    private static String getRecentSourceUrlAtPoint(View root, int rawX, int rawY) {
+        if (rawX < root.getWidth() * 0.55f) {
+            return null;
+        }
+
+        synchronized (RECENT_MEDIA_URLS) {
+            if (RECENT_MEDIA_URLS.isEmpty()) {
+                return null;
+            }
+
+            int visibleCount = Math.min(RECENT_MEDIA_URLS.size(), 6);
+            int firstIndex = RECENT_MEDIA_URLS.size() - visibleCount;
+            int top = dp(root, 120);
+            int bottom = Math.max(top + 1, root.getHeight() - dp(root, 80));
+            int row = clamp((rawY - top) * visibleCount / (bottom - top), 0, visibleCount - 1);
+            String url = RECENT_MEDIA_URLS.get(firstIndex + row);
+            Log.i(LOG_TAG, "recent source fallback url=" + summarizeUrl(url));
             return url;
         }
     }

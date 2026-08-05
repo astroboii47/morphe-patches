@@ -147,6 +147,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            CellMediaSourceConstructorFingerprint,
+            """
+                invoke-static { p1, p2, p3, p4 }, $EXTENSION_CLASS->registerMediaSource(Ljava/lang/String;Ljava/lang/String;ZLjava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
