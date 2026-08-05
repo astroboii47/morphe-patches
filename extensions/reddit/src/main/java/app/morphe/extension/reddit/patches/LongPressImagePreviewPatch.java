@@ -272,6 +272,22 @@ public final class LongPressImagePreviewPatch {
         Log.i(LOG_TAG, "media source hook size=" + width + "x" + height + " url=" + summarizeUrl(url));
     }
 
+    public static void registerMediaSourceObject(Object mediaSource) {
+        if (mediaSource == null) {
+            return;
+        }
+
+        String path = extractStringField(mediaSource, "a");
+        String obfuscatedPath = extractStringField(mediaSource, "b");
+        Object shouldObfuscate = readField(mediaSource, "c");
+        registerMediaSource(
+                path,
+                obfuscatedPath,
+                shouldObfuscate instanceof Boolean && (Boolean) shouldObfuscate,
+                readField(mediaSource, "d")
+        );
+    }
+
     private static void ensureWindowCallback(Activity activity) {
         Window window = activity.getWindow();
         Window.Callback callback = window.getCallback();

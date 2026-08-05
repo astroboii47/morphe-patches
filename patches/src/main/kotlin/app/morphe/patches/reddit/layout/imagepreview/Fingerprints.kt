@@ -321,3 +321,32 @@ internal object CellMediaSourceConstructorFingerprint : Fingerprint(
         "Luxc0;"
     )
 )
+
+internal object ComposePostImageMethodFingerprint : Fingerprint(
+    definingClass = "Lufr;",
+    name = "f",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf(
+        "Lwxc0;",
+        "Lst6;",
+        "Lkotlin/jvm/functions/Function0;",
+        "Z",
+        "Loev;",
+        "Lkotlin/jvm/functions/Function0;",
+        "Z",
+        "Loj5;",
+        "Z",
+        "Ljava/lang/Float;",
+        "Laun;",
+        "Lkotlin/jvm/functions/Function0;",
+        "Lbpw;",
+        "Z",
+        "Lkotlin/jvm/functions/Function0;",
+        "Lkotlin/jvm/functions/Function1;",
+        "Licb;",
+        "I",
+        "I",
+        "I"
+    )
+)

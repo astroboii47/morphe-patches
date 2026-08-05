@@ -42,6 +42,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             }
         }
 
+        fun hookMethodStart(
+            fingerprint: app.morphe.patcher.Fingerprint,
+            instructions: String
+        ) {
+            fingerprint.method.addInstructions(0, instructions)
+        }
+
         hookConstructor(
             CompactSelfImageConstructorFingerprint,
             """
@@ -151,6 +158,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             CellMediaSourceConstructorFingerprint,
             """
                 invoke-static { p1, p2, p3, p4 }, $EXTENSION_CLASS->registerMediaSource(Ljava/lang/String;Ljava/lang/String;ZLjava/lang/Object;)V
+            """
+        )
+
+        hookMethodStart(
+            ComposePostImageMethodFingerprint,
+            """
+                invoke-static { p1 }, $EXTENSION_CLASS->registerMediaSourceObject(Ljava/lang/Object;)V
             """
         )
 
