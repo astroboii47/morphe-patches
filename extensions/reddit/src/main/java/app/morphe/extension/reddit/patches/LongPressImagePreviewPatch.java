@@ -14,6 +14,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -57,6 +58,7 @@ public final class LongPressImagePreviewPatch {
     private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
     private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
     private static final int MAX_CACHED_MEDIA_URLS = 300;
+    private static final String LOG_TAG = "MorphePreview";
     private static View activePreview;
 
     private LongPressImagePreviewPatch() {
@@ -120,6 +122,7 @@ public final class LongPressImagePreviewPatch {
                 TITLE_MEDIA_URLS.clear();
             }
             TITLE_MEDIA_URLS.put(title, normalizeUrl(url));
+            Log.i(LOG_TAG, "cached title=\"" + title + "\" url=" + summarizeUrl(url));
         }
     }
 
@@ -214,8 +217,9 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
-            if (mediaUrl != null) {
+        String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+        if (mediaUrl != null) {
+                Log.i(LOG_TAG, "showing url=" + summarizeUrl(mediaUrl));
                 WebView preview = new WebView(activity);
                 preview.setBackgroundColor(Color.TRANSPARENT);
                 preview.setVerticalScrollBarEnabled(false);
@@ -238,6 +242,7 @@ public final class LongPressImagePreviewPatch {
                         Gravity.CENTER
                 ));
             } else {
+                Log.i(LOG_TAG, "falling back to screenshot crop");
                 Bitmap previewBitmap = capturePreviewBitmap(root, rawX, rawY);
                 if (previewBitmap == null) {
                     return;
@@ -312,11 +317,13 @@ public final class LongPressImagePreviewPatch {
 
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
         if (description == null) {
+            Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
             return null;
         }
 
         String text = description.toString();
         synchronized (TITLE_MEDIA_URLS) {
+            Log.i(LOG_TAG, "pressed row=\"" + text + "\" cacheSize=" + TITLE_MEDIA_URLS.size());
             String bestTitle = null;
             for (String title : TITLE_MEDIA_URLS.keySet()) {
                 if (text.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
@@ -324,6 +331,7 @@ public final class LongPressImagePreviewPatch {
                 }
             }
 
+            Log.i(LOG_TAG, "matched title=\"" + bestTitle + "\"");
             return bestTitle != null ? TITLE_MEDIA_URLS.get(bestTitle) : null;
         }
     }
@@ -670,6 +678,13 @@ public final class LongPressImagePreviewPatch {
                 .replace("\"", "&quot;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;");
+    }
+
+    private static String summarizeUrl(String url) {
+        if (url == null || url.length() < 140) {
+            return url;
+        }
+        return url.substring(0, 140) + "...";
     }
 
     private static Rect findCompactMediaBounds(View root, int x, int y) {
