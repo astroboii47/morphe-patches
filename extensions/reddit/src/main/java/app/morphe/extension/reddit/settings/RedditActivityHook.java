@@ -13,7 +13,9 @@ import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -222,16 +224,11 @@ public class RedditActivityHook {
             CharSequence text = ((TextView) view).getText();
             if (isBuildVersionText(text)) {
                 View target = findPreferenceRow(view);
-                target.setLongClickable(true);
-                target.setOnLongClickListener(v -> {
-                    openMorpheSettings(v.getContext());
-                    return true;
-                });
-                view.setLongClickable(true);
-                view.setOnLongClickListener(v -> {
-                    openMorpheSettings(v.getContext());
-                    return true;
-                });
+                attachOpenSettingsHold(target);
+                if (view instanceof TextView) {
+                    ((TextView) view).setTextIsSelectable(false);
+                }
+                attachOpenSettingsHold(view);
                 return true;
             }
         }
@@ -270,6 +267,53 @@ public class RedditActivityHook {
             }
         }
         return view;
+    }
+
+    private static void attachOpenSettingsHold(View view) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        int longPressTimeout = ViewConfiguration.getLongPressTimeout();
+        int touchSlop = ViewConfiguration.get(view.getContext()).getScaledTouchSlop();
+        float[] downX = new float[1];
+        float[] downY = new float[1];
+        boolean[] opened = new boolean[1];
+        Runnable[] openSettings = new Runnable[1];
+
+        view.setLongClickable(false);
+        view.setOnLongClickListener(null);
+        view.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX[0] = event.getX();
+                    downY[0] = event.getY();
+                    opened[0] = false;
+                    openSettings[0] = () -> {
+                        opened[0] = true;
+                        v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                        openMorpheSettings(v.getContext());
+                    };
+                    handler.postDelayed(openSettings[0], longPressTimeout);
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (Math.abs(event.getX() - downX[0]) > touchSlop
+                            || Math.abs(event.getY() - downY[0]) > touchSlop) {
+                        if (openSettings[0] != null) {
+                            handler.removeCallbacks(openSettings[0]);
+                        }
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (openSettings[0] != null) {
+                        handler.removeCallbacks(openSettings[0]);
+                    }
+                    return opened[0];
+
+                default:
+                    return true;
+            }
+        });
     }
 
     private static void openMorpheSettings(Context context) {
