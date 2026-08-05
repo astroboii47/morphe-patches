@@ -326,7 +326,7 @@ internal object ComposePostImageMethodFingerprint : Fingerprint(
     definingClass = "Lufr;",
     name = "f",
     returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
     parameters = listOf(
         "Lwxc0;",
         "Lst6;",
