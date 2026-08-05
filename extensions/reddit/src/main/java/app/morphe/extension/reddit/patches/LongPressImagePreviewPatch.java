@@ -29,10 +29,15 @@ import android.view.ViewParent;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -46,7 +51,11 @@ public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
+    private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+    private static final String SELF_IMAGE_TAG_PREFIX = "feed_media_content_self_image_";
+    private static final int MAX_ACCESSIBILITY_NODE_DEPTH = 12;
+    private static final int MAX_CACHED_MEDIA_URLS = 300;
     private static View activePreview;
 
     private LongPressImagePreviewPatch() {
@@ -78,6 +87,24 @@ public final class LongPressImagePreviewPatch {
             );
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to attach Reddit image preview", ex);
+        }
+    }
+
+    public static void registerMediaPreview(String linkId, Object mediaPreview) {
+        String url = extractUrl(mediaPreview);
+        registerMediaUrl(linkId, url);
+    }
+
+    public static void registerMediaUrl(String linkId, String url) {
+        if (linkId == null || url == null || url.length() == 0) {
+            return;
+        }
+
+        synchronized (MEDIA_URLS) {
+            if (MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
+                MEDIA_URLS.clear();
+            }
+            MEDIA_URLS.put(linkId, normalizeUrl(url));
         }
     }
 
@@ -163,29 +190,54 @@ public final class LongPressImagePreviewPatch {
                 return;
             }
 
-            Bitmap previewBitmap = capturePreviewBitmap(root, rawX, rawY);
-            if (previewBitmap == null) {
-                return;
-            }
-
             ViewGroup decor = (ViewGroup) decorView;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackgroundColor(Color.argb(220, 0, 0, 0));
             overlay.setClickable(false);
             overlay.setFocusable(false);
 
-            ImageView preview = new ImageView(activity);
-            preview.setImageDrawable(new BitmapDrawable(root.getResources(), previewBitmap));
-            preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            preview.setAdjustViewBounds(true);
-
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
-            overlay.addView(preview, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    Gravity.CENTER
-            ));
+
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl != null) {
+                WebView preview = new WebView(activity);
+                preview.setBackgroundColor(Color.TRANSPARENT);
+                preview.setVerticalScrollBarEnabled(false);
+                preview.setHorizontalScrollBarEnabled(false);
+                WebSettings settings = preview.getSettings();
+                settings.setLoadWithOverviewMode(true);
+                settings.setUseWideViewPort(true);
+                settings.setBuiltInZoomControls(false);
+                settings.setDisplayZoomControls(false);
+                preview.loadDataWithBaseURL(
+                        "https://www.reddit.com/",
+                        buildPreviewHtml(mediaUrl),
+                        "text/html",
+                        "UTF-8",
+                        null
+                );
+                overlay.addView(preview, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
+                ));
+            } else {
+                Bitmap previewBitmap = capturePreviewBitmap(root, rawX, rawY);
+                if (previewBitmap == null) {
+                    return;
+                }
+
+                ImageView preview = new ImageView(activity);
+                preview.setImageDrawable(new BitmapDrawable(root.getResources(), previewBitmap));
+                preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                preview.setAdjustViewBounds(true);
+                overlay.addView(preview, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
+                ));
+            }
 
             decor.addView(overlay, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -230,6 +282,226 @@ public final class LongPressImagePreviewPatch {
         int top = clamp(y - cropHeight / 2, 0, Math.max(0, height - cropHeight));
 
         return Bitmap.createBitmap(full, left, top, cropWidth, cropHeight);
+    }
+
+    private static String getMediaUrlAtPoint(View root, int rawX, int rawY) {
+        String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
+        if (linkId == null) {
+            return null;
+        }
+
+        synchronized (MEDIA_URLS) {
+            return MEDIA_URLS.get(linkId);
+        }
+    }
+
+    private static String findMediaLinkIdAtPoint(View root, int rawX, int rawY) {
+        try {
+            return findMediaLinkIdInView(root, rawX, rawY);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to find Reddit media accessibility node", ex);
+            return null;
+        }
+    }
+
+    private static String findMediaLinkIdInView(View view, int rawX, int rawY) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return null;
+        }
+
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        Rect bounds = new Rect(
+                location[0],
+                location[1],
+                location[0] + view.getWidth(),
+                location[1] + view.getHeight()
+        );
+        if (!bounds.contains(rawX, rawY)) {
+            return null;
+        }
+
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        if (provider != null) {
+            AccessibilityNodeInfo rootNode = provider.createAccessibilityNodeInfo(View.NO_ID);
+            String linkId = findMediaLinkIdInNode(provider, rootNode, rawX, rawY, 0);
+            if (linkId != null) {
+                return linkId;
+            }
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                String linkId = findMediaLinkIdInView(group.getChildAt(i), rawX, rawY);
+                if (linkId != null) {
+                    return linkId;
+                }
+            }
+        }
+
+        return extractLinkIdFromText(view.getContentDescription());
+    }
+
+    private static String findMediaLinkIdInNode(
+            AccessibilityNodeProvider provider,
+            AccessibilityNodeInfo node,
+            int rawX,
+            int rawY,
+            int depth
+    ) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return null;
+        }
+
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (!bounds.isEmpty() && !bounds.contains(rawX, rawY)) {
+            node.recycle();
+            return null;
+        }
+
+        String linkId = extractLinkIdFromText(node.getViewIdResourceName());
+        if (linkId == null) {
+            linkId = extractLinkIdFromText(node.getContentDescription());
+        }
+        if (linkId == null) {
+            linkId = extractLinkIdFromText(node.getText());
+        }
+        if (linkId != null) {
+            node.recycle();
+            return linkId;
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = childCount - 1; i >= 0; i--) {
+            AccessibilityNodeInfo child = null;
+            try {
+                child = node.getChild(i);
+            } catch (Throwable ignored) {
+            }
+
+            if (child == null) {
+                int virtualId = getChildVirtualId(node, i);
+                if (virtualId != Integer.MIN_VALUE) {
+                    child = provider.createAccessibilityNodeInfo(virtualId);
+                }
+            }
+
+            linkId = findMediaLinkIdInNode(provider, child, rawX, rawY, depth + 1);
+            if (linkId != null) {
+                node.recycle();
+                return linkId;
+            }
+        }
+
+        node.recycle();
+        return null;
+    }
+
+    private static int getChildVirtualId(AccessibilityNodeInfo node, int index) {
+        try {
+            Object childId = AccessibilityNodeInfo.class
+                    .getMethod("getChildId", int.class)
+                    .invoke(node, index);
+            if (!(childId instanceof Long)) {
+                return Integer.MIN_VALUE;
+            }
+
+            try {
+                Object virtualId = AccessibilityNodeInfo.class
+                        .getMethod("getVirtualDescendantId", long.class)
+                        .invoke(null, childId);
+                if (virtualId instanceof Integer) {
+                    return (Integer) virtualId;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                return (int) (((Long) childId) >> 32);
+            }
+        } catch (Throwable ignored) {
+            return Integer.MIN_VALUE;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private static String extractLinkIdFromText(CharSequence value) {
+        if (value == null) {
+            return null;
+        }
+
+        String text = value.toString();
+        int index = text.indexOf(SELF_IMAGE_TAG_PREFIX);
+        if (index < 0) {
+            return null;
+        }
+
+        int start = index + SELF_IMAGE_TAG_PREFIX.length();
+        int end = start;
+        while (end < text.length()) {
+            char ch = text.charAt(end);
+            if (!Character.isLetterOrDigit(ch) && ch != '_' && ch != '-') {
+                break;
+            }
+            end++;
+        }
+
+        return end > start ? text.substring(start, end) : null;
+    }
+
+    private static String extractUrl(Object mediaPreview) {
+        if (mediaPreview == null) {
+            return null;
+        }
+
+        try {
+            Object value = mediaPreview.getClass().getMethod("b").invoke(mediaPreview);
+            if (value instanceof String) {
+                return (String) value;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            Object value = mediaPreview.getClass().getField("a").get(mediaPreview);
+            if (value instanceof String) {
+                return (String) value;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        return null;
+    }
+
+    private static String normalizeUrl(String url) {
+        return url.replace("&amp;", "&");
+    }
+
+    private static String buildPreviewHtml(String mediaUrl) {
+        String escapedUrl = escapeHtml(mediaUrl);
+        boolean video = isVideoUrl(mediaUrl);
+        String media = video
+                ? "<video src=\"" + escapedUrl + "\" autoplay muted loop playsinline></video>"
+                : "<img src=\"" + escapedUrl + "\" />";
+        return "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                + "<style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}"
+                + "body{display:flex;align-items:center;justify-content:center;}"
+                + "img,video{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body>"
+                + media
+                + "</body></html>";
+    }
+
+    private static boolean isVideoUrl(String url) {
+        String lower = url.toLowerCase();
+        return lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".m3u8")
+                || lower.contains("v.redd.it");
+    }
+
+    private static String escapeHtml(String value) {
+        return value
+                .replace("&", "&amp;")
+                .replace("\"", "&quot;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private static Rect findCompactMediaBounds(View root, int x, int y) {
