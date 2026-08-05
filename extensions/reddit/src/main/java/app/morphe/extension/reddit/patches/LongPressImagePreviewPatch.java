@@ -566,11 +566,7 @@ public final class LongPressImagePreviewPatch {
         }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
-            if (recentUrl != null) {
-                return recentUrl;
-            }
-            return getRecentSourceUrlAtPoint(root, rawX, rawY);
+            return null;
         }
 
         String text = description.toString();
@@ -589,11 +585,7 @@ public final class LongPressImagePreviewPatch {
             }
         }
 
-        String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
-        if (recentUrl != null) {
-            return recentUrl;
-        }
-        return getRecentSourceUrlAtPoint(root, rawX, rawY);
+        return null;
     }
 
     private static String findMediaLinkIdAtPoint(View root, int rawX, int rawY) {
@@ -919,6 +911,7 @@ public final class LongPressImagePreviewPatch {
     private static CharSequence findNearestPostDescription(View root, int rawY) {
         ArrayList<DescriptionBounds> descriptions = new ArrayList<>();
         collectPostDescriptions(root, descriptions);
+        collectAccessibilityPostDescriptions(root, descriptions);
         DescriptionBounds best = null;
         int bestDistance = Integer.MAX_VALUE;
         for (DescriptionBounds item : descriptions) {
@@ -932,6 +925,58 @@ public final class LongPressImagePreviewPatch {
             }
         }
         return best != null ? best.description : null;
+    }
+
+    private static void collectAccessibilityPostDescriptions(View view, List<DescriptionBounds> out) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        try {
+            AccessibilityNodeInfo node = view.createAccessibilityNodeInfo();
+            collectPostDescriptionsFromNode(node, out, 0);
+        } catch (Throwable ignored) {
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectAccessibilityPostDescriptions(group.getChildAt(i), out);
+            }
+        }
+    }
+
+    private static void collectPostDescriptionsFromNode(
+            AccessibilityNodeInfo node,
+            List<DescriptionBounds> out,
+            int depth
+    ) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return;
+        }
+
+        try {
+            CharSequence description = node.getContentDescription();
+            if (isPostDescription(description)) {
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                if (!bounds.isEmpty()) {
+                    out.add(new DescriptionBounds(description, bounds));
+                }
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+                collectPostDescriptionsFromNode(child, out, depth + 1);
+            }
+        } finally {
+            node.recycle();
+        }
     }
 
     private static void collectPostDescriptions(View view, List<DescriptionBounds> out) {
