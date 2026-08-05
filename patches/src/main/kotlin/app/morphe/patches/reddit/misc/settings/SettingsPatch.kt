@@ -76,6 +76,15 @@ val settingsPatch = bytecodePatch(
                         setAttribute("android:exported", "true")
                         setAttribute("android:label", "Morphe Settings")
                     }
+                    val launcherIntentFilter = document.createElement("intent-filter").apply {
+                        appendChild(document.createElement("action").apply {
+                            setAttribute("android:name", "android.intent.action.MAIN")
+                        })
+                        appendChild(document.createElement("category").apply {
+                            setAttribute("android:name", "android.intent.category.LAUNCHER")
+                        })
+                    }
+                    settingsActivity.appendChild(launcherIntentFilter)
                     applicationNode.appendChild(settingsActivity)
                 }
             }
