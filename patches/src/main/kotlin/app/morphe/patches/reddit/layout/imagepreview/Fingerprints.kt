@@ -101,3 +101,39 @@ internal object PostTitleWithThumbnailSectionConstructorFingerprint : Fingerprin
         "Ljava/lang/String;"
     )
 )
+
+internal object TitleWithThumbnailElementConstructorFingerprint : Fingerprint(
+    definingClass = "Lpkg0;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z",
+        "Lqu00;",
+        "Lsr10;",
+        "Lgm20;",
+        "Lrr10;",
+        "Lq9o;",
+        "Lcom/reddit/feeds/caching/data/DataSourceType;"
+    )
+)
+
+internal object CompactLinkConstructorFingerprint : Fingerprint(
+    definingClass = "Lzcg0;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Lst6;",
+        "Lqu00;",
+        "Lcom/reddit/feeds/caching/data/DataSourceType;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Ljava/lang/String;",
+        "Z"
+    )
+)

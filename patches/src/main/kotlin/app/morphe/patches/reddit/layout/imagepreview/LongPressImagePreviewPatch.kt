@@ -77,6 +77,20 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookConstructor(
+            TitleWithThumbnailElementConstructorFingerprint,
+            """
+                invoke-static { p5, p7 }, $EXTENSION_CLASS->registerTitleThumbnailElement(Ljava/lang/Object;Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            CompactLinkConstructorFingerprint,
+            """
+                invoke-static { p6, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
+            """
+        )
+
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }

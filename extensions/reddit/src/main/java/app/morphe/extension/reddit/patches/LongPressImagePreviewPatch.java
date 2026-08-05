@@ -132,6 +132,10 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    public static void registerTitleThumbnailElement(Object titleElement, Object thumbnail) {
+        registerPostMedia(extractTitle(titleElement), thumbnail);
+    }
+
     private static void ensureWindowCallback(Activity activity) {
         Window window = activity.getWindow();
         Window.Callback callback = window.getCallback();
@@ -223,47 +227,34 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-        String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
-        if (mediaUrl != null) {
-                Log.i(LOG_TAG, "showing url=" + summarizeUrl(mediaUrl));
-                WebView preview = new WebView(activity);
-                preview.setBackgroundColor(Color.TRANSPARENT);
-                preview.setVerticalScrollBarEnabled(false);
-                preview.setHorizontalScrollBarEnabled(false);
-                WebSettings settings = preview.getSettings();
-                settings.setLoadWithOverviewMode(true);
-                settings.setUseWideViewPort(true);
-                settings.setBuiltInZoomControls(false);
-                settings.setDisplayZoomControls(false);
-                preview.loadDataWithBaseURL(
-                        "https://www.reddit.com/",
-                        buildPreviewHtml(mediaUrl),
-                        "text/html",
-                        "UTF-8",
-                        null
-                );
-                overlay.addView(preview, new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        Gravity.CENTER
-                ));
-            } else {
-                Log.i(LOG_TAG, "falling back to screenshot crop");
-                Bitmap previewBitmap = capturePreviewBitmap(root, rawX, rawY);
-                if (previewBitmap == null) {
-                    return;
-                }
-
-                ImageView preview = new ImageView(activity);
-                preview.setImageDrawable(new BitmapDrawable(root.getResources(), previewBitmap));
-                preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                preview.setAdjustViewBounds(true);
-                overlay.addView(preview, new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        Gravity.CENTER
-                ));
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl == null) {
+                Log.i(LOG_TAG, "no real media url for preview");
+                return;
             }
+
+            Log.i(LOG_TAG, "showing url=" + summarizeUrl(mediaUrl));
+            WebView preview = new WebView(activity);
+            preview.setBackgroundColor(Color.TRANSPARENT);
+            preview.setVerticalScrollBarEnabled(false);
+            preview.setHorizontalScrollBarEnabled(false);
+            WebSettings settings = preview.getSettings();
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
+            settings.setBuiltInZoomControls(false);
+            settings.setDisplayZoomControls(false);
+            preview.loadDataWithBaseURL(
+                    "https://www.reddit.com/",
+                    buildPreviewHtml(mediaUrl),
+                    "text/html",
+                    "UTF-8",
+                    null
+            );
+            overlay.addView(preview, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER
+            ));
 
             decor.addView(overlay, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -604,6 +595,33 @@ public final class LongPressImagePreviewPatch {
 
     private static String extractUrl(Object mediaPreview) {
         return extractUrl(mediaPreview, 0);
+    }
+
+    private static String extractTitle(Object titleElement) {
+        if (titleElement == null) {
+            return null;
+        }
+
+        try {
+            Field field = titleElement.getClass().getDeclaredField("i");
+            field.setAccessible(true);
+            Object value = field.get(titleElement);
+            if (value instanceof String) {
+                return (String) value;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        String value = titleElement.toString();
+        String marker = "title=";
+        int start = value.indexOf(marker);
+        if (start < 0) {
+            return null;
+        }
+
+        start += marker.length();
+        int end = value.indexOf(", translatedTitle=", start);
+        return end > start ? value.substring(start, end) : null;
     }
 
     private static String extractUrl(Object mediaPreview, int depth) {
