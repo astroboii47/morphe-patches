@@ -97,6 +97,9 @@ public final class LongPressImagePreviewPatch {
 
     public static void registerMediaPreview(String linkId, Object mediaPreview) {
         String url = extractUrl(mediaPreview);
+        Log.i(LOG_TAG, "media hook linkId=" + linkId + " mediaClass="
+                + (mediaPreview != null ? mediaPreview.getClass().getName() : "null")
+                + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
     }
 
@@ -133,6 +136,9 @@ public final class LongPressImagePreviewPatch {
     }
 
     public static void registerTitleThumbnailElement(Object titleElement, Object thumbnail) {
+        Log.i(LOG_TAG, "title thumbnail hook titleClass="
+                + (titleElement != null ? titleElement.getClass().getName() : "null")
+                + " thumbnailClass=" + (thumbnail != null ? thumbnail.getClass().getName() : "null"));
         registerPostMedia(extractTitle(titleElement), thumbnail);
     }
 
