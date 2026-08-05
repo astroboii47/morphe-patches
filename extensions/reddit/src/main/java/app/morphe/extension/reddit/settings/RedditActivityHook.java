@@ -18,6 +18,7 @@ import android.widget.LinearLayout;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import app.morphe.extension.reddit.patches.LongPressImagePreviewPatch;
 import app.morphe.extension.reddit.settings.preference.RedditPreferenceFragment;
 import app.morphe.extension.reddit.ui.MorpheSettingsIconVectorDrawable;
 import app.morphe.extension.shared.Logger;
@@ -60,6 +61,8 @@ public class RedditActivityHook {
      * Injection point.
      */
     public static boolean hookLauncher(Activity activity) {
+        LongPressImagePreviewPatch.attach(activity);
+
         ComponentName componentName = activity.getComponentName();
         if (componentName != null && MORPHE_SETTINGS_LAUNCHER.equals(componentName.getClassName())) {
             initialize(activity);

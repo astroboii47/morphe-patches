@@ -41,6 +41,7 @@ public class Settings extends BaseSettings {
     public static final BooleanSetting HIDE_RESOURCES_SHELF = new BooleanSetting("morphe_hide_resources_shelf", FALSE, true);
     public static final BooleanSetting HIDE_REDDIT_PRO_SHELF = new BooleanSetting("morphe_hide_reddit_pro_shelf", FALSE, true);
     public static final BooleanSetting REMEMBER_POST_SCROLL_POSITION = new BooleanSetting("morphe_remember_post_scroll_position", TRUE, true);
+    public static final BooleanSetting LONG_PRESS_IMAGE_PREVIEW = new BooleanSetting("morphe_long_press_image_preview", TRUE, true);
     public static final BooleanSetting HIDE_TRENDING_SHELVES = new BooleanSetting("morphe_hide_trending_shelves", FALSE, true);
     public static final BooleanSetting REMOVE_NSFW_DIALOG = new BooleanSetting("morphe_remove_nsfw_dialog", TRUE, true);
     public static final BooleanSetting REMOVE_NOTIFICATION_DIALOG = new BooleanSetting("morphe_remove_notification_dialog", TRUE, true);
