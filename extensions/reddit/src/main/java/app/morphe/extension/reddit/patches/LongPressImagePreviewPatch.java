@@ -93,10 +93,6 @@ public final class LongPressImagePreviewPatch {
     }
 
     public static void attach(Activity activity) {
-        if (!isPatchIncluded()) {
-            return;
-        }
-
         try {
             synchronized (ATTACHED_ACTIVITIES) {
                 if (ATTACHED_ACTIVITIES.contains(activity)) {
@@ -1388,25 +1384,25 @@ public final class LongPressImagePreviewPatch {
 
         switch (action) {
             case UP:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_UP);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
                 return true;
             case DOWN:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_DOWN);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
                 return true;
             case LEFT:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_LEFT);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
                 return true;
             case RIGHT:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_RIGHT);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
                 return true;
             case OPEN_POST:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_CENTER);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_BACK);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
                 return true;
             case NEXT_COMMENT:
-                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_PAGE_DOWN);
+                clickNextCommentButton(activity);
                 return true;
             default:
                 return false;
@@ -1515,19 +1511,99 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static void dispatchShortcutKey(Window.Callback delegate, int keyCode) {
-        if (delegate == null) {
-            return;
-        }
-
+    private static void dispatchShortcutKey(Activity activity, int keyCode) {
         long now = SystemClock.uptimeMillis();
         DISPATCHING_SHORTCUT_KEY = true;
         try {
-            delegate.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
-            delegate.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
+            activity.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
+            activity.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
         } finally {
             DISPATCHING_SHORTCUT_KEY = false;
         }
+    }
+
+    private static boolean clickNextCommentButton(Activity activity) {
+        try {
+            View root = activity.getWindow().getDecorView();
+            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
+            return clickNextCommentButtonInNode(node, 0);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to click Reddit next comment button", ex);
+            return false;
+        }
+    }
+
+    private static boolean clickNextCommentButtonInNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return false;
+        }
+
+        try {
+            if (isNextCommentButton(node)
+                    && (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    || clickClickableParent(node))) {
+                return true;
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+
+                if (clickNextCommentButtonInNode(child, depth + 1)) {
+                    return true;
+                }
+            }
+        } finally {
+            node.recycle();
+        }
+
+        return false;
+    }
+
+    private static boolean clickClickableParent(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo parent = null;
+        try {
+            parent = node.getParent();
+            int depth = 0;
+            while (parent != null && depth < 8) {
+                if (parent.isClickable()
+                        && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+
+                AccessibilityNodeInfo next = parent.getParent();
+                parent.recycle();
+                parent = next;
+                depth++;
+            }
+        } catch (Throwable ignored) {
+            return false;
+        } finally {
+            if (parent != null) {
+                parent.recycle();
+            }
+        }
+        return false;
+    }
+
+    private static boolean isNextCommentButton(AccessibilityNodeInfo node) {
+        if (!node.isVisibleToUser()) {
+            return false;
+        }
+
+        String text = (
+                String.valueOf(node.getText()) + " "
+                        + String.valueOf(node.getContentDescription()) + " "
+                        + String.valueOf(node.getViewIdResourceName())
+        ).toLowerCase();
+        return text.contains("next comment")
+                || text.contains("jump to next")
+                || text.contains("comment_next")
+                || text.contains("next_comment");
     }
 
     private static String getMediaUrlForFocusedPost(View root) {
