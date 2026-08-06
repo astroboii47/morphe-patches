@@ -124,6 +124,11 @@ public final class LongPressImagePreviewPatch {
             decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                decorView.addOnUnhandledKeyEventListener((view, event) ->
+                        handleKeyboardShortcut(activity, event, null)
+                );
+            }
             schedulePostFocus(activity, 160);
             schedulePostFocus(activity, 700);
         } catch (Throwable ex) {
@@ -1342,6 +1347,10 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
+        if (!hasFocusedPost(root)) {
+            focusVisiblePost(activity);
+        }
+
         if (!showPreviewForFocusedPost(activity, root)) {
             Log.i(LOG_TAG, "no focused post media url for preview");
             return false;
@@ -1565,9 +1574,10 @@ public final class LongPressImagePreviewPatch {
                 return true;
             }
 
-            if (requestComposeFocusNearPost(root)) {
+            if (requestComposeFocusNearPost(root) && hasFocusedPost(root)) {
                 return true;
             }
+            clearNonPostFocus(root);
 
             PostFocusCandidate candidate = new PostFocusCandidate();
             AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
@@ -1583,7 +1593,7 @@ public final class LongPressImagePreviewPatch {
                     candidate.node.getBoundsInScreen(bounds);
                     cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(candidate.node, 0));
                 }
-                return focused;
+                return focused && hasFocusedPost(root);
             } finally {
                 candidate.node.recycle();
             }
@@ -1612,6 +1622,20 @@ public final class LongPressImagePreviewPatch {
         return composeView.requestFocus(View.FOCUS_DOWN, localBounds)
                 || composeView.requestFocus(View.FOCUS_FORWARD, localBounds)
                 || composeView.requestFocus(View.FOCUS_RIGHT, localBounds);
+    }
+
+    private static void clearNonPostFocus(View root) {
+        try {
+            if (root == null || hasFocusedPost(root)) {
+                return;
+            }
+
+            View focused = root.findFocus();
+            if (focused != null && !focused.onCheckIsTextEditor()) {
+                focused.clearFocus();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     private static View findComposeViewContaining(View view, Rect screenBounds) {
@@ -1816,6 +1840,9 @@ public final class LongPressImagePreviewPatch {
             }
         }
         if (bounds == null) {
+            bounds = findBestPostBoundsForFocus(root);
+        }
+        if (bounds == null) {
             bounds = findNearestPostBounds(root, getRootCenterYOnScreen(root));
         }
         if (bounds == null || bounds.isEmpty()) {
@@ -1829,7 +1856,10 @@ public final class LongPressImagePreviewPatch {
 
         int rawX = findPreviewMediaX(root, bounds);
         int rawY = bounds.centerY();
-        String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+        String mediaUrl = getMediaUrlInPostBounds(root, bounds);
+        if (mediaUrl == null) {
+            mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+        }
         if (mediaUrl == null) {
             mediaUrl = getMediaUrlNearViewportCenter(root);
         }
@@ -1839,6 +1869,36 @@ public final class LongPressImagePreviewPatch {
 
         showPreview(activity, root, mediaUrl);
         return true;
+    }
+
+    private static String getMediaUrlInPostBounds(View root, Rect rowBounds) {
+        if (root == null || rowBounds == null || rowBounds.isEmpty()) {
+            return null;
+        }
+
+        int[] xs = new int[]{
+                findPreviewMediaX(root, rowBounds),
+                rowBounds.right - dp(root, 56),
+                rowBounds.left + rowBounds.width() * 3 / 4,
+                rowBounds.centerX()
+        };
+        int[] ys = new int[]{
+                rowBounds.centerY(),
+                rowBounds.top + rowBounds.height() / 3,
+                rowBounds.bottom - Math.max(dp(root, 72), rowBounds.height() / 4)
+        };
+
+        for (int y : ys) {
+            for (int x : xs) {
+                String mediaUrl = getMediaUrlAtPoint(root, x, y);
+                if (mediaUrl != null) {
+                    return mediaUrl;
+                }
+            }
+        }
+
+        CharSequence description = findNearestPostDescription(root, rowBounds.centerY());
+        return getMediaUrlForPostDescription(description);
     }
 
     private static int findPreviewMediaX(View root, Rect rowBounds) {
