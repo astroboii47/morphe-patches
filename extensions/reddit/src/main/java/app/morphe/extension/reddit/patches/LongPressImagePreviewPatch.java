@@ -119,10 +119,7 @@ public final class LongPressImagePreviewPatch {
                 }
             });
             decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
-            {
-                ensureWindowCallback(activity);
-                scheduleContentFocus(activity, 120);
-            }
+                    ensureWindowCallback(activity)
             );
             scheduleContentFocus(activity, 120);
             scheduleContentFocus(activity, 650);
@@ -1342,13 +1339,11 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
-        String mediaUrl = getMediaUrlForFocusedPost(root);
-        if (mediaUrl == null) {
+        if (!showPreviewForFocusedPost(activity, root)) {
             Log.i(LOG_TAG, "no focused post media url for preview");
             return false;
         }
 
-        showPreview(activity, root, mediaUrl);
         return true;
     }
 
@@ -1405,7 +1400,9 @@ public final class LongPressImagePreviewPatch {
                 dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
-                goBack(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
+                scheduleContentFocus(activity, 250);
+                scheduleContentFocus(activity, 800);
                 return true;
             case NEXT_COMMENT:
                 clickNextCommentButton(activity);
@@ -1528,17 +1525,111 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static void goBack(Activity activity) {
-        DISPATCHING_SHORTCUT_KEY = true;
-        try {
-            activity.onBackPressed();
-        } catch (Throwable ex) {
-            dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
-        } finally {
-            DISPATCHING_SHORTCUT_KEY = false;
+    private static boolean showPreviewForFocusedPost(Activity activity, View root) {
+        if (root == null) {
+            return false;
         }
-        scheduleContentFocus(activity, 250);
-        scheduleContentFocus(activity, 800);
+
+        Rect bounds = findFocusedPostBounds(root);
+        if (bounds == null) {
+            bounds = findNearestPostBounds(root, getRootCenterYOnScreen(root));
+        }
+        if (bounds == null || bounds.isEmpty()) {
+            String mediaUrl = getMediaUrlNearViewportCenter(root);
+            if (mediaUrl == null) {
+                return false;
+            }
+            showPreview(activity, root, mediaUrl);
+            return true;
+        }
+
+        int rawX = findPreviewMediaX(root, bounds);
+        int rawY = bounds.centerY();
+        String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+        if (mediaUrl == null) {
+            mediaUrl = getMediaUrlNearViewportCenter(root);
+        }
+        if (mediaUrl == null) {
+            return false;
+        }
+
+        showPreview(activity, root, mediaUrl);
+        return true;
+    }
+
+    private static int findPreviewMediaX(View root, Rect rowBounds) {
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        int rightSide = rootLocation[0] + Math.round(root.getWidth() * 0.86f);
+        int rowRight = rowBounds.right - dp(root, 24);
+        int rowLeft = rowBounds.left + dp(root, 24);
+        return clamp(Math.min(rightSide, rowRight), rowLeft, rowRight);
+    }
+
+    private static int getRootCenterYOnScreen(View root) {
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        return rootLocation[1] + root.getHeight() / 2;
+    }
+
+    private static Rect findFocusedPostBounds(View root) {
+        try {
+            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
+            return findFocusedPostBoundsInNode(node, 0);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to find focused Reddit post bounds", ex);
+            return null;
+        }
+    }
+
+    private static Rect findFocusedPostBoundsInNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return null;
+        }
+
+        try {
+            CharSequence description = node.getContentDescription();
+            if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
+                    && isPostDescription(description)) {
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                return bounds;
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+
+                Rect bounds = findFocusedPostBoundsInNode(child, depth + 1);
+                if (bounds != null) {
+                    return bounds;
+                }
+            }
+        } finally {
+            node.recycle();
+        }
+
+        return null;
+    }
+
+    private static Rect findNearestPostBounds(View root, int rawY) {
+        ArrayList<DescriptionBounds> descriptions = new ArrayList<>();
+        collectPostDescriptions(root, descriptions);
+        collectAccessibilityPostDescriptions(root, descriptions);
+        DescriptionBounds best = null;
+        int bestDistance = Integer.MAX_VALUE;
+        for (DescriptionBounds item : descriptions) {
+            int distance = Math.abs(item.bounds.centerY() - rawY);
+            if (distance < bestDistance) {
+                best = item;
+                bestDistance = distance;
+            }
+        }
+        return best != null ? best.bounds : null;
     }
 
     private static void scheduleContentFocus(Activity activity, long delayMs) {
@@ -1573,16 +1664,7 @@ public final class LongPressImagePreviewPatch {
 
             target.setFocusableInTouchMode(true);
             target.setFocusable(true);
-            target.requestFocusFromTouch();
             target.requestFocus();
-
-            AccessibilityNodeInfo node = target.createAccessibilityNodeInfo();
-            try {
-                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-                node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
-            } finally {
-                node.recycle();
-            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to focus Reddit content", ex);
         }
@@ -2027,6 +2109,10 @@ public final class LongPressImagePreviewPatch {
         public void onWindowFocusChanged(boolean hasFocus) {
             if (delegate != null) {
                 delegate.onWindowFocusChanged(hasFocus);
+            }
+            if (hasFocus) {
+                scheduleContentFocus(activity, 180);
+                scheduleContentFocus(activity, 700);
             }
         }
 
