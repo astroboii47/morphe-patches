@@ -19,6 +19,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.KeyboardShortcutGroup;
 import android.view.Menu;
@@ -61,6 +62,7 @@ public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
+    private static final Map<Activity, FocusedPostState> FOCUSED_POSTS = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
@@ -113,6 +115,9 @@ public final class LongPressImagePreviewPatch {
                     hidePreview();
                     synchronized (TOUCH_STATES) {
                         TOUCH_STATES.remove(activity);
+                    }
+                    synchronized (FOCUSED_POSTS) {
+                        FOCUSED_POSTS.remove(activity);
                     }
                     v.removeOnAttachStateChangeListener(this);
                 }
@@ -1384,27 +1389,22 @@ public final class LongPressImagePreviewPatch {
 
         switch (action) {
             case UP:
-                focusVisiblePost(activity);
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
+                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
                 return true;
             case DOWN:
-                focusVisiblePost(activity);
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
                 return true;
             case LEFT:
-                focusVisiblePost(activity);
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
+                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
                 return true;
             case RIGHT:
-                focusVisiblePost(activity);
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
+                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
                 return true;
             case OPEN_POST:
-                focusVisiblePost(activity);
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
+                activity.onBackPressed();
                 schedulePostFocus(activity, 260);
                 schedulePostFocus(activity, 900);
                 return true;
@@ -1529,6 +1529,62 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static void dispatchFeedShortcutKey(Activity activity, int keyCode) {
+        if (hasFocusedPost(activity.getWindow().getDecorView())) {
+            dispatchShortcutKey(activity, keyCode);
+            return;
+        }
+
+        if (!pressVisiblePostForFocus(activity)) {
+            dispatchShortcutKey(activity, keyCode);
+            return;
+        }
+
+        MAIN_HANDLER.postDelayed(() -> dispatchShortcutKey(activity, keyCode), 48);
+    }
+
+    private static boolean pressVisiblePostForFocus(Activity activity) {
+        View root = activity.getWindow().getDecorView();
+        Rect bounds = findBestPostBoundsForFocus(root);
+        if (bounds == null || bounds.isEmpty()) {
+            return false;
+        }
+
+        int x = bounds.left + Math.min(dp(root, 72), Math.max(1, bounds.width() / 3));
+        int y = bounds.centerY();
+        long now = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(
+                now,
+                now,
+                MotionEvent.ACTION_DOWN,
+                x,
+                y,
+                0
+        );
+        MotionEvent cancel = MotionEvent.obtain(
+                now,
+                now + 16,
+                MotionEvent.ACTION_CANCEL,
+                x,
+                y,
+                0
+        );
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        cancel.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+
+        DISPATCHING_SHORTCUT_KEY = true;
+        try {
+            activity.dispatchTouchEvent(down);
+            activity.dispatchTouchEvent(cancel);
+            cacheFocusedPost(activity, bounds, null);
+            return true;
+        } finally {
+            DISPATCHING_SHORTCUT_KEY = false;
+            down.recycle();
+            cancel.recycle();
+        }
+    }
+
     private static void schedulePostFocus(Activity activity, long delayMs) {
         MAIN_HANDLER.postDelayed(() -> focusVisiblePost(activity), delayMs);
     }
@@ -1552,13 +1608,57 @@ public final class LongPressImagePreviewPatch {
             }
 
             try {
-                return candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                boolean focused = candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                if (focused) {
+                    Rect bounds = new Rect();
+                    candidate.node.getBoundsInScreen(bounds);
+                    cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(candidate.node, 0));
+                }
+                return focused;
             } finally {
                 candidate.node.recycle();
             }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to focus Reddit post", ex);
             return false;
+        }
+    }
+
+    private static Rect findBestPostBoundsForFocus(View root) {
+        try {
+            PostFocusCandidate candidate = new PostFocusCandidate();
+            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
+            collectBestPostFocusNode(root, node, candidate, 0);
+            if (candidate.node == null) {
+                return null;
+            }
+
+            try {
+                Rect bounds = new Rect();
+                candidate.node.getBoundsInScreen(bounds);
+                return bounds;
+            } finally {
+                candidate.node.recycle();
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to find Reddit post focus bounds", ex);
+            return null;
+        }
+    }
+
+    private static void cacheFocusedPost(Activity activity, Rect bounds, CharSequence description) {
+        if (bounds == null || bounds.isEmpty()) {
+            return;
+        }
+
+        synchronized (FOCUSED_POSTS) {
+            FOCUSED_POSTS.put(activity, new FocusedPostState(bounds, description));
+        }
+    }
+
+    private static FocusedPostState getCachedFocusedPost(Activity activity) {
+        synchronized (FOCUSED_POSTS) {
+            return FOCUSED_POSTS.get(activity);
         }
     }
 
@@ -1674,7 +1774,21 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
+        FocusedPostState cached = getCachedFocusedPost(activity);
+        if (cached != null && cached.description != null) {
+            String cachedMediaUrl = getMediaUrlForPostDescription(cached.description);
+            if (cachedMediaUrl != null) {
+                showPreview(activity, root, cachedMediaUrl);
+                return true;
+            }
+        }
+
         Rect bounds = findFocusedPostBounds(root);
+        if (bounds == null) {
+            if (cached != null) {
+                bounds = new Rect(cached.bounds);
+            }
+        }
         if (bounds == null) {
             bounds = findNearestPostBounds(root, getRootCenterYOnScreen(root));
         }
@@ -2008,6 +2122,36 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static void cacheFocusedPostFromEvent(Activity activity, AccessibilityEvent event) {
+        if (event == null) {
+            return;
+        }
+
+        int eventType = event.getEventType();
+        if (eventType != AccessibilityEvent.TYPE_VIEW_FOCUSED
+                && eventType != AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED
+                && eventType != AccessibilityEvent.TYPE_VIEW_SELECTED) {
+            return;
+        }
+
+        AccessibilityNodeInfo source = null;
+        try {
+            source = event.getSource();
+            if (source == null || !isPostUnit(source)) {
+                return;
+            }
+
+            Rect bounds = new Rect();
+            source.getBoundsInScreen(bounds);
+            cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(source, 0));
+        } catch (Throwable ignored) {
+        } finally {
+            if (source != null) {
+                source.recycle();
+            }
+        }
+    }
+
     private static CharSequence findFocusedPostDescriptionInView(View view) {
         if (view == null || view.getVisibility() != View.VISIBLE) {
             return null;
@@ -2146,6 +2290,7 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+            cacheFocusedPostFromEvent(activity, event);
             return delegate != null && delegate.dispatchPopulateAccessibilityEvent(event);
         }
 
@@ -2306,6 +2451,16 @@ public final class LongPressImagePreviewPatch {
         DescriptionBounds(CharSequence description, Rect bounds) {
             this.description = description;
             this.bounds = bounds;
+        }
+    }
+
+    private static final class FocusedPostState {
+        final Rect bounds;
+        final CharSequence description;
+
+        FocusedPostState(Rect bounds, CharSequence description) {
+            this.bounds = new Rect(bounds);
+            this.description = description;
         }
     }
 
