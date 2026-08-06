@@ -61,7 +61,6 @@ public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
-    private static final Map<Activity, Long> LAST_CONTENT_FOCUS_ATTEMPTS = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
@@ -121,8 +120,8 @@ public final class LongPressImagePreviewPatch {
             decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
-            scheduleContentFocus(activity, 120);
-            scheduleContentFocus(activity, 650);
+            schedulePostFocus(activity, 160);
+            schedulePostFocus(activity, 700);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to attach Reddit image preview", ex);
         }
@@ -1385,24 +1384,24 @@ public final class LongPressImagePreviewPatch {
 
         switch (action) {
             case UP:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
+                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
                 return true;
             case DOWN:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
                 return true;
             case LEFT:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
+                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
                 return true;
             case RIGHT:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
+                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
                 return true;
             case OPEN_POST:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
                 dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
-                scheduleContentFocus(activity, 250);
-                scheduleContentFocus(activity, 800);
+                schedulePostFocus(activity, 260);
+                schedulePostFocus(activity, 900);
                 return true;
             case NEXT_COMMENT:
                 clickNextCommentButton(activity);
@@ -1525,6 +1524,108 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static void dispatchContentShortcutKey(Activity activity, int keyCode) {
+        focusVisiblePost(activity);
+        View root = activity.getWindow().getDecorView();
+        View target = findBestScrollableContentView(root, root, new ContentFocusCandidate());
+        if (target == null) {
+            dispatchShortcutKey(activity, keyCode);
+            return;
+        }
+
+        long now = SystemClock.uptimeMillis();
+        DISPATCHING_SHORTCUT_KEY = true;
+        try {
+            KeyEvent down = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0);
+            KeyEvent up = new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0);
+            if (!target.dispatchKeyEvent(down)) {
+                activity.dispatchKeyEvent(down);
+            }
+            if (!target.dispatchKeyEvent(up)) {
+                activity.dispatchKeyEvent(up);
+            }
+        } finally {
+            DISPATCHING_SHORTCUT_KEY = false;
+        }
+    }
+
+    private static void schedulePostFocus(Activity activity, long delayMs) {
+        MAIN_HANDLER.postDelayed(() -> focusVisiblePost(activity), delayMs);
+    }
+
+    private static boolean focusVisiblePost(Activity activity) {
+        try {
+            if (hasKeyboardInputFocus(activity)) {
+                return false;
+            }
+
+            View root = activity.getWindow().getDecorView();
+            View focused = root != null ? root.findFocus() : null;
+            if (focused != null && isPostDescription(focused.getContentDescription())) {
+                return true;
+            }
+
+            View target = findBestPostView(root, root, new PostFocusCandidate());
+            if (target == null) {
+                return false;
+            }
+
+            target.setFocusableInTouchMode(true);
+            target.setFocusable(true);
+            return target.requestFocusFromTouch() || target.requestFocus();
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to focus Reddit post", ex);
+            return false;
+        }
+    }
+
+    private static View findBestPostView(View root, View view, PostFocusCandidate best) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return best.view;
+        }
+
+        if (isPostDescription(view.getContentDescription())) {
+            int score = scorePostFocusView(root, view);
+            if (score > best.score) {
+                best.view = view;
+                best.score = score;
+            }
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                findBestPostView(root, group.getChildAt(i), best);
+            }
+        }
+
+        return best.view;
+    }
+
+    private static int scorePostFocusView(View root, View view) {
+        if (root == null || view == null) {
+            return Integer.MIN_VALUE;
+        }
+
+        int[] rootLocation = new int[2];
+        int[] viewLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        view.getLocationOnScreen(viewLocation);
+
+        int top = viewLocation[1] - rootLocation[1];
+        int bottom = top + view.getHeight();
+        int centerY = top + view.getHeight() / 2;
+        int topChrome = dp(root, 96);
+        int bottomChrome = root.getHeight() - dp(root, 96);
+        if (bottom < topChrome || top > bottomChrome) {
+            return Integer.MIN_VALUE;
+        }
+
+        int targetY = topChrome + dp(root, 80);
+        int distance = Math.abs(centerY - targetY);
+        return 100000 - distance + Math.min(view.getHeight(), root.getHeight());
+    }
+
     private static boolean showPreviewForFocusedPost(Activity activity, View root) {
         if (root == null) {
             return false;
@@ -1630,48 +1731,6 @@ public final class LongPressImagePreviewPatch {
             }
         }
         return best != null ? best.bounds : null;
-    }
-
-    private static void scheduleContentFocus(Activity activity, long delayMs) {
-        MAIN_HANDLER.postDelayed(() -> focusContentIfNeeded(activity), delayMs);
-    }
-
-    private static void focusContentIfNeeded(Activity activity) {
-        try {
-            View root = activity.getWindow().getDecorView();
-            if (root == null || hasKeyboardInputFocus(activity)) {
-                return;
-            }
-
-            long now = SystemClock.uptimeMillis();
-            synchronized (LAST_CONTENT_FOCUS_ATTEMPTS) {
-                Long last = LAST_CONTENT_FOCUS_ATTEMPTS.get(activity);
-                if (last != null && now - last < 450) {
-                    return;
-                }
-                LAST_CONTENT_FOCUS_ATTEMPTS.put(activity, now);
-            }
-
-            View focused = root.findFocus();
-            if (isContentFocus(root, focused)) {
-                return;
-            }
-
-            View target = findBestScrollableContentView(root, root, new ContentFocusCandidate());
-            if (target == null || target == focused) {
-                return;
-            }
-
-            target.setFocusableInTouchMode(true);
-            target.setFocusable(true);
-            target.requestFocus();
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to focus Reddit content", ex);
-        }
-    }
-
-    private static boolean isContentFocus(View root, View view) {
-        return view != null && scoreScrollableContentView(root, view) > Integer.MIN_VALUE;
     }
 
     private static View findBestScrollableContentView(View root, View view, ContentFocusCandidate best) {
@@ -2111,8 +2170,8 @@ public final class LongPressImagePreviewPatch {
                 delegate.onWindowFocusChanged(hasFocus);
             }
             if (hasFocus) {
-                scheduleContentFocus(activity, 180);
-                scheduleContentFocus(activity, 700);
+                schedulePostFocus(activity, 180);
+                schedulePostFocus(activity, 700);
             }
         }
 
@@ -2227,6 +2286,11 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static final class ContentFocusCandidate {
+        View view;
+        int score = Integer.MIN_VALUE;
+    }
+
+    private static final class PostFocusCandidate {
         View view;
         int score = Integer.MIN_VALUE;
     }
