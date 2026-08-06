@@ -1353,7 +1353,6 @@ public final class LongPressImagePreviewPatch {
 
         if (!showPreviewForFocusedPost(activity, root)) {
             Log.i(LOG_TAG, "no focused post media url for preview");
-            return false;
         }
 
         return true;
@@ -1579,6 +1578,10 @@ public final class LongPressImagePreviewPatch {
             }
             clearNonPostFocus(root);
 
+            if (focusProviderPostNode(activity, root)) {
+                return true;
+            }
+
             PostFocusCandidate candidate = new PostFocusCandidate();
             AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
             collectBestPostFocusNode(root, node, candidate, 0);
@@ -1593,7 +1596,7 @@ public final class LongPressImagePreviewPatch {
                     candidate.node.getBoundsInScreen(bounds);
                     cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(candidate.node, 0));
                 }
-                return focused && hasFocusedPost(root);
+                return focused && (hasFocusedPost(root) || candidate.bounds != null);
             } finally {
                 candidate.node.recycle();
             }
@@ -1635,6 +1638,122 @@ public final class LongPressImagePreviewPatch {
                 focused.clearFocus();
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean focusProviderPostNode(Activity activity, View root) {
+        if (root == null) {
+            return false;
+        }
+
+        ProviderPostFocusCandidate candidate = new ProviderPostFocusCandidate();
+        collectBestProviderPostFocusNode(root, root, candidate);
+        if (candidate.provider == null || candidate.virtualId == Integer.MIN_VALUE) {
+            return false;
+        }
+
+        boolean focused = false;
+        try {
+            focused = candidate.provider.performAction(
+                    candidate.virtualId,
+                    AccessibilityNodeInfo.ACTION_FOCUS,
+                    null
+            );
+            if (!focused) {
+                focused = candidate.provider.performAction(
+                        candidate.virtualId,
+                        AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS,
+                        null
+                );
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed provider focus for Reddit post", ex);
+            return false;
+        }
+
+        if (focused) {
+            cacheFocusedPost(activity, candidate.bounds, candidate.description);
+            Log.i(LOG_TAG, "focused Reddit post via provider");
+        }
+        return focused;
+    }
+
+    private static void collectBestProviderPostFocusNode(
+            View root,
+            View view,
+            ProviderPostFocusCandidate candidate
+    ) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        if (provider != null) {
+            AccessibilityNodeInfo node = null;
+            try {
+                node = provider.createAccessibilityNodeInfo(View.NO_ID);
+                collectBestProviderPostFocusNode(root, provider, node, View.NO_ID, candidate, 0);
+            } catch (Throwable ignored) {
+                if (node != null) {
+                    node.recycle();
+                }
+            }
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectBestProviderPostFocusNode(root, group.getChildAt(i), candidate);
+            }
+        }
+    }
+
+    private static void collectBestProviderPostFocusNode(
+            View root,
+            AccessibilityNodeProvider provider,
+            AccessibilityNodeInfo node,
+            int virtualId,
+            ProviderPostFocusCandidate candidate,
+            int depth
+    ) {
+        if (root == null || provider == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return;
+        }
+
+        try {
+            int score = scorePostFocusNode(root, node);
+            if (score > candidate.score && virtualId != View.NO_ID) {
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                candidate.provider = provider;
+                candidate.virtualId = virtualId;
+                candidate.score = score;
+                candidate.bounds = bounds;
+                candidate.description = findFirstPostDescriptionInNodeNoRecycle(node, 0);
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                int childVirtualId = Integer.MIN_VALUE;
+                try {
+                    childVirtualId = getChildVirtualId(node, i);
+                    if (childVirtualId != Integer.MIN_VALUE) {
+                        child = provider.createAccessibilityNodeInfo(childVirtualId);
+                    }
+                } catch (Throwable ignored) {
+                }
+                collectBestProviderPostFocusNode(
+                        root,
+                        provider,
+                        child,
+                        childVirtualId,
+                        candidate,
+                        depth + 1
+                );
+            }
+        } finally {
+            node.recycle();
         }
     }
 
@@ -1768,6 +1887,9 @@ public final class LongPressImagePreviewPatch {
                 }
                 candidate.node = node;
                 candidate.score = score;
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                candidate.bounds = bounds;
                 keepNode = true;
             }
 
@@ -2334,6 +2456,42 @@ public final class LongPressImagePreviewPatch {
         return null;
     }
 
+    private static CharSequence findFirstPostDescriptionInNodeNoRecycle(
+            AccessibilityNodeInfo node,
+            int depth
+    ) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return null;
+        }
+
+        CharSequence description = node.getContentDescription();
+        if (isPostDescription(description)) {
+            return description.toString();
+        }
+
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = null;
+            try {
+                child = node.getChild(i);
+            } catch (Throwable ignored) {
+            }
+
+            try {
+                CharSequence childDescription = findFirstPostDescriptionInNodeNoRecycle(child, depth + 1);
+                if (childDescription != null) {
+                    return childDescription;
+                }
+            } finally {
+                if (child != null) {
+                    child.recycle();
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static final class PreviewWindowCallback implements Window.Callback {
         Activity activity;
         private final Window.Callback delegate;
@@ -2552,6 +2710,15 @@ public final class LongPressImagePreviewPatch {
 
     private static final class PostFocusCandidate {
         AccessibilityNodeInfo node;
+        Rect bounds;
+        int score = Integer.MIN_VALUE;
+    }
+
+    private static final class ProviderPostFocusCandidate {
+        AccessibilityNodeProvider provider;
+        int virtualId = Integer.MIN_VALUE;
+        Rect bounds;
+        CharSequence description;
         int score = Integer.MIN_VALUE;
     }
 
