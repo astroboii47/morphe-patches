@@ -19,7 +19,6 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
-import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.KeyboardShortcutGroup;
 import android.view.Menu;
@@ -1436,28 +1435,36 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static ShortcutAction getShortcutAction(int keyCode) {
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_PREVIEW.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_PREVIEW.get())
+                || keyCode == KeyEvent.KEYCODE_P) {
             return ShortcutAction.PREVIEW;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_UP.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_UP.get())
+                || keyCode == KeyEvent.KEYCODE_I) {
             return ShortcutAction.UP;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_DOWN.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_DOWN.get())
+                || keyCode == KeyEvent.KEYCODE_K) {
             return ShortcutAction.DOWN;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_LEFT.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_LEFT.get())
+                || keyCode == KeyEvent.KEYCODE_J) {
             return ShortcutAction.LEFT;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_RIGHT.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_RIGHT.get())
+                || keyCode == KeyEvent.KEYCODE_L) {
             return ShortcutAction.RIGHT;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_OPEN_POST.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_OPEN_POST.get())
+                || keyCode == KeyEvent.KEYCODE_O) {
             return ShortcutAction.OPEN_POST;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_BACK.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_BACK.get())
+                || keyCode == KeyEvent.KEYCODE_U) {
             return ShortcutAction.BACK;
         }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get())) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get())
+                || keyCode == KeyEvent.KEYCODE_N) {
             return ShortcutAction.NEXT_COMMENT;
         }
         return null;
@@ -1535,54 +1542,12 @@ public final class LongPressImagePreviewPatch {
             return;
         }
 
-        if (!pressVisiblePostForFocus(activity)) {
+        if (!focusVisiblePost(activity)) {
             dispatchShortcutKey(activity, keyCode);
             return;
         }
 
         MAIN_HANDLER.postDelayed(() -> dispatchShortcutKey(activity, keyCode), 48);
-    }
-
-    private static boolean pressVisiblePostForFocus(Activity activity) {
-        View root = activity.getWindow().getDecorView();
-        Rect bounds = findBestPostBoundsForFocus(root);
-        if (bounds == null || bounds.isEmpty()) {
-            return false;
-        }
-
-        int x = bounds.left + Math.min(dp(root, 72), Math.max(1, bounds.width() / 3));
-        int y = bounds.centerY();
-        long now = SystemClock.uptimeMillis();
-        MotionEvent down = MotionEvent.obtain(
-                now,
-                now,
-                MotionEvent.ACTION_DOWN,
-                x,
-                y,
-                0
-        );
-        MotionEvent cancel = MotionEvent.obtain(
-                now,
-                now + 16,
-                MotionEvent.ACTION_CANCEL,
-                x,
-                y,
-                0
-        );
-        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-        cancel.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-
-        DISPATCHING_SHORTCUT_KEY = true;
-        try {
-            activity.dispatchTouchEvent(down);
-            activity.dispatchTouchEvent(cancel);
-            cacheFocusedPost(activity, bounds, null);
-            return true;
-        } finally {
-            DISPATCHING_SHORTCUT_KEY = false;
-            down.recycle();
-            cancel.recycle();
-        }
     }
 
     private static void schedulePostFocus(Activity activity, long delayMs) {
@@ -1597,6 +1562,10 @@ public final class LongPressImagePreviewPatch {
 
             View root = activity.getWindow().getDecorView();
             if (hasFocusedPost(root)) {
+                return true;
+            }
+
+            if (requestComposeFocusNearPost(root)) {
                 return true;
             }
 
@@ -1622,6 +1591,63 @@ public final class LongPressImagePreviewPatch {
             Logger.printException(() -> "Failed to focus Reddit post", ex);
             return false;
         }
+    }
+
+    private static boolean requestComposeFocusNearPost(View root) {
+        Rect bounds = findBestPostBoundsForFocus(root);
+        if (root == null || bounds == null || bounds.isEmpty()) {
+            return false;
+        }
+
+        View composeView = findComposeViewContaining(root, bounds);
+        if (composeView == null) {
+            return false;
+        }
+
+        int[] location = new int[2];
+        composeView.getLocationOnScreen(location);
+        Rect localBounds = new Rect(bounds);
+        localBounds.offset(-location[0], -location[1]);
+
+        return composeView.requestFocus(View.FOCUS_DOWN, localBounds)
+                || composeView.requestFocus(View.FOCUS_FORWARD, localBounds)
+                || composeView.requestFocus(View.FOCUS_RIGHT, localBounds);
+    }
+
+    private static View findComposeViewContaining(View view, Rect screenBounds) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return null;
+        }
+
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        Rect viewBounds = new Rect(
+                location[0],
+                location[1],
+                location[0] + view.getWidth(),
+                location[1] + view.getHeight()
+        );
+        if (!Rect.intersects(viewBounds, screenBounds)) {
+            return null;
+        }
+
+        View best = null;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = findComposeViewContaining(group.getChildAt(i), screenBounds);
+                if (child != null) {
+                    best = child;
+                }
+            }
+        }
+
+        if (best != null) {
+            return best;
+        }
+
+        String className = view.getClass().getName();
+        return className.startsWith("androidx.compose.ui.platform.") ? view : null;
     }
 
     private static Rect findBestPostBoundsForFocus(View root) {
