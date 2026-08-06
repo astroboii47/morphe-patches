@@ -1384,19 +1384,24 @@ public final class LongPressImagePreviewPatch {
 
         switch (action) {
             case UP:
-                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
+                focusVisiblePost(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
                 return true;
             case DOWN:
-                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+                focusVisiblePost(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
                 return true;
             case LEFT:
-                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
+                focusVisiblePost(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
                 return true;
             case RIGHT:
-                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
+                focusVisiblePost(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
                 return true;
             case OPEN_POST:
-                dispatchContentShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+                focusVisiblePost(activity);
+                dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
                 dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
@@ -1524,31 +1529,6 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static void dispatchContentShortcutKey(Activity activity, int keyCode) {
-        focusVisiblePost(activity);
-        View root = activity.getWindow().getDecorView();
-        View target = findBestScrollableContentView(root, root, new ContentFocusCandidate());
-        if (target == null) {
-            dispatchShortcutKey(activity, keyCode);
-            return;
-        }
-
-        long now = SystemClock.uptimeMillis();
-        DISPATCHING_SHORTCUT_KEY = true;
-        try {
-            KeyEvent down = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0);
-            KeyEvent up = new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0);
-            if (!target.dispatchKeyEvent(down)) {
-                activity.dispatchKeyEvent(down);
-            }
-            if (!target.dispatchKeyEvent(up)) {
-                activity.dispatchKeyEvent(up);
-            }
-        } finally {
-            DISPATCHING_SHORTCUT_KEY = false;
-        }
-    }
-
     private static void schedulePostFocus(Activity activity, long delayMs) {
         MAIN_HANDLER.postDelayed(() -> focusVisiblePost(activity), delayMs);
     }
@@ -1560,70 +1540,133 @@ public final class LongPressImagePreviewPatch {
             }
 
             View root = activity.getWindow().getDecorView();
-            View focused = root != null ? root.findFocus() : null;
-            if (focused != null && isPostDescription(focused.getContentDescription())) {
+            if (hasFocusedPost(root)) {
                 return true;
             }
 
-            View target = findBestPostView(root, root, new PostFocusCandidate());
-            if (target == null) {
+            PostFocusCandidate candidate = new PostFocusCandidate();
+            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
+            collectBestPostFocusNode(root, node, candidate, 0);
+            if (candidate.node == null) {
                 return false;
             }
 
-            target.setFocusableInTouchMode(true);
-            target.setFocusable(true);
-            return target.requestFocusFromTouch() || target.requestFocus();
+            try {
+                return candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+            } finally {
+                candidate.node.recycle();
+            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to focus Reddit post", ex);
             return false;
         }
     }
 
-    private static View findBestPostView(View root, View view, PostFocusCandidate best) {
-        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
-            return best.view;
+    private static boolean hasFocusedPost(View root) {
+        try {
+            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
+            return hasFocusedPostInNode(node, 0);
+        } catch (Throwable ignored) {
+            return false;
         }
-
-        if (isPostDescription(view.getContentDescription())) {
-            int score = scorePostFocusView(root, view);
-            if (score > best.score) {
-                best.view = view;
-                best.score = score;
-            }
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                findBestPostView(root, group.getChildAt(i), best);
-            }
-        }
-
-        return best.view;
     }
 
-    private static int scorePostFocusView(View root, View view) {
-        if (root == null || view == null) {
+    private static boolean hasFocusedPostInNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return false;
+        }
+
+        try {
+            if ((node.isFocused() || node.isAccessibilityFocused()) && isPostUnit(node)) {
+                return true;
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+                if (hasFocusedPostInNode(child, depth + 1)) {
+                    return true;
+                }
+            }
+        } finally {
+            node.recycle();
+        }
+
+        return false;
+    }
+
+    private static void collectBestPostFocusNode(
+            View root,
+            AccessibilityNodeInfo node,
+            PostFocusCandidate candidate,
+            int depth
+    ) {
+        if (root == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return;
+        }
+
+        boolean keepNode = false;
+        try {
+            int score = scorePostFocusNode(root, node);
+            if (score > candidate.score) {
+                if (candidate.node != null) {
+                    candidate.node.recycle();
+                }
+                candidate.node = node;
+                candidate.score = score;
+                keepNode = true;
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+                collectBestPostFocusNode(root, child, candidate, depth + 1);
+            }
+        } finally {
+            if (!keepNode && candidate.node != node) {
+                node.recycle();
+            }
+        }
+    }
+
+    private static int scorePostFocusNode(View root, AccessibilityNodeInfo node) {
+        if (!node.isVisibleToUser() || !node.isFocusable() || !isPostUnit(node)) {
+            return Integer.MIN_VALUE;
+        }
+
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (bounds.isEmpty()) {
             return Integer.MIN_VALUE;
         }
 
         int[] rootLocation = new int[2];
-        int[] viewLocation = new int[2];
         root.getLocationOnScreen(rootLocation);
-        view.getLocationOnScreen(viewLocation);
-
-        int top = viewLocation[1] - rootLocation[1];
-        int bottom = top + view.getHeight();
-        int centerY = top + view.getHeight() / 2;
-        int topChrome = dp(root, 96);
-        int bottomChrome = root.getHeight() - dp(root, 96);
-        if (bottom < topChrome || top > bottomChrome) {
+        int top = bounds.top - rootLocation[1];
+        int bottom = bounds.bottom - rootLocation[1];
+        int centerY = (top + bottom) / 2;
+        int topChrome = dp(root, 104);
+        int bottomChrome = root.getHeight() - dp(root, 112);
+        if (bottom <= topChrome || top >= bottomChrome) {
             return Integer.MIN_VALUE;
         }
 
-        int targetY = topChrome + dp(root, 80);
+        int targetY = topChrome + dp(root, 112);
         int distance = Math.abs(centerY - targetY);
-        return 100000 - distance + Math.min(view.getHeight(), root.getHeight());
+        return 100000 - distance + Math.min(bounds.height(), root.getHeight());
+    }
+
+    private static boolean isPostUnit(AccessibilityNodeInfo node) {
+        CharSequence viewId = node.getViewIdResourceName();
+        return viewId != null && "post_unit".contentEquals(viewId);
     }
 
     private static boolean showPreviewForFocusedPost(Activity activity, View root) {
@@ -1689,9 +1732,8 @@ public final class LongPressImagePreviewPatch {
         }
 
         try {
-            CharSequence description = node.getContentDescription();
             if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
-                    && isPostDescription(description)) {
+                    && isPostUnit(node)) {
                 Rect bounds = new Rect();
                 node.getBoundsInScreen(bounds);
                 return bounds;
@@ -1731,65 +1773,6 @@ public final class LongPressImagePreviewPatch {
             }
         }
         return best != null ? best.bounds : null;
-    }
-
-    private static View findBestScrollableContentView(View root, View view, ContentFocusCandidate best) {
-        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
-            return best.view;
-        }
-
-        int score = scoreScrollableContentView(root, view);
-        if (score > best.score) {
-            best.view = view;
-            best.score = score;
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                findBestScrollableContentView(root, group.getChildAt(i), best);
-            }
-        }
-
-        return best.view;
-    }
-
-    private static int scoreScrollableContentView(View root, View view) {
-        if (root == null || view == null || view == root) {
-            return Integer.MIN_VALUE;
-        }
-
-        boolean scrollable = view.canScrollVertically(1) || view.canScrollVertically(-1);
-        String className = view.getClass().getName().toLowerCase();
-        boolean likelyList = className.contains("recycler") || className.contains("compose");
-        if (!scrollable && !likelyList) {
-            return Integer.MIN_VALUE;
-        }
-
-        int[] rootLocation = new int[2];
-        int[] viewLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        view.getLocationOnScreen(viewLocation);
-
-        int left = viewLocation[0] - rootLocation[0];
-        int top = viewLocation[1] - rootLocation[1];
-        int right = left + view.getWidth();
-        int bottom = top + view.getHeight();
-        int centerY = top + view.getHeight() / 2;
-
-        int topChrome = dp(root, 64);
-        int bottomChrome = root.getHeight() - dp(root, 64);
-        if (centerY < topChrome || centerY > bottomChrome) {
-            return Integer.MIN_VALUE;
-        }
-        if (view.getWidth() < root.getWidth() * 0.45f || view.getHeight() < root.getHeight() * 0.25f) {
-            return Integer.MIN_VALUE;
-        }
-
-        int area = Math.min(view.getWidth() * view.getHeight(), root.getWidth() * root.getHeight());
-        int chromePenalty = Math.max(0, topChrome - top) + Math.max(0, bottom - bottomChrome);
-        int edgePenalty = Math.abs(left) + Math.abs(root.getWidth() - right);
-        return area - chromePenalty * 400 - edgePenalty * 8 + (scrollable ? 100000 : 0);
     }
 
     private static boolean clickNextCommentButton(Activity activity) {
@@ -2054,6 +2037,14 @@ public final class LongPressImagePreviewPatch {
         }
 
         try {
+            if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
+                    && isPostUnit(node)) {
+                CharSequence focusedDescription = findFirstPostDescriptionInNode(node, 0);
+                if (focusedDescription != null) {
+                    return focusedDescription;
+                }
+            }
+
             CharSequence description = node.getContentDescription();
             if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
                     && isPostDescription(description)) {
@@ -2075,6 +2066,39 @@ public final class LongPressImagePreviewPatch {
             }
         } finally {
             node.recycle();
+        }
+
+        return null;
+    }
+
+    private static CharSequence findFirstPostDescriptionInNode(AccessibilityNodeInfo node, int depth) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return null;
+        }
+
+        try {
+            CharSequence description = node.getContentDescription();
+            if (isPostDescription(description)) {
+                return description.toString();
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+
+                CharSequence childDescription = findFirstPostDescriptionInNode(child, depth + 1);
+                if (childDescription != null) {
+                    return childDescription;
+                }
+            }
+        } finally {
+            if (depth > 0) {
+                node.recycle();
+            }
         }
 
         return null;
@@ -2285,13 +2309,8 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static final class ContentFocusCandidate {
-        View view;
-        int score = Integer.MIN_VALUE;
-    }
-
     private static final class PostFocusCandidate {
-        View view;
+        AccessibilityNodeInfo node;
         int score = Integer.MIN_VALUE;
     }
 
