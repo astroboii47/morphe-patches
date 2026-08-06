@@ -61,6 +61,7 @@ public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
+    private static final Map<Activity, Long> LAST_CONTENT_FOCUS_ATTEMPTS = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
@@ -118,8 +119,13 @@ public final class LongPressImagePreviewPatch {
                 }
             });
             decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
-                    ensureWindowCallback(activity)
+            {
+                ensureWindowCallback(activity);
+                scheduleContentFocus(activity, 120);
+            }
             );
+            scheduleContentFocus(activity, 120);
+            scheduleContentFocus(activity, 650);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to attach Reddit image preview", ex);
         }
@@ -1399,7 +1405,7 @@ public final class LongPressImagePreviewPatch {
                 dispatchShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
                 return true;
             case BACK:
-                dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
+                goBack(activity);
                 return true;
             case NEXT_COMMENT:
                 clickNextCommentButton(activity);
@@ -1522,11 +1528,150 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static void goBack(Activity activity) {
+        DISPATCHING_SHORTCUT_KEY = true;
+        try {
+            activity.onBackPressed();
+        } catch (Throwable ex) {
+            dispatchShortcutKey(activity, KeyEvent.KEYCODE_BACK);
+        } finally {
+            DISPATCHING_SHORTCUT_KEY = false;
+        }
+        scheduleContentFocus(activity, 250);
+        scheduleContentFocus(activity, 800);
+    }
+
+    private static void scheduleContentFocus(Activity activity, long delayMs) {
+        MAIN_HANDLER.postDelayed(() -> focusContentIfNeeded(activity), delayMs);
+    }
+
+    private static void focusContentIfNeeded(Activity activity) {
+        try {
+            View root = activity.getWindow().getDecorView();
+            if (root == null || hasKeyboardInputFocus(activity)) {
+                return;
+            }
+
+            long now = SystemClock.uptimeMillis();
+            synchronized (LAST_CONTENT_FOCUS_ATTEMPTS) {
+                Long last = LAST_CONTENT_FOCUS_ATTEMPTS.get(activity);
+                if (last != null && now - last < 450) {
+                    return;
+                }
+                LAST_CONTENT_FOCUS_ATTEMPTS.put(activity, now);
+            }
+
+            View focused = root.findFocus();
+            if (isContentFocus(root, focused)) {
+                return;
+            }
+
+            View target = findBestScrollableContentView(root, root, new ContentFocusCandidate());
+            if (target == null || target == focused) {
+                return;
+            }
+
+            target.setFocusableInTouchMode(true);
+            target.setFocusable(true);
+            target.requestFocusFromTouch();
+            target.requestFocus();
+
+            AccessibilityNodeInfo node = target.createAccessibilityNodeInfo();
+            try {
+                node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+            } finally {
+                node.recycle();
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to focus Reddit content", ex);
+        }
+    }
+
+    private static boolean isContentFocus(View root, View view) {
+        return view != null && scoreScrollableContentView(root, view) > Integer.MIN_VALUE;
+    }
+
+    private static View findBestScrollableContentView(View root, View view, ContentFocusCandidate best) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
+            return best.view;
+        }
+
+        int score = scoreScrollableContentView(root, view);
+        if (score > best.score) {
+            best.view = view;
+            best.score = score;
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                findBestScrollableContentView(root, group.getChildAt(i), best);
+            }
+        }
+
+        return best.view;
+    }
+
+    private static int scoreScrollableContentView(View root, View view) {
+        if (root == null || view == null || view == root) {
+            return Integer.MIN_VALUE;
+        }
+
+        boolean scrollable = view.canScrollVertically(1) || view.canScrollVertically(-1);
+        String className = view.getClass().getName().toLowerCase();
+        boolean likelyList = className.contains("recycler") || className.contains("compose");
+        if (!scrollable && !likelyList) {
+            return Integer.MIN_VALUE;
+        }
+
+        int[] rootLocation = new int[2];
+        int[] viewLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        view.getLocationOnScreen(viewLocation);
+
+        int left = viewLocation[0] - rootLocation[0];
+        int top = viewLocation[1] - rootLocation[1];
+        int right = left + view.getWidth();
+        int bottom = top + view.getHeight();
+        int centerY = top + view.getHeight() / 2;
+
+        int topChrome = dp(root, 64);
+        int bottomChrome = root.getHeight() - dp(root, 64);
+        if (centerY < topChrome || centerY > bottomChrome) {
+            return Integer.MIN_VALUE;
+        }
+        if (view.getWidth() < root.getWidth() * 0.45f || view.getHeight() < root.getHeight() * 0.25f) {
+            return Integer.MIN_VALUE;
+        }
+
+        int area = Math.min(view.getWidth() * view.getHeight(), root.getWidth() * root.getHeight());
+        int chromePenalty = Math.max(0, topChrome - top) + Math.max(0, bottom - bottomChrome);
+        int edgePenalty = Math.abs(left) + Math.abs(root.getWidth() - right);
+        return area - chromePenalty * 400 - edgePenalty * 8 + (scrollable ? 100000 : 0);
+    }
+
     private static boolean clickNextCommentButton(Activity activity) {
         try {
             View root = activity.getWindow().getDecorView();
             AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            return clickNextCommentButtonInNode(node, 0);
+            if (clickNextCommentButtonInNode(node, 0)) {
+                return true;
+            }
+
+            AccessibilityNodeInfo fallbackRoot = root != null ? root.createAccessibilityNodeInfo() : null;
+            NextCommentButtonCandidate candidate = new NextCommentButtonCandidate();
+            collectLikelyNextCommentButton(root, fallbackRoot, candidate, 0);
+            if (candidate.node == null) {
+                return false;
+            }
+
+            try {
+                return candidate.node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        || clickClickableParent(candidate.node);
+            } finally {
+                candidate.node.recycle();
+            }
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to click Reddit next comment button", ex);
             return false;
@@ -1562,6 +1707,84 @@ public final class LongPressImagePreviewPatch {
         }
 
         return false;
+    }
+
+    private static void collectLikelyNextCommentButton(
+            View root,
+            AccessibilityNodeInfo node,
+            NextCommentButtonCandidate candidate,
+            int depth
+    ) {
+        if (root == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+            return;
+        }
+
+        boolean keepNode = false;
+        try {
+            int score = scoreLikelyNextCommentButton(root, node);
+            if (score > candidate.score) {
+                if (candidate.node != null) {
+                    candidate.node.recycle();
+                }
+                candidate.node = node;
+                candidate.score = score;
+                keepNode = true;
+            }
+
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                AccessibilityNodeInfo child = null;
+                try {
+                    child = node.getChild(i);
+                } catch (Throwable ignored) {
+                }
+                collectLikelyNextCommentButton(root, child, candidate, depth + 1);
+            }
+        } finally {
+            if (!keepNode && candidate.node != node) {
+                node.recycle();
+            }
+        }
+    }
+
+    private static int scoreLikelyNextCommentButton(View root, AccessibilityNodeInfo node) {
+        if (!node.isVisibleToUser() || !node.isClickable()) {
+            return Integer.MIN_VALUE;
+        }
+
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (bounds.isEmpty()) {
+            return Integer.MIN_VALUE;
+        }
+
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        int centerX = bounds.centerX() - rootLocation[0];
+        int centerY = bounds.centerY() - rootLocation[1];
+        int width = bounds.width();
+        int height = bounds.height();
+        int minSize = dp(root, 28);
+        int maxSize = dp(root, 96);
+        if (width < minSize || height < minSize || width > maxSize || height > maxSize) {
+            return Integer.MIN_VALUE;
+        }
+        if (centerY < root.getHeight() * 0.35f || centerY > root.getHeight() - dp(root, 64)) {
+            return Integer.MIN_VALUE;
+        }
+        if (centerX < root.getWidth() * 0.45f) {
+            return Integer.MIN_VALUE;
+        }
+
+        String text = (
+                String.valueOf(node.getText()) + " "
+                        + String.valueOf(node.getContentDescription()) + " "
+                        + String.valueOf(node.getViewIdResourceName())
+        ).toLowerCase();
+        int labelBonus = text.contains("comment") || text.contains("next") ? 50000 : 0;
+        int bottomBonus = centerY;
+        int rightBonus = centerX;
+        return labelBonus + bottomBonus + rightBonus + Math.min(width, height);
     }
 
     private static boolean clickClickableParent(AccessibilityNodeInfo node) {
@@ -1615,7 +1838,7 @@ public final class LongPressImagePreviewPatch {
 
         View focused = root != null ? root.findFocus() : null;
         if (focused == null) {
-            return null;
+            return getMediaUrlNearViewportCenter(root);
         }
 
         int[] location = new int[2];
@@ -1624,7 +1847,26 @@ public final class LongPressImagePreviewPatch {
                 root,
                 location[1] + focused.getHeight() / 2
         );
-        return getMediaUrlForPostDescription(nearestDescription);
+        mediaUrl = getMediaUrlForPostDescription(nearestDescription);
+        if (mediaUrl != null) {
+            return mediaUrl;
+        }
+
+        return getMediaUrlNearViewportCenter(root);
+    }
+
+    private static String getMediaUrlNearViewportCenter(View root) {
+        if (root == null) {
+            return null;
+        }
+
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        CharSequence centerDescription = findNearestPostDescription(
+                root,
+                rootLocation[1] + root.getHeight() / 2
+        );
+        return getMediaUrlForPostDescription(centerDescription);
     }
 
     private static CharSequence findFocusedPostDescription(View root) {
@@ -1896,6 +2138,16 @@ public final class LongPressImagePreviewPatch {
             this.description = description;
             this.bounds = bounds;
         }
+    }
+
+    private static final class ContentFocusCandidate {
+        View view;
+        int score = Integer.MIN_VALUE;
+    }
+
+    private static final class NextCommentButtonCandidate {
+        AccessibilityNodeInfo node;
+        int score = Integer.MIN_VALUE;
     }
 
     private enum ShortcutAction {
