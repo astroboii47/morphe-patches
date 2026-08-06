@@ -27,6 +27,7 @@ import app.morphe.extension.reddit.settings.preference.BooleanSettingPreference;
 import app.morphe.extension.reddit.settings.preference.CustomFontFilePreference;
 import app.morphe.extension.reddit.settings.preference.CustomFontTogglePreference;
 import app.morphe.extension.reddit.settings.preference.ForceSystemFontPreference;
+import app.morphe.extension.reddit.settings.preference.StringSettingPreference;
 
 @SuppressWarnings("deprecation")
 public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
@@ -109,6 +110,38 @@ public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
             addPreference(new BooleanSettingPreference(
                     context,
                     Settings.LONG_PRESS_IMAGE_PREVIEW
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_UP
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_DOWN
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_LEFT
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_RIGHT
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_PREVIEW
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_OPEN_POST
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_BACK
+            ));
+            addPreference(new StringSettingPreference(
+                    context,
+                    Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT
             ));
         }
 

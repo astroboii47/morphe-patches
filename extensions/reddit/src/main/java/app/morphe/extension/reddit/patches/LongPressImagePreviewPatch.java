@@ -15,6 +15,7 @@ import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
 import android.view.Gravity;
@@ -68,6 +69,7 @@ public final class LongPressImagePreviewPatch {
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final ExecutorService IMAGE_LOADER = Executors.newSingleThreadExecutor();
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
+    private static boolean DISPATCHING_SHORTCUT_KEY;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -104,7 +106,22 @@ public final class LongPressImagePreviewPatch {
             }
 
             ensureWindowCallback(activity);
-            activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() ->
+            View decorView = activity.getWindow().getDecorView();
+            decorView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    hidePreview();
+                    synchronized (TOUCH_STATES) {
+                        TOUCH_STATES.remove(activity);
+                    }
+                    v.removeOnAttachStateChangeListener(this);
+                }
+            });
+            decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
         } catch (Throwable ex) {
@@ -1302,11 +1319,7 @@ public final class LongPressImagePreviewPatch {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
-    private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
-        if (event.getKeyCode() != KeyEvent.KEYCODE_P || !Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
-            return false;
-        }
-
+    private static boolean handlePreviewShortcut(Activity activity, KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_UP) {
             if (activePreview != null) {
                 hidePreview();
@@ -1335,6 +1348,186 @@ public final class LongPressImagePreviewPatch {
 
         showPreview(activity, root, mediaUrl);
         return true;
+    }
+
+    private static boolean handleKeyboardShortcut(
+            Activity activity,
+            KeyEvent event,
+            Window.Callback delegate
+    ) {
+        if (DISPATCHING_SHORTCUT_KEY || hasKeyboardInputFocus(activity) || hasShortcutModifier(event)) {
+            return false;
+        }
+
+        ShortcutAction action = getShortcutAction(event.getKeyCode());
+        if (action == null) {
+            return false;
+        }
+
+        if (action == ShortcutAction.PREVIEW) {
+            if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
+                return false;
+            }
+            return handlePreviewShortcut(activity, event);
+        }
+
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            return true;
+        }
+        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            return false;
+        }
+        if (event.getRepeatCount() > 0
+                && action != ShortcutAction.UP
+                && action != ShortcutAction.DOWN
+                && action != ShortcutAction.LEFT
+                && action != ShortcutAction.RIGHT
+                && action != ShortcutAction.NEXT_COMMENT) {
+            return true;
+        }
+
+        switch (action) {
+            case UP:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_UP);
+                return true;
+            case DOWN:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_DOWN);
+                return true;
+            case LEFT:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_LEFT);
+                return true;
+            case RIGHT:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_RIGHT);
+                return true;
+            case OPEN_POST:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_DPAD_CENTER);
+                return true;
+            case BACK:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_BACK);
+                return true;
+            case NEXT_COMMENT:
+                dispatchShortcutKey(delegate, KeyEvent.KEYCODE_PAGE_DOWN);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean hasKeyboardInputFocus(Activity activity) {
+        try {
+            View root = activity.getWindow().getDecorView();
+            View focused = root != null ? root.findFocus() : null;
+            return focused != null && focused.onCheckIsTextEditor();
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to check Reddit keyboard focus", ex);
+            return true;
+        }
+    }
+
+    private static boolean hasShortcutModifier(KeyEvent event) {
+        return event.isCtrlPressed()
+                || event.isAltPressed()
+                || event.isMetaPressed()
+                || event.isSymPressed()
+                || event.isFunctionPressed();
+    }
+
+    private static ShortcutAction getShortcutAction(int keyCode) {
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_PREVIEW.get())) {
+            return ShortcutAction.PREVIEW;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_UP.get())) {
+            return ShortcutAction.UP;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_DOWN.get())) {
+            return ShortcutAction.DOWN;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_LEFT.get())) {
+            return ShortcutAction.LEFT;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_RIGHT.get())) {
+            return ShortcutAction.RIGHT;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_OPEN_POST.get())) {
+            return ShortcutAction.OPEN_POST;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_BACK.get())) {
+            return ShortcutAction.BACK;
+        }
+        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get())) {
+            return ShortcutAction.NEXT_COMMENT;
+        }
+        return null;
+    }
+
+    private static int shortcutKeyCode(String shortcut) {
+        if (shortcut == null) {
+            return KeyEvent.KEYCODE_UNKNOWN;
+        }
+
+        String value = shortcut.trim();
+        if (value.length() == 0) {
+            return KeyEvent.KEYCODE_UNKNOWN;
+        }
+        if (value.length() == 1) {
+            char ch = Character.toUpperCase(value.charAt(0));
+            if (ch >= 'A' && ch <= 'Z') {
+                return KeyEvent.KEYCODE_A + (ch - 'A');
+            }
+            if (ch >= '0' && ch <= '9') {
+                return KeyEvent.KEYCODE_0 + (ch - '0');
+            }
+        }
+
+        String normalized = value.toUpperCase().replace(' ', '_').replace('-', '_');
+        switch (normalized) {
+            case "UP":
+            case "DPAD_UP":
+                return KeyEvent.KEYCODE_DPAD_UP;
+            case "DOWN":
+            case "DPAD_DOWN":
+                return KeyEvent.KEYCODE_DPAD_DOWN;
+            case "LEFT":
+            case "DPAD_LEFT":
+                return KeyEvent.KEYCODE_DPAD_LEFT;
+            case "RIGHT":
+            case "DPAD_RIGHT":
+                return KeyEvent.KEYCODE_DPAD_RIGHT;
+            case "ENTER":
+                return KeyEvent.KEYCODE_ENTER;
+            case "CENTER":
+            case "DPAD_CENTER":
+                return KeyEvent.KEYCODE_DPAD_CENTER;
+            case "BACK":
+                return KeyEvent.KEYCODE_BACK;
+            case "SPACE":
+                return KeyEvent.KEYCODE_SPACE;
+            case "TAB":
+                return KeyEvent.KEYCODE_TAB;
+            case "PAGE_DOWN":
+            case "PAGEDOWN":
+                return KeyEvent.KEYCODE_PAGE_DOWN;
+            case "PAGE_UP":
+            case "PAGEUP":
+                return KeyEvent.KEYCODE_PAGE_UP;
+            default:
+                return KeyEvent.KEYCODE_UNKNOWN;
+        }
+    }
+
+    private static void dispatchShortcutKey(Window.Callback delegate, int keyCode) {
+        if (delegate == null) {
+            return;
+        }
+
+        long now = SystemClock.uptimeMillis();
+        DISPATCHING_SHORTCUT_KEY = true;
+        try {
+            delegate.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
+            delegate.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
+        } finally {
+            DISPATCHING_SHORTCUT_KEY = false;
+        }
     }
 
     private static String getMediaUrlForFocusedPost(View root) {
@@ -1439,7 +1632,7 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
-            if (handlePreviewKey(activity, event)) {
+            if (handleKeyboardShortcut(activity, event, delegate)) {
                 return true;
             }
             return delegate != null && delegate.dispatchKeyEvent(event);
@@ -1627,5 +1820,16 @@ public final class LongPressImagePreviewPatch {
             this.description = description;
             this.bounds = bounds;
         }
+    }
+
+    private enum ShortcutAction {
+        UP,
+        DOWN,
+        LEFT,
+        RIGHT,
+        PREVIEW,
+        OPEN_POST,
+        BACK,
+        NEXT_COMMENT
     }
 }
