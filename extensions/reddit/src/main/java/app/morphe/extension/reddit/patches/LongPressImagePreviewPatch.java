@@ -61,7 +61,6 @@ public final class LongPressImagePreviewPatch {
     private static final Set<Activity> ATTACHED_ACTIVITIES =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<Activity, TouchState> TOUCH_STATES = new WeakHashMap<>();
-    private static final Map<Activity, FocusedPostState> FOCUSED_POSTS = new WeakHashMap<>();
     private static final Map<String, String> MEDIA_URLS = new HashMap<>();
     private static final Map<String, String> LINK_TITLES = new HashMap<>();
     private static final Map<String, String> TITLE_MEDIA_URLS = new HashMap<>();
@@ -70,7 +69,7 @@ public final class LongPressImagePreviewPatch {
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final ExecutorService IMAGE_LOADER = Executors.newSingleThreadExecutor();
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
-    private static boolean DISPATCHING_SHORTCUT_KEY;
+    private static boolean REDISPATCHING_FEED_KEY;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -94,6 +93,10 @@ public final class LongPressImagePreviewPatch {
     }
 
     public static void attach(Activity activity) {
+        if (!isPatchIncluded()) {
+            return;
+        }
+
         try {
             synchronized (ATTACHED_ACTIVITIES) {
                 if (ATTACHED_ACTIVITIES.contains(activity)) {
@@ -103,34 +106,9 @@ public final class LongPressImagePreviewPatch {
             }
 
             ensureWindowCallback(activity);
-            View decorView = activity.getWindow().getDecorView();
-            decorView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-                @Override
-                public void onViewAttachedToWindow(View v) {
-                }
-
-                @Override
-                public void onViewDetachedFromWindow(View v) {
-                    hidePreview();
-                    synchronized (TOUCH_STATES) {
-                        TOUCH_STATES.remove(activity);
-                    }
-                    synchronized (FOCUSED_POSTS) {
-                        FOCUSED_POSTS.remove(activity);
-                    }
-                    v.removeOnAttachStateChangeListener(this);
-                }
-            });
-            decorView.getViewTreeObserver().addOnGlobalLayoutListener(() ->
+            activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
-            if (android.os.Build.VERSION.SDK_INT >= 28) {
-                decorView.addOnUnhandledKeyEventListener((view, event) ->
-                        handleKeyboardShortcut(activity, event, null)
-                );
-            }
-            schedulePostFocus(activity, 160);
-            schedulePostFocus(activity, 700);
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to attach Reddit image preview", ex);
         }
@@ -138,6 +116,8 @@ public final class LongPressImagePreviewPatch {
 
     public static void registerMediaPreview(String linkId, Object mediaPreview) {
         String url = extractUrl(mediaPreview);
+        url = RedditComposeFocusBridge.preferVideoUrl(mediaPreview, url);
+        RedditComposeFocusBridge.registerPreviewMedia(linkId, url, mediaPreview);
         debugLog("media hook linkId=" + linkId + " mediaClass="
                 + (mediaPreview != null ? mediaPreview.getClass().getName() : "null")
                 + " url=" + summarizeUrl(url));
@@ -153,6 +133,12 @@ public final class LongPressImagePreviewPatch {
         synchronized (MEDIA_URLS) {
             if (MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
                 MEDIA_URLS.clear();
+            }
+            String existingUrl = MEDIA_URLS.get(linkId);
+            if (existingUrl != null
+                    && RedditComposeFocusBridge.isVideoPreviewUrl(existingUrl)
+                    && !RedditComposeFocusBridge.isVideoPreviewUrl(normalizedUrl)) {
+                return;
             }
             MEDIA_URLS.put(linkId, normalizedUrl);
         }
@@ -173,6 +159,7 @@ public final class LongPressImagePreviewPatch {
             return;
         }
 
+        RedditComposeFocusBridge.registerPreviewTitle(linkId, title);
         synchronized (LINK_TITLES) {
             if (LINK_TITLES.size() > MAX_CACHED_MEDIA_URLS) {
                 LINK_TITLES.clear();
@@ -192,6 +179,8 @@ public final class LongPressImagePreviewPatch {
 
     public static void registerPostMedia(String title, Object mediaPreview) {
         String url = extractUrl(mediaPreview);
+        url = RedditComposeFocusBridge.preferVideoUrl(mediaPreview, url);
+        RedditComposeFocusBridge.registerPreviewMedia(title, url, mediaPreview);
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             if (title != null && title.length() != 0 && mediaPreview != null) {
                 debugLog("cache miss title=\"" + title + "\" mediaClass="
@@ -219,6 +208,9 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(preview);
         }
 
+        url = RedditComposeFocusBridge.preferVideoUrl(preview, url);
+        RedditComposeFocusBridge.cachePostBodyFromModel(title, preview);
+        RedditComposeFocusBridge.registerPreviewMedia(linkId, url, preview);
         debugLog("compact preview hook linkId=" + linkId
                 + " title=\"" + title + "\" url=" + summarizeUrl(url));
 
@@ -247,6 +239,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(onProfilePost);
         }
 
+        RedditComposeFocusBridge.registerPreviewBase(title, onPost, onSubredditPost, onProfilePost);
         debugLog("post preview base hook title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             return;
@@ -326,6 +319,7 @@ public final class LongPressImagePreviewPatch {
             url = extractUrl(thumbnailCell);
         }
 
+        RedditComposeFocusBridge.registerPreviewMedia(linkId, url, thumbnailCell);
         debugLog("classic cell hook linkId=" + linkId
                 + " title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title != null && title.length() != 0) {
@@ -454,20 +448,6 @@ public final class LongPressImagePreviewPatch {
 
     private static void showPreview(Activity activity, View root, int rawX, int rawY) {
         try {
-            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
-            if (mediaUrl == null) {
-                Log.i(LOG_TAG, "no real media url for preview");
-                return;
-            }
-
-            showPreview(activity, root, mediaUrl);
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to show Reddit image preview", ex);
-        }
-    }
-
-    private static void showPreview(Activity activity, View root, String mediaUrl) {
-        try {
             hidePreview();
 
             View decorView = activity.getWindow().getDecorView();
@@ -483,6 +463,12 @@ public final class LongPressImagePreviewPatch {
 
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
+
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl == null) {
+                Log.i(LOG_TAG, "no real media url for preview");
+                return;
+            }
 
             Log.i(LOG_TAG, "showing image preview");
             ImageView preview = new ImageView(activity);
@@ -582,6 +568,11 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static String getMediaUrlAtPoint(View root, int rawX, int rawY) {
+        String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
+        if (modelMediaUrl != null) {
+            return modelMediaUrl;
+        }
+
         String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
         if (linkId != null) {
             synchronized (MEDIA_URLS) {
@@ -601,17 +592,9 @@ public final class LongPressImagePreviewPatch {
             return null;
         }
 
-        return getMediaUrlForPostDescription(description);
-    }
-
-    private static String getMediaUrlForPostDescription(CharSequence description) {
-        if (description == null) {
-            return null;
-        }
-
         String text = description.toString();
         synchronized (TITLE_MEDIA_URLS) {
-            Log.i(LOG_TAG, "selected row=\"" + text + "\" cacheSize=" + TITLE_MEDIA_URLS.size());
+            Log.i(LOG_TAG, "pressed row=\"" + text + "\" cacheSize=" + TITLE_MEDIA_URLS.size());
             String bestTitle = null;
             for (String title : TITLE_MEDIA_URLS.keySet()) {
                 if (text.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
@@ -1326,1112 +1309,121 @@ public final class LongPressImagePreviewPatch {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
-    private static boolean handlePreviewShortcut(Activity activity, KeyEvent event) {
-        if (event.getAction() == KeyEvent.ACTION_UP) {
-            if (activePreview != null) {
-                hidePreview();
-                return true;
-            }
+    private static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN
+                && keyCode != KeyEvent.KEYCODE_DPAD_UP) {
             return false;
         }
+
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
             return false;
         }
-        if (event.getRepeatCount() > 0 && activePreview != null) {
-            return true;
+
+        if (REDISPATCHING_FEED_KEY) {
+            return false;
         }
 
         View root = activity.getWindow().getDecorView();
-        View focused = root != null ? root.findFocus() : null;
-        if (focused != null && focused.onCheckIsTextEditor()) {
-            return false;
-        }
-
-        if (!hasFocusedPost(root)) {
-            focusVisiblePost(activity);
-        }
-
-        if (!showPreviewForFocusedPost(activity, root)) {
-            Log.i(LOG_TAG, "no focused post media url for preview");
-        }
-
-        return true;
+        return focusFeedContent(activity, root, event, keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                ? View.FOCUS_DOWN
+                : View.FOCUS_UP);
     }
 
-    private static boolean handleKeyboardShortcut(
-            Activity activity,
-            KeyEvent event,
-            Window.Callback delegate
-    ) {
-        if (DISPATCHING_SHORTCUT_KEY || hasKeyboardInputFocus(activity) || hasShortcutModifier(event)) {
-            return false;
-        }
-
-        ShortcutAction action = getShortcutAction(event.getKeyCode());
-        if (action == null) {
-            return false;
-        }
-
-        if (action == ShortcutAction.PREVIEW) {
-            if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
-                return false;
-            }
-            return handlePreviewShortcut(activity, event);
-        }
-
-        if (event.getAction() == KeyEvent.ACTION_UP) {
-            return true;
-        }
-        if (event.getAction() != KeyEvent.ACTION_DOWN) {
-            return false;
-        }
-        if (event.getRepeatCount() > 0
-                && action != ShortcutAction.UP
-                && action != ShortcutAction.DOWN
-                && action != ShortcutAction.LEFT
-                && action != ShortcutAction.RIGHT
-                && action != ShortcutAction.NEXT_COMMENT) {
-            return true;
-        }
-
-        switch (action) {
-            case UP:
-                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_UP);
-                return true;
-            case DOWN:
-                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
-                return true;
-            case LEFT:
-                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
-                return true;
-            case RIGHT:
-                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
-                return true;
-            case OPEN_POST:
-                dispatchFeedShortcutKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
-                return true;
-            case BACK:
-                activity.onBackPressed();
-                schedulePostFocus(activity, 260);
-                schedulePostFocus(activity, 900);
-                return true;
-            case NEXT_COMMENT:
-                clickNextCommentButton(activity);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static boolean hasKeyboardInputFocus(Activity activity) {
-        try {
-            View root = activity.getWindow().getDecorView();
-            View focused = root != null ? root.findFocus() : null;
-            return focused != null && focused.onCheckIsTextEditor();
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to check Reddit keyboard focus", ex);
-            return true;
-        }
-    }
-
-    private static boolean hasShortcutModifier(KeyEvent event) {
-        return event.isCtrlPressed()
-                || event.isAltPressed()
-                || event.isMetaPressed()
-                || event.isSymPressed()
-                || event.isFunctionPressed();
-    }
-
-    private static ShortcutAction getShortcutAction(int keyCode) {
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_PREVIEW.get())
-                || keyCode == KeyEvent.KEYCODE_P) {
-            return ShortcutAction.PREVIEW;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_UP.get())
-                || keyCode == KeyEvent.KEYCODE_I) {
-            return ShortcutAction.UP;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_DOWN.get())
-                || keyCode == KeyEvent.KEYCODE_K) {
-            return ShortcutAction.DOWN;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_LEFT.get())
-                || keyCode == KeyEvent.KEYCODE_J) {
-            return ShortcutAction.LEFT;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_RIGHT.get())
-                || keyCode == KeyEvent.KEYCODE_L) {
-            return ShortcutAction.RIGHT;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_OPEN_POST.get())
-                || keyCode == KeyEvent.KEYCODE_O) {
-            return ShortcutAction.OPEN_POST;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_BACK.get())
-                || keyCode == KeyEvent.KEYCODE_U) {
-            return ShortcutAction.BACK;
-        }
-        if (keyCode == shortcutKeyCode(Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get())
-                || keyCode == KeyEvent.KEYCODE_N) {
-            return ShortcutAction.NEXT_COMMENT;
-        }
-        return null;
-    }
-
-    private static int shortcutKeyCode(String shortcut) {
-        if (shortcut == null) {
-            return KeyEvent.KEYCODE_UNKNOWN;
-        }
-
-        String value = shortcut.trim();
-        if (value.length() == 0) {
-            return KeyEvent.KEYCODE_UNKNOWN;
-        }
-        if (value.length() == 1) {
-            char ch = Character.toUpperCase(value.charAt(0));
-            if (ch >= 'A' && ch <= 'Z') {
-                return KeyEvent.KEYCODE_A + (ch - 'A');
-            }
-            if (ch >= '0' && ch <= '9') {
-                return KeyEvent.KEYCODE_0 + (ch - '0');
-            }
-        }
-
-        String normalized = value.toUpperCase().replace(' ', '_').replace('-', '_');
-        switch (normalized) {
-            case "UP":
-            case "DPAD_UP":
-                return KeyEvent.KEYCODE_DPAD_UP;
-            case "DOWN":
-            case "DPAD_DOWN":
-                return KeyEvent.KEYCODE_DPAD_DOWN;
-            case "LEFT":
-            case "DPAD_LEFT":
-                return KeyEvent.KEYCODE_DPAD_LEFT;
-            case "RIGHT":
-            case "DPAD_RIGHT":
-                return KeyEvent.KEYCODE_DPAD_RIGHT;
-            case "ENTER":
-                return KeyEvent.KEYCODE_ENTER;
-            case "CENTER":
-            case "DPAD_CENTER":
-                return KeyEvent.KEYCODE_DPAD_CENTER;
-            case "BACK":
-                return KeyEvent.KEYCODE_BACK;
-            case "SPACE":
-                return KeyEvent.KEYCODE_SPACE;
-            case "TAB":
-                return KeyEvent.KEYCODE_TAB;
-            case "PAGE_DOWN":
-            case "PAGEDOWN":
-                return KeyEvent.KEYCODE_PAGE_DOWN;
-            case "PAGE_UP":
-            case "PAGEUP":
-                return KeyEvent.KEYCODE_PAGE_UP;
-            default:
-                return KeyEvent.KEYCODE_UNKNOWN;
-        }
-    }
-
-    private static void dispatchShortcutKey(Activity activity, int keyCode) {
-        long now = SystemClock.uptimeMillis();
-        DISPATCHING_SHORTCUT_KEY = true;
-        try {
-            activity.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
-            activity.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
-        } finally {
-            DISPATCHING_SHORTCUT_KEY = false;
-        }
-    }
-
-    private static void dispatchFeedShortcutKey(Activity activity, int keyCode) {
-        if (hasFocusedPost(activity.getWindow().getDecorView())) {
-            dispatchShortcutKey(activity, keyCode);
-            return;
-        }
-
-        if (!focusVisiblePost(activity)) {
-            dispatchShortcutKey(activity, keyCode);
-            return;
-        }
-
-        MAIN_HANDLER.postDelayed(() -> dispatchShortcutKey(activity, keyCode), 48);
-    }
-
-    private static void schedulePostFocus(Activity activity, long delayMs) {
-        MAIN_HANDLER.postDelayed(() -> focusVisiblePost(activity), delayMs);
-    }
-
-    private static boolean focusVisiblePost(Activity activity) {
-        try {
-            if (hasKeyboardInputFocus(activity)) {
-                return false;
-            }
-
-            View root = activity.getWindow().getDecorView();
-            if (hasFocusedPost(root)) {
-                return true;
-            }
-
-            if (requestComposeFocusNearPost(root) && hasFocusedPost(root)) {
-                return true;
-            }
-            clearNonPostFocus(root);
-
-            if (focusProviderPostNode(activity, root)) {
-                return true;
-            }
-
-            PostFocusCandidate candidate = new PostFocusCandidate();
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            collectBestPostFocusNode(root, node, candidate, 0);
-            if (candidate.node == null) {
-                return false;
-            }
-
-            try {
-                boolean focused = candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
-                if (focused) {
-                    Rect bounds = new Rect();
-                    candidate.node.getBoundsInScreen(bounds);
-                    cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(candidate.node, 0));
-                }
-                return focused && (hasFocusedPost(root) || candidate.bounds != null);
-            } finally {
-                candidate.node.recycle();
-            }
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to focus Reddit post", ex);
-            return false;
-        }
-    }
-
-    private static boolean requestComposeFocusNearPost(View root) {
-        Rect bounds = findBestPostBoundsForFocus(root);
-        if (root == null || bounds == null || bounds.isEmpty()) {
-            return false;
-        }
-
-        View composeView = findComposeViewContaining(root, bounds);
-        if (composeView == null) {
-            return false;
-        }
-
-        int[] location = new int[2];
-        composeView.getLocationOnScreen(location);
-        Rect localBounds = new Rect(bounds);
-        localBounds.offset(-location[0], -location[1]);
-
-        return composeView.requestFocus(View.FOCUS_DOWN, localBounds)
-                || composeView.requestFocus(View.FOCUS_FORWARD, localBounds)
-                || composeView.requestFocus(View.FOCUS_RIGHT, localBounds);
-    }
-
-    private static void clearNonPostFocus(View root) {
-        try {
-            if (root == null || hasFocusedPost(root)) {
-                return;
-            }
-
-            View focused = root.findFocus();
-            if (focused != null && !focused.onCheckIsTextEditor()) {
-                focused.clearFocus();
-            }
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static boolean focusProviderPostNode(Activity activity, View root) {
+    private static boolean focusFeedContent(Activity activity, View root, KeyEvent event, int direction) {
         if (root == null) {
             return false;
         }
 
-        ProviderPostFocusCandidate candidate = new ProviderPostFocusCandidate();
-        collectBestProviderPostFocusNode(root, root, candidate);
-        if (candidate.provider == null || candidate.virtualId == Integer.MIN_VALUE) {
+        View focused = root.findFocus();
+        if (isFeedFocus(focused, root)) {
             return false;
         }
 
-        boolean focused = false;
-        try {
-            focused = candidate.provider.performAction(
-                    candidate.virtualId,
-                    AccessibilityNodeInfo.ACTION_FOCUS,
-                    null
-            );
-            if (!focused) {
-                focused = candidate.provider.performAction(
-                        candidate.virtualId,
-                        AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS,
-                        null
-                );
-            }
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed provider focus for Reddit post", ex);
+        focusVisiblePostNode(root, direction);
+        synthesizeFeedFocusTouch(root, direction);
+        synthesizeBottomRightTabHandoff(activity, root, event);
+        return true;
+    }
+
+    private static boolean isFeedFocus(View view, View root) {
+        return view != null && isGoodFeedFocusTarget(view, root);
+    }
+
+    private static boolean isGoodFeedFocusTarget(View view, View root) {
+        if (!view.isFocusable() && !view.isFocusableInTouchMode() && !view.isClickable()) {
             return false;
         }
 
-        if (focused) {
-            cacheFocusedPost(activity, candidate.bounds, candidate.description);
-            Log.i(LOG_TAG, "focused Reddit post via provider");
-        }
-        return focused;
-    }
-
-    private static void collectBestProviderPostFocusNode(
-            View root,
-            View view,
-            ProviderPostFocusCandidate candidate
-    ) {
-        if (view == null || view.getVisibility() != View.VISIBLE) {
-            return;
-        }
-
-        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
-        if (provider != null) {
-            AccessibilityNodeInfo node = null;
-            try {
-                node = provider.createAccessibilityNodeInfo(View.NO_ID);
-                collectBestProviderPostFocusNode(root, provider, node, View.NO_ID, candidate, 0);
-            } catch (Throwable ignored) {
-                if (node != null) {
-                    node.recycle();
-                }
-            }
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                collectBestProviderPostFocusNode(root, group.getChildAt(i), candidate);
-            }
-        }
-    }
-
-    private static void collectBestProviderPostFocusNode(
-            View root,
-            AccessibilityNodeProvider provider,
-            AccessibilityNodeInfo node,
-            int virtualId,
-            ProviderPostFocusCandidate candidate,
-            int depth
-    ) {
-        if (root == null || provider == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return;
-        }
-
-        try {
-            int score = scorePostFocusNode(root, node);
-            if (score > candidate.score && virtualId != View.NO_ID) {
-                Rect bounds = new Rect();
-                node.getBoundsInScreen(bounds);
-                candidate.provider = provider;
-                candidate.virtualId = virtualId;
-                candidate.score = score;
-                candidate.bounds = bounds;
-                candidate.description = findFirstPostDescriptionInNodeNoRecycle(node, 0);
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                int childVirtualId = Integer.MIN_VALUE;
-                try {
-                    childVirtualId = getChildVirtualId(node, i);
-                    if (childVirtualId != Integer.MIN_VALUE) {
-                        child = provider.createAccessibilityNodeInfo(childVirtualId);
-                    }
-                } catch (Throwable ignored) {
-                }
-                collectBestProviderPostFocusNode(
-                        root,
-                        provider,
-                        child,
-                        childVirtualId,
-                        candidate,
-                        depth + 1
-                );
-            }
-        } finally {
-            node.recycle();
-        }
-    }
-
-    private static View findComposeViewContaining(View view, Rect screenBounds) {
-        if (view == null || view.getVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0) {
-            return null;
+        CharSequence description = view.getContentDescription();
+        if (isPostDescription(description)) {
+            return true;
         }
 
         int[] location = new int[2];
         view.getLocationOnScreen(location);
-        Rect viewBounds = new Rect(
-                location[0],
-                location[1],
-                location[0] + view.getWidth(),
-                location[1] + view.getHeight()
-        );
-        if (!Rect.intersects(viewBounds, screenBounds)) {
-            return null;
-        }
-
-        View best = null;
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View child = findComposeViewContaining(group.getChildAt(i), screenBounds);
-                if (child != null) {
-                    best = child;
-                }
-            }
-        }
-
-        if (best != null) {
-            return best;
-        }
-
-        String className = view.getClass().getName();
-        return className.startsWith("androidx.compose.ui.platform.") ? view : null;
-    }
-
-    private static Rect findBestPostBoundsForFocus(View root) {
-        try {
-            PostFocusCandidate candidate = new PostFocusCandidate();
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            collectBestPostFocusNode(root, node, candidate, 0);
-            if (candidate.node == null) {
-                return null;
-            }
-
-            try {
-                Rect bounds = new Rect();
-                candidate.node.getBoundsInScreen(bounds);
-                return bounds;
-            } finally {
-                candidate.node.recycle();
-            }
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to find Reddit post focus bounds", ex);
-            return null;
-        }
-    }
-
-    private static void cacheFocusedPost(Activity activity, Rect bounds, CharSequence description) {
-        if (bounds == null || bounds.isEmpty()) {
-            return;
-        }
-
-        synchronized (FOCUSED_POSTS) {
-            FOCUSED_POSTS.put(activity, new FocusedPostState(bounds, description));
-        }
-    }
-
-    private static FocusedPostState getCachedFocusedPost(Activity activity) {
-        synchronized (FOCUSED_POSTS) {
-            return FOCUSED_POSTS.get(activity);
-        }
-    }
-
-    private static boolean hasFocusedPost(View root) {
-        try {
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            return hasFocusedPostInNode(node, 0);
-        } catch (Throwable ignored) {
-            return false;
-        }
-    }
-
-    private static boolean hasFocusedPostInNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+        int topChrome = dp(root, 96);
+        int bottomChrome = root.getHeight() - dp(root, 96);
+        int centerY = location[1] + view.getHeight() / 2;
+        if (centerY < topChrome || centerY > bottomChrome) {
             return false;
         }
 
+        String name = view.getClass().getName().toLowerCase();
+        return name.contains("recycler")
+                || name.contains("compose")
+                || view.canScrollVertically(1)
+                || view.canScrollVertically(-1);
+    }
+
+    private static boolean focusVisiblePostNode(View root, int direction) {
+        AccessibilityFocusCandidate candidate = new AccessibilityFocusCandidate();
+        AccessibilityNodeInfo node = null;
         try {
-            if ((node.isFocused() || node.isAccessibilityFocused()) && isPostUnit(node)) {
-                return true;
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-                if (hasFocusedPostInNode(child, depth + 1)) {
-                    return true;
-                }
-            }
-        } finally {
-            node.recycle();
-        }
-
-        return false;
-    }
-
-    private static void collectBestPostFocusNode(
-            View root,
-            AccessibilityNodeInfo node,
-            PostFocusCandidate candidate,
-            int depth
-    ) {
-        if (root == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return;
-        }
-
-        boolean keepNode = false;
-        try {
-            int score = scorePostFocusNode(root, node);
-            if (score > candidate.score) {
-                if (candidate.node != null) {
-                    candidate.node.recycle();
-                }
-                candidate.node = node;
-                candidate.score = score;
-                Rect bounds = new Rect();
-                node.getBoundsInScreen(bounds);
-                candidate.bounds = bounds;
-                keepNode = true;
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-                collectBestPostFocusNode(root, child, candidate, depth + 1);
-            }
-        } finally {
-            if (!keepNode && candidate.node != node) {
-                node.recycle();
-            }
-        }
-    }
-
-    private static int scorePostFocusNode(View root, AccessibilityNodeInfo node) {
-        if (!node.isVisibleToUser() || !node.isFocusable() || !isPostUnit(node)) {
-            return Integer.MIN_VALUE;
-        }
-
-        Rect bounds = new Rect();
-        node.getBoundsInScreen(bounds);
-        if (bounds.isEmpty()) {
-            return Integer.MIN_VALUE;
-        }
-
-        int[] rootLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        int top = bounds.top - rootLocation[1];
-        int bottom = bounds.bottom - rootLocation[1];
-        int centerY = (top + bottom) / 2;
-        int topChrome = dp(root, 104);
-        int bottomChrome = root.getHeight() - dp(root, 112);
-        if (bottom <= topChrome || top >= bottomChrome) {
-            return Integer.MIN_VALUE;
-        }
-
-        int targetY = topChrome + dp(root, 112);
-        int distance = Math.abs(centerY - targetY);
-        return 100000 - distance + Math.min(bounds.height(), root.getHeight());
-    }
-
-    private static boolean isPostUnit(AccessibilityNodeInfo node) {
-        CharSequence viewId = node.getViewIdResourceName();
-        return viewId != null && "post_unit".contentEquals(viewId);
-    }
-
-    private static boolean showPreviewForFocusedPost(Activity activity, View root) {
-        if (root == null) {
-            return false;
-        }
-
-        FocusedPostState cached = getCachedFocusedPost(activity);
-        if (cached != null && cached.description != null) {
-            String cachedMediaUrl = getMediaUrlForPostDescription(cached.description);
-            if (cachedMediaUrl != null) {
-                showPreview(activity, root, cachedMediaUrl);
-                return true;
-            }
-        }
-
-        Rect bounds = findFocusedPostBounds(root);
-        if (bounds == null) {
-            if (cached != null) {
-                bounds = new Rect(cached.bounds);
-            }
-        }
-        if (bounds == null) {
-            bounds = findBestPostBoundsForFocus(root);
-        }
-        if (bounds == null) {
-            bounds = findNearestPostBounds(root, getRootCenterYOnScreen(root));
-        }
-        if (bounds == null || bounds.isEmpty()) {
-            String mediaUrl = getMediaUrlNearViewportCenter(root);
-            if (mediaUrl == null) {
-                return false;
-            }
-            showPreview(activity, root, mediaUrl);
-            return true;
-        }
-
-        int rawX = findPreviewMediaX(root, bounds);
-        int rawY = bounds.centerY();
-        String mediaUrl = getMediaUrlInPostBounds(root, bounds);
-        if (mediaUrl == null) {
-            mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
-        }
-        if (mediaUrl == null) {
-            mediaUrl = getMediaUrlNearViewportCenter(root);
-        }
-        if (mediaUrl == null) {
-            return false;
-        }
-
-        showPreview(activity, root, mediaUrl);
-        return true;
-    }
-
-    private static String getMediaUrlInPostBounds(View root, Rect rowBounds) {
-        if (root == null || rowBounds == null || rowBounds.isEmpty()) {
-            return null;
-        }
-
-        int[] xs = new int[]{
-                findPreviewMediaX(root, rowBounds),
-                rowBounds.right - dp(root, 56),
-                rowBounds.left + rowBounds.width() * 3 / 4,
-                rowBounds.centerX()
-        };
-        int[] ys = new int[]{
-                rowBounds.centerY(),
-                rowBounds.top + rowBounds.height() / 3,
-                rowBounds.bottom - Math.max(dp(root, 72), rowBounds.height() / 4)
-        };
-
-        for (int y : ys) {
-            for (int x : xs) {
-                String mediaUrl = getMediaUrlAtPoint(root, x, y);
-                if (mediaUrl != null) {
-                    return mediaUrl;
-                }
-            }
-        }
-
-        CharSequence description = findNearestPostDescription(root, rowBounds.centerY());
-        return getMediaUrlForPostDescription(description);
-    }
-
-    private static int findPreviewMediaX(View root, Rect rowBounds) {
-        int[] rootLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        int rightSide = rootLocation[0] + Math.round(root.getWidth() * 0.86f);
-        int rowRight = rowBounds.right - dp(root, 24);
-        int rowLeft = rowBounds.left + dp(root, 24);
-        return clamp(Math.min(rightSide, rowRight), rowLeft, rowRight);
-    }
-
-    private static int getRootCenterYOnScreen(View root) {
-        int[] rootLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        return rootLocation[1] + root.getHeight() / 2;
-    }
-
-    private static Rect findFocusedPostBounds(View root) {
-        try {
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            return findFocusedPostBoundsInNode(node, 0);
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to find focused Reddit post bounds", ex);
-            return null;
-        }
-    }
-
-    private static Rect findFocusedPostBoundsInNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return null;
-        }
-
-        try {
-            if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
-                    && isPostUnit(node)) {
-                Rect bounds = new Rect();
-                node.getBoundsInScreen(bounds);
-                return bounds;
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-
-                Rect bounds = findFocusedPostBoundsInNode(child, depth + 1);
-                if (bounds != null) {
-                    return bounds;
-                }
-            }
-        } finally {
-            node.recycle();
-        }
-
-        return null;
-    }
-
-    private static Rect findNearestPostBounds(View root, int rawY) {
-        ArrayList<DescriptionBounds> descriptions = new ArrayList<>();
-        collectPostDescriptions(root, descriptions);
-        collectAccessibilityPostDescriptions(root, descriptions);
-        DescriptionBounds best = null;
-        int bestDistance = Integer.MAX_VALUE;
-        for (DescriptionBounds item : descriptions) {
-            int distance = Math.abs(item.bounds.centerY() - rawY);
-            if (distance < bestDistance) {
-                best = item;
-                bestDistance = distance;
-            }
-        }
-        return best != null ? best.bounds : null;
-    }
-
-    private static boolean clickNextCommentButton(Activity activity) {
-        try {
-            View root = activity.getWindow().getDecorView();
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            if (clickNextCommentButtonInNode(node, 0)) {
-                return true;
-            }
-
-            AccessibilityNodeInfo fallbackRoot = root != null ? root.createAccessibilityNodeInfo() : null;
-            NextCommentButtonCandidate candidate = new NextCommentButtonCandidate();
-            collectLikelyNextCommentButton(root, fallbackRoot, candidate, 0);
+            node = root.createAccessibilityNodeInfo();
+            collectFocusablePostNode(root, node, candidate, direction, 0);
             if (candidate.node == null) {
                 return false;
             }
 
-            try {
-                return candidate.node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        || clickClickableParent(candidate.node);
-            } finally {
+            return candidate.node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+                    || candidate.node.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to focus Reddit feed post", ex);
+            return false;
+        } finally {
+            if (candidate.node != null) {
                 candidate.node.recycle();
             }
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to click Reddit next comment button", ex);
-            return false;
         }
     }
 
-    private static boolean clickNextCommentButtonInNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return false;
-        }
-
-        try {
-            if (isNextCommentButton(node)
-                    && (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    || clickClickableParent(node))) {
-                return true;
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-
-                if (clickNextCommentButtonInNode(child, depth + 1)) {
-                    return true;
-                }
-            }
-        } finally {
-            node.recycle();
-        }
-
-        return false;
-    }
-
-    private static void collectLikelyNextCommentButton(
+    private static void collectFocusablePostNode(
             View root,
             AccessibilityNodeInfo node,
-            NextCommentButtonCandidate candidate,
+            AccessibilityFocusCandidate candidate,
+            int direction,
             int depth
     ) {
-        if (root == null || node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
+        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
             return;
         }
 
         boolean keepNode = false;
-        try {
-            int score = scoreLikelyNextCommentButton(root, node);
-            if (score > candidate.score) {
-                if (candidate.node != null) {
-                    candidate.node.recycle();
-                }
-                candidate.node = node;
-                candidate.score = score;
-                keepNode = true;
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-                collectLikelyNextCommentButton(root, child, candidate, depth + 1);
-            }
-        } finally {
-            if (!keepNode && candidate.node != node) {
-                node.recycle();
-            }
-        }
-    }
-
-    private static int scoreLikelyNextCommentButton(View root, AccessibilityNodeInfo node) {
-        if (!node.isVisibleToUser() || !node.isClickable()) {
-            return Integer.MIN_VALUE;
-        }
-
-        Rect bounds = new Rect();
-        node.getBoundsInScreen(bounds);
-        if (bounds.isEmpty()) {
-            return Integer.MIN_VALUE;
-        }
-
-        int[] rootLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        int centerX = bounds.centerX() - rootLocation[0];
-        int centerY = bounds.centerY() - rootLocation[1];
-        int width = bounds.width();
-        int height = bounds.height();
-        int minSize = dp(root, 28);
-        int maxSize = dp(root, 96);
-        if (width < minSize || height < minSize || width > maxSize || height > maxSize) {
-            return Integer.MIN_VALUE;
-        }
-        if (centerY < root.getHeight() * 0.35f || centerY > root.getHeight() - dp(root, 64)) {
-            return Integer.MIN_VALUE;
-        }
-        if (centerX < root.getWidth() * 0.45f) {
-            return Integer.MIN_VALUE;
-        }
-
-        String text = (
-                String.valueOf(node.getText()) + " "
-                        + String.valueOf(node.getContentDescription()) + " "
-                        + String.valueOf(node.getViewIdResourceName())
-        ).toLowerCase();
-        int labelBonus = text.contains("comment") || text.contains("next") ? 50000 : 0;
-        int bottomBonus = centerY;
-        int rightBonus = centerX;
-        return labelBonus + bottomBonus + rightBonus + Math.min(width, height);
-    }
-
-    private static boolean clickClickableParent(AccessibilityNodeInfo node) {
-        AccessibilityNodeInfo parent = null;
-        try {
-            parent = node.getParent();
-            int depth = 0;
-            while (parent != null && depth < 8) {
-                if (parent.isClickable()
-                        && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    return true;
-                }
-
-                AccessibilityNodeInfo next = parent.getParent();
-                parent.recycle();
-                parent = next;
-                depth++;
-            }
-        } catch (Throwable ignored) {
-            return false;
-        } finally {
-            if (parent != null) {
-                parent.recycle();
-            }
-        }
-        return false;
-    }
-
-    private static boolean isNextCommentButton(AccessibilityNodeInfo node) {
-        if (!node.isVisibleToUser()) {
-            return false;
-        }
-
-        String text = (
-                String.valueOf(node.getText()) + " "
-                        + String.valueOf(node.getContentDescription()) + " "
-                        + String.valueOf(node.getViewIdResourceName())
-        ).toLowerCase();
-        return text.contains("next comment")
-                || text.contains("jump to next")
-                || text.contains("comment_next")
-                || text.contains("next_comment");
-    }
-
-    private static String getMediaUrlForFocusedPost(View root) {
-        CharSequence description = findFocusedPostDescription(root);
-        String mediaUrl = getMediaUrlForPostDescription(description);
-        if (mediaUrl != null) {
-            return mediaUrl;
-        }
-
-        View focused = root != null ? root.findFocus() : null;
-        if (focused == null) {
-            return getMediaUrlNearViewportCenter(root);
-        }
-
-        int[] location = new int[2];
-        focused.getLocationOnScreen(location);
-        CharSequence nearestDescription = findNearestPostDescription(
-                root,
-                location[1] + focused.getHeight() / 2
-        );
-        mediaUrl = getMediaUrlForPostDescription(nearestDescription);
-        if (mediaUrl != null) {
-            return mediaUrl;
-        }
-
-        return getMediaUrlNearViewportCenter(root);
-    }
-
-    private static String getMediaUrlNearViewportCenter(View root) {
-        if (root == null) {
-            return null;
-        }
-
-        int[] rootLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        CharSequence centerDescription = findNearestPostDescription(
-                root,
-                rootLocation[1] + root.getHeight() / 2
-        );
-        return getMediaUrlForPostDescription(centerDescription);
-    }
-
-    private static CharSequence findFocusedPostDescription(View root) {
-        CharSequence viewDescription = findFocusedPostDescriptionInView(root);
-        if (viewDescription != null) {
-            return viewDescription;
-        }
-
-        try {
-            AccessibilityNodeInfo node = root != null ? root.createAccessibilityNodeInfo() : null;
-            return findFocusedPostDescriptionInNode(node, 0);
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to find focused Reddit post", ex);
-            return null;
-        }
-    }
-
-    private static void cacheFocusedPostFromEvent(Activity activity, AccessibilityEvent event) {
-        if (event == null) {
-            return;
-        }
-
-        int eventType = event.getEventType();
-        if (eventType != AccessibilityEvent.TYPE_VIEW_FOCUSED
-                && eventType != AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED
-                && eventType != AccessibilityEvent.TYPE_VIEW_SELECTED) {
-            return;
-        }
-
-        AccessibilityNodeInfo source = null;
-        try {
-            source = event.getSource();
-            if (source == null || !isPostUnit(source)) {
-                return;
-            }
-
-            Rect bounds = new Rect();
-            source.getBoundsInScreen(bounds);
-            cacheFocusedPost(activity, bounds, findFirstPostDescriptionInNode(source, 0));
-        } catch (Throwable ignored) {
-        } finally {
-            if (source != null) {
-                source.recycle();
-            }
-        }
-    }
-
-    private static CharSequence findFocusedPostDescriptionInView(View view) {
-        if (view == null || view.getVisibility() != View.VISIBLE) {
-            return null;
-        }
-
-        CharSequence description = view.getContentDescription();
-        if ((view.isFocused() || view.isSelected()) && isPostDescription(description)) {
-            return description;
-        }
-
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                CharSequence childDescription = findFocusedPostDescriptionInView(group.getChildAt(i));
-                if (childDescription != null) {
-                    return childDescription;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static CharSequence findFocusedPostDescriptionInNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return null;
-        }
-
-        try {
-            if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
-                    && isPostUnit(node)) {
-                CharSequence focusedDescription = findFirstPostDescriptionInNode(node, 0);
-                if (focusedDescription != null) {
-                    return focusedDescription;
-                }
-            }
-
-            CharSequence description = node.getContentDescription();
-            if ((node.isFocused() || node.isAccessibilityFocused() || node.isSelected())
-                    && isPostDescription(description)) {
-                return description.toString();
-            }
-
-            int childCount = node.getChildCount();
-            for (int i = 0; i < childCount; i++) {
-                AccessibilityNodeInfo child = null;
-                try {
-                    child = node.getChild(i);
-                } catch (Throwable ignored) {
-                }
-
-                CharSequence childDescription = findFocusedPostDescriptionInNode(child, depth + 1);
-                if (childDescription != null) {
-                    return childDescription;
-                }
-            }
-        } finally {
-            node.recycle();
-        }
-
-        return null;
-    }
-
-    private static CharSequence findFirstPostDescriptionInNode(AccessibilityNodeInfo node, int depth) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return null;
-        }
-
         try {
             CharSequence description = node.getContentDescription();
             if (isPostDescription(description)) {
-                return description.toString();
+                Rect bounds = new Rect();
+                node.getBoundsInScreen(bounds);
+                int score = scorePostFocusCandidate(root, bounds, direction);
+                if (score > candidate.score) {
+                    if (candidate.node != null) {
+                        candidate.node.recycle();
+                    }
+                    candidate.node = node;
+                    candidate.score = score;
+                    keepNode = true;
+                }
             }
 
             int childCount = node.getChildCount();
@@ -2441,55 +1433,102 @@ public final class LongPressImagePreviewPatch {
                     child = node.getChild(i);
                 } catch (Throwable ignored) {
                 }
-
-                CharSequence childDescription = findFirstPostDescriptionInNode(child, depth + 1);
-                if (childDescription != null) {
-                    return childDescription;
-                }
+                collectFocusablePostNode(root, child, candidate, direction, depth + 1);
             }
         } finally {
-            if (depth > 0) {
+            if (!keepNode && candidate.node != node) {
                 node.recycle();
             }
         }
-
-        return null;
     }
 
-    private static CharSequence findFirstPostDescriptionInNodeNoRecycle(
-            AccessibilityNodeInfo node,
-            int depth
-    ) {
-        if (node == null || depth > MAX_ACCESSIBILITY_NODE_DEPTH) {
-            return null;
+    private static int scorePostFocusCandidate(View root, Rect bounds, int direction) {
+        if (bounds.isEmpty()) {
+            return Integer.MIN_VALUE;
         }
 
-        CharSequence description = node.getContentDescription();
-        if (isPostDescription(description)) {
-            return description.toString();
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        int relativeCenterY = bounds.centerY() - rootLocation[1];
+        int topLimit = dp(root, 96);
+        int bottomLimit = root.getHeight() - dp(root, 96);
+        if (relativeCenterY < topLimit || relativeCenterY > bottomLimit) {
+            return Integer.MIN_VALUE;
         }
 
-        int childCount = node.getChildCount();
-        for (int i = 0; i < childCount; i++) {
-            AccessibilityNodeInfo child = null;
-            try {
-                child = node.getChild(i);
-            } catch (Throwable ignored) {
-            }
+        int targetY = direction == View.FOCUS_UP ? bottomLimit : topLimit;
+        int distance = Math.abs(relativeCenterY - targetY);
+        return 100000 - distance + Math.min(bounds.height(), root.getHeight());
+    }
 
+    private static void synthesizeFeedFocusTouch(View root, int direction) {
+        try {
+            float x = root.getWidth() * 0.5f;
+            float y = direction == View.FOCUS_UP
+                    ? root.getHeight() * 0.72f
+                    : root.getHeight() * 0.32f;
+            y = clamp(Math.round(y), dp(root, 128), root.getHeight() - dp(root, 128));
+
+            long now = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(
+                    now,
+                    now,
+                    MotionEvent.ACTION_DOWN,
+                    x,
+                    y,
+                    0
+            );
+            MotionEvent cancel = MotionEvent.obtain(
+                    now,
+                    now + 8,
+                    MotionEvent.ACTION_CANCEL,
+                    x,
+                    y,
+                    0
+            );
             try {
-                CharSequence childDescription = findFirstPostDescriptionInNodeNoRecycle(child, depth + 1);
-                if (childDescription != null) {
-                    return childDescription;
-                }
+                root.dispatchTouchEvent(down);
+                root.dispatchTouchEvent(cancel);
             } finally {
-                if (child != null) {
-                    child.recycle();
-                }
+                down.recycle();
+                cancel.recycle();
             }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to synthesize Reddit feed focus touch", ex);
         }
+    }
 
-        return null;
+    private static void synthesizeBottomRightTabHandoff(Activity activity, View root, KeyEvent originalEvent) {
+        try {
+            long now = SystemClock.uptimeMillis();
+            float x = root.getWidth() - dp(root, 56);
+            float y = root.getHeight() - dp(root, 56);
+            MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
+            MotionEvent up = MotionEvent.obtain(now, now + 24, MotionEvent.ACTION_UP, x, y, 0);
+            try {
+                root.dispatchTouchEvent(down);
+                root.dispatchTouchEvent(up);
+            } finally {
+                down.recycle();
+                up.recycle();
+            }
+
+            MAIN_HANDLER.postDelayed(() -> redispatchFeedKey(activity, KeyEvent.KEYCODE_TAB), 48);
+            MAIN_HANDLER.postDelayed(() -> redispatchFeedKey(activity, originalEvent.getKeyCode()), 96);
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed Reddit bottom-nav feed focus handoff", ex);
+        }
+    }
+
+    private static void redispatchFeedKey(Activity activity, int keyCode) {
+        long now = SystemClock.uptimeMillis();
+        REDISPATCHING_FEED_KEY = true;
+        try {
+            activity.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0));
+            activity.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
+        } finally {
+            REDISPATCHING_FEED_KEY = false;
+        }
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
@@ -2503,7 +1542,7 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
-            if (handleKeyboardShortcut(activity, event, delegate)) {
+            if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
             return delegate != null && delegate.dispatchKeyEvent(event);
@@ -2534,7 +1573,6 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
-            cacheFocusedPostFromEvent(activity, event);
             return delegate != null && delegate.dispatchPopulateAccessibilityEvent(event);
         }
 
@@ -2581,10 +1619,6 @@ public final class LongPressImagePreviewPatch {
         public void onWindowFocusChanged(boolean hasFocus) {
             if (delegate != null) {
                 delegate.onWindowFocusChanged(hasFocus);
-            }
-            if (hasFocus) {
-                schedulePostFocus(activity, 180);
-                schedulePostFocus(activity, 700);
             }
         }
 
@@ -2698,43 +1732,8 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static final class FocusedPostState {
-        final Rect bounds;
-        final CharSequence description;
-
-        FocusedPostState(Rect bounds, CharSequence description) {
-            this.bounds = new Rect(bounds);
-            this.description = description;
-        }
-    }
-
-    private static final class PostFocusCandidate {
-        AccessibilityNodeInfo node;
-        Rect bounds;
-        int score = Integer.MIN_VALUE;
-    }
-
-    private static final class ProviderPostFocusCandidate {
-        AccessibilityNodeProvider provider;
-        int virtualId = Integer.MIN_VALUE;
-        Rect bounds;
-        CharSequence description;
-        int score = Integer.MIN_VALUE;
-    }
-
-    private static final class NextCommentButtonCandidate {
+    private static final class AccessibilityFocusCandidate {
         AccessibilityNodeInfo node;
         int score = Integer.MIN_VALUE;
-    }
-
-    private enum ShortcutAction {
-        UP,
-        DOWN,
-        LEFT,
-        RIGHT,
-        PREVIEW,
-        OPEN_POST,
-        BACK,
-        NEXT_COMMENT
     }
 }
