@@ -794,7 +794,8 @@ public final class RedditComposeFocusBridge {
     public static void cacheLinkModel(Object link) {
         try {
             String title = linkTitle(link);
-            if (title == null || title.length() == 0) {
+            String id = modelKindWithId(link);
+            if ((title == null || title.length() == 0) && (id == null || id.length() == 0)) {
                 return;
             }
             String body = linkBodyText(link);
@@ -804,8 +805,8 @@ public final class RedditComposeFocusBridge {
             if (body == null || body.trim().length() == 0) {
                 return;
             }
-            storePostBody(title, null, body);
-            Log.w(TAG, "cachedLinkBody title=\"" + title + "\" length=" + body.length());
+            storePostBody(title, id, body);
+            Log.w(TAG, "cachedLinkBody title=\"" + title + "\" id=" + id + " length=" + body.length());
         } catch (Throwable throwable) {
             Log.w(TAG, "cacheLinkModel failed", throwable);
         }
@@ -855,6 +856,10 @@ public final class RedditComposeFocusBridge {
     }
 
     private static String linkBodyText(Object link) {
+        String body = asString(invokeNoArg(link, "getBody"));
+        if (looksLikeBody(body)) {
+            return body;
+        }
         Object rtjson = invokeNoArg(link, "getRtjson");
         String richText = asString(invokeNoArg(rtjson, "getRichTextString"));
         if (looksLikeBody(richText)) {

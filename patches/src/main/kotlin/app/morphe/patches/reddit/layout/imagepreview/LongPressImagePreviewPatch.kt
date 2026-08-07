@@ -13,6 +13,7 @@ import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/reddit/patches/LongPressImagePreviewPatch;"
@@ -206,6 +207,27 @@ val longPressImagePreviewPatch = bytecodePatch(
                 invoke-static { p0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerPostUnitModel(Ljava/lang/Object;)V
             """
         )
+
+        LinkJsonAdapterFromJsonFingerprint.method.apply {
+            val returns = implementation!!.instructions.mapIndexedNotNull { index, instruction ->
+                if (instruction.opcode == Opcode.RETURN_OBJECT) {
+                    index to (instruction as OneRegisterInstruction).registerA
+                } else {
+                    null
+                }
+            }
+            check(returns.isNotEmpty()) {
+                "Could not find LinkJsonAdapter.fromJson return-object instruction"
+            }
+            returns.asReversed().forEach { (index, register) ->
+                addInstructions(
+                    index,
+                    """
+                        invoke-static { v$register }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cacheLinkModel(Ljava/lang/Object;)V
+                    """
+                )
+            }
+        }
 
         AppCompatDispatchKeyEventFingerprint.method.addInstructionsWithLabels(
             0,

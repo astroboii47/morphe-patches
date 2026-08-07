@@ -420,3 +420,11 @@ internal object LinkPresentationModelToPostUnitFingerprint : Fingerprint(
         "Ln210;"
     )
 )
+
+internal object LinkJsonAdapterFromJsonFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/domain/model/LinkJsonAdapter;",
+    name = "fromJson",
+    returnType = "Ljava/lang/Object;",
+    accessFlags = listOf(AccessFlags.PUBLIC),
+    parameters = listOf("Lcom/squareup/moshi/d;")
+)
