@@ -1481,13 +1481,132 @@ public final class RedditComposeFocusBridge {
                 continue;
             }
             String text = readableTreeText(provider, info, 0);
+            if (text == null || text.length() == 0) {
+                text = readableSemanticsText(loader, config);
+            }
             if (text != null && text.length() > 0 && bounds.height() < bestHeight) {
+                Log.w(TAG, "postUnit row text=\"" + summarizeText(text) + "\"");
                 best = text;
                 bestHeight = bounds.height();
             }
         }
         String body = getCachedBodyForRowText(best);
         return body != null && body.length() > 0 ? body : best;
+    }
+
+    private static String readableSemanticsText(ClassLoader loader, Object config) {
+        if (loader == null || config == null) {
+            return "";
+        }
+        try {
+            Class<?> semanticsKeys = loader.loadClass("androidx.compose.ui.semantics.d");
+            StringBuilder builder = new StringBuilder();
+            Map<Object, Boolean> seen = new IdentityHashMap<Object, Boolean>();
+            for (Field field : semanticsKeys.getDeclaredFields()) {
+                int modifiers = field.getModifiers();
+                if (!java.lang.reflect.Modifier.isStatic(modifiers)) {
+                    continue;
+                }
+                field.setAccessible(true);
+                Object key = field.get(null);
+                Object value = getSemanticsValue(config, key);
+                appendReadableSemanticsValue(builder, value, 0, seen);
+            }
+            return normalizeWhitespace(builder.toString());
+        } catch (Throwable throwable) {
+            Log.w(TAG, "readableSemanticsText failed", throwable);
+            return "";
+        }
+    }
+
+    private static void appendReadableSemanticsValue(StringBuilder builder, Object value, int depth, Map<Object, Boolean> seen) {
+        if (value == null || depth > 4) {
+            return;
+        }
+        if (value instanceof CharSequence) {
+            appendReadableSemanticsString(builder, value.toString());
+            return;
+        }
+        Class<?> type = value.getClass();
+        if (type.isPrimitive() || value instanceof Number || value instanceof Boolean || value instanceof Enum<?>) {
+            return;
+        }
+        if (seen.containsKey(value)) {
+            return;
+        }
+        seen.put(value, Boolean.TRUE);
+        if (value instanceof Iterable<?>) {
+            for (Object item : (Iterable<?>) value) {
+                appendReadableSemanticsValue(builder, item, depth + 1, seen);
+            }
+            return;
+        }
+        if (type.isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                appendReadableSemanticsValue(builder, java.lang.reflect.Array.get(value, i), depth + 1, seen);
+            }
+            return;
+        }
+        String className = type.getName();
+        if (className.startsWith("java.") || className.startsWith("kotlin.") || className.startsWith("android.")) {
+            String text = value.toString();
+            if (!text.equals(className + "@" + Integer.toHexString(System.identityHashCode(value)))) {
+                appendReadableSemanticsString(builder, text);
+            }
+            return;
+        }
+        for (Field field : type.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                appendReadableSemanticsValue(builder, field.get(value), depth + 1, seen);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private static void appendReadableSemanticsString(StringBuilder builder, String value) {
+        String text = normalizeWhitespace(value);
+        if (text.length() == 0 || "post_unit".equals(text)) {
+            return;
+        }
+        if (looksLikeNoiseSemanticsText(text)) {
+            return;
+        }
+        if (builder.indexOf(text) >= 0) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append('\n');
+        }
+        builder.append(text);
+    }
+
+    private static boolean looksLikeNoiseSemanticsText(String text) {
+        String lower = text.toLowerCase(Locale.US);
+        return lower.equals("button")
+                || lower.equals("image")
+                || lower.equals("selected")
+                || lower.equals("clickable")
+                || lower.equals("true")
+                || lower.equals("false")
+                || lower.startsWith("androidx.compose.")
+                || lower.startsWith("kotlin.");
+    }
+
+    private static String normalizeWhitespace(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace('\u00a0', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private static String summarizeText(String value) {
+        String text = normalizeWhitespace(value);
+        return text.length() <= 160 ? text : text.substring(0, 160) + "...";
     }
 
     private static String getCachedBodyForRowText(String rowText) {
