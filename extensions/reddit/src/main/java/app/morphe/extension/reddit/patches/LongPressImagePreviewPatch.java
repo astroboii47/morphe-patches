@@ -1330,6 +1330,123 @@ public final class LongPressImagePreviewPatch {
                 : View.FOCUS_UP);
     }
 
+    private static boolean handleKeyboardShortcut(Activity activity, KeyEvent event) {
+        if (REDISPATCHING_FEED_KEY || hasKeyboardInputFocus(activity) || hasShortcutModifier(event)) {
+            return false;
+        }
+
+        int action = event.getAction();
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_PREVIEW.get(), KeyEvent.KEYCODE_P)) {
+            if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
+                return false;
+            }
+            if (action == KeyEvent.ACTION_UP) {
+                hidePreview();
+                return true;
+            }
+            if (action != KeyEvent.ACTION_DOWN) {
+                return true;
+            }
+            if (event.getRepeatCount() > 0) {
+                return activePreview != null;
+            }
+
+            View root = activity.getWindow().getDecorView();
+            int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+            if (point == null) {
+                Log.i(LOG_TAG, "no focused post point for preview");
+                return true;
+            }
+            showPreview(activity, root, point[0], point[1]);
+            return true;
+        }
+
+        if (action == KeyEvent.ACTION_UP) {
+            return isKnownShortcut(event);
+        }
+        if (action != KeyEvent.ACTION_DOWN) {
+            return false;
+        }
+
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_UP.get(), KeyEvent.KEYCODE_I)) {
+            dispatchNavigationShortcut(activity, KeyEvent.KEYCODE_DPAD_UP);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_DOWN.get(), KeyEvent.KEYCODE_K)) {
+            dispatchNavigationShortcut(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_LEFT.get(), KeyEvent.KEYCODE_J)) {
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_LEFT);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_RIGHT.get(), KeyEvent.KEYCODE_L)) {
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_RIGHT);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_OPEN_POST.get(), KeyEvent.KEYCODE_O)) {
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_ENTER);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_BACK.get(), KeyEvent.KEYCODE_U)) {
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_BACK);
+            return true;
+        }
+        if (matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get(), KeyEvent.KEYCODE_N)) {
+            RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void dispatchNavigationShortcut(Activity activity, int keyCode) {
+        View root = activity.getWindow().getDecorView();
+        int direction = keyCode == KeyEvent.KEYCODE_DPAD_UP ? View.FOCUS_UP : View.FOCUS_DOWN;
+        long now = SystemClock.uptimeMillis();
+        KeyEvent event = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0);
+        if (!focusFeedContent(activity, root, event, direction)) {
+            redispatchFeedKey(activity, keyCode);
+        }
+    }
+
+    private static boolean isKnownShortcut(KeyEvent event) {
+        return matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_UP.get(), KeyEvent.KEYCODE_I)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_DOWN.get(), KeyEvent.KEYCODE_K)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_LEFT.get(), KeyEvent.KEYCODE_J)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_RIGHT.get(), KeyEvent.KEYCODE_L)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_OPEN_POST.get(), KeyEvent.KEYCODE_O)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_BACK.get(), KeyEvent.KEYCODE_U)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_NEXT_COMMENT.get(), KeyEvent.KEYCODE_N)
+                || matchesShortcut(event, Settings.KEYBOARD_SHORTCUT_PREVIEW.get(), KeyEvent.KEYCODE_P);
+    }
+
+    private static boolean matchesShortcut(KeyEvent event, String configured, int defaultKeyCode) {
+        if (configured == null || configured.trim().isEmpty()) {
+            return event.getKeyCode() == defaultKeyCode;
+        }
+
+        String shortcut = configured.trim().toLowerCase();
+        int unicode = event.getUnicodeChar();
+        if (unicode != 0) {
+            String typed = new String(Character.toChars(unicode)).toLowerCase();
+            if (shortcut.equals(typed)) {
+                return true;
+            }
+        }
+        return shortcut.length() == 1 && event.getKeyCode() == defaultKeyCode;
+    }
+
+    private static boolean hasKeyboardInputFocus(Activity activity) {
+        View root = activity.getWindow().getDecorView();
+        View focused = root != null ? root.findFocus() : null;
+        return focused != null && focused.onCheckIsTextEditor();
+    }
+
+    private static boolean hasShortcutModifier(KeyEvent event) {
+        return event.isAltPressed() || event.isCtrlPressed() || event.isMetaPressed();
+    }
+
     private static boolean focusFeedContent(Activity activity, View root, KeyEvent event, int direction) {
         if (root == null) {
             return false;
@@ -1542,6 +1659,9 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
+            if (handleKeyboardShortcut(activity, event)) {
+                return true;
+            }
             if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
