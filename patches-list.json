@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.36.0-dev.27",
+  "version": "1.36.0-dev.28",
   "patches": [
     {
       "name": "Add to queue",
@@ -3862,6 +3862,8 @@
       "description": "Adds an option to use the bottom navigation bar instead of the side navigation rail.",
       "default": true,
       "dependencies": [
+        "BytecodePatch",
+        "BytecodePatch",
         "BytecodePatch",
         "BytecodePatch"
       ],

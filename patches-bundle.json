@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-07T12:30:00",
-  "description": "Reddit v29 Titan parity for feed focus and preview",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.27/patches-1.36.0-dev.27.mpp",
+  "created_at": "2026-08-07T13:05:00",
+  "description": "Reddit v29 Force bottom navigation includes Titan keyboard and preview runtime",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.28/patches-1.36.0-dev.28.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.27"
+  "version": "1.36.0-dev.28"
 }

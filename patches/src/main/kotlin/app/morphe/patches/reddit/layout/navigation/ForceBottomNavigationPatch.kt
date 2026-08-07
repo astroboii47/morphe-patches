@@ -12,6 +12,8 @@ import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patches.reddit.layout.commentscroll.rememberPostScrollPositionPatch
+import app.morphe.patches.reddit.layout.imagepreview.longPressImagePreviewPatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.misc.version.is_2026_25_0_or_greater
 import app.morphe.patches.reddit.misc.version.versionCheckPatch
@@ -35,7 +37,7 @@ val forceBottomNavigationPatch = bytecodePatch(
 ) {
     compatibleWith(COMPATIBILITY_REDDIT)
 
-    dependsOn(settingsPatch, versionCheckPatch)
+    dependsOn(settingsPatch, versionCheckPatch, longPressImagePreviewPatch, rememberPostScrollPositionPatch)
 
     execute {
         if (!is_2026_25_0_or_greater) {
