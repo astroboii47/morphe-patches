@@ -7,6 +7,7 @@
 package app.morphe.patches.reddit.layout.imagepreview
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.reddit.misc.settings.settingsPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
@@ -187,6 +188,33 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
                 move-object/from16 v0, p1
                 invoke-static { v0 }, $EXTENSION_CLASS->registerMediaSourceObject(Ljava/lang/Object;)V
+            """
+        )
+
+        hookMethodStart(
+            LinkPresentationModelToPostUnitFingerprint,
+            """
+                invoke-static { p1 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerPostUnitModel(Ljava/lang/Object;)V
+            """
+        )
+
+        hookConstructor(
+            LinkPresentationModelConstructorFingerprint,
+            """
+                invoke-static { p0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerPostUnitModel(Ljava/lang/Object;)V
+            """
+        )
+
+        AppCompatDispatchKeyEventFingerprint.method.addInstructionsWithLabels(
+            0,
+            """
+                invoke-static { p0, p1 }, $EXTENSION_CLASS->handleKeyboardFeedFocusKey(Landroid/app/Activity;Landroid/view/KeyEvent;)Z
+                move-result v0
+                if-eqz v0, :morphe_reddit_key_continue
+                const/4 v0, 0x1
+                return v0
+                :morphe_reddit_key_continue
+                nop
             """
         )
 

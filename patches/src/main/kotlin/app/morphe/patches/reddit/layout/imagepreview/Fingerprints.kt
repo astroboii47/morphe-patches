@@ -392,3 +392,31 @@ internal object ComposePostImageMethodFingerprint : Fingerprint(
         "I"
     )
 )
+
+internal object AppCompatDispatchKeyEventFingerprint : Fingerprint(
+    definingClass = "Lpr2;",
+    name = "dispatchKeyEvent",
+    returnType = "Z",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Landroid/view/KeyEvent;")
+)
+
+internal object LinkPresentationModelConstructorFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/presentation/listing/model/LinkPresentationModel;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR)
+)
+
+internal object LinkPresentationModelToPostUnitFingerprint : Fingerprint(
+    definingClass = "Ljr3;",
+    name = "e",
+    returnType = "Ln210;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf(
+        "Lcom/reddit/presentation/listing/model/LinkPresentationModel;",
+        "Lcom/reddit/domain/model/link/Link;",
+        "Z",
+        "Ln210;"
+    )
+)
