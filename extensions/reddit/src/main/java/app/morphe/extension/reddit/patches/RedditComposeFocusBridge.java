@@ -415,6 +415,7 @@ public final class RedditComposeFocusBridge {
                 return record.mediaUrl;
             }
             record = findRecentPostUnitRecordForPoint(root, rawX, rawY);
+            record = preferTitlePreviewRecord(record);
             if (record != null && record.mediaUrl != null && record.mediaUrl.length() > 0) {
                 Log.w(TAG, "recentPostUnit media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
                 return record.mediaUrl;
@@ -447,6 +448,7 @@ public final class RedditComposeFocusBridge {
                 return record.body.trim();
             }
             record = findRecentPostUnitRecordForPoint(root, rawX, rawY);
+            record = preferTitlePreviewRecord(record);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "recentPostUnit text title=\"" + record.title + "\" length=" + record.body.length());
                 return record.body.trim();
@@ -738,6 +740,21 @@ public final class RedditComposeFocusBridge {
                     + " title=\"" + record.title + "\"");
             return record;
         }
+    }
+
+    private static PreviewRecord preferTitlePreviewRecord(PreviewRecord record) {
+        if (record == null || record.title == null || record.title.length() == 0) {
+            return record;
+        }
+        synchronized (PREVIEWS_BY_TITLE) {
+            PreviewRecord byTitle = PREVIEWS_BY_TITLE.get(record.title);
+            if (byTitle != null && ((byTitle.mediaUrl != null && byTitle.mediaUrl.length() > 0)
+                    || (byTitle.body != null && byTitle.body.length() > 0))) {
+                Log.w(TAG, "recentPostUnit title cache hit title=\"" + record.title + "\"");
+                return byTitle;
+            }
+        }
+        return record;
     }
 
     public static boolean isVideoPreviewUrl(String url) {
