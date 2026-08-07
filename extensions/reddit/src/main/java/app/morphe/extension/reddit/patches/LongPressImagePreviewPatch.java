@@ -469,28 +469,21 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-            int originalRawX = rawX;
-            int originalRawY = rawY;
-            int lookupRawX = rawX;
-            int lookupRawY = rawY;
-            int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
-            if (postPoint != null) {
-                lookupRawX = postPoint[0];
-                lookupRawY = postPoint[1];
-            }
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl == null) {
+                int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+                if (postPoint != null) {
+                    rawX = postPoint[0];
+                    rawY = postPoint[1];
+                }
 
-            String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, lookupRawX, lookupRawY);
-            String mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, originalRawX, originalRawY);
-            if (mediaUrl == null && (lookupRawX != originalRawX || lookupRawY != originalRawY)) {
-                mediaUrl = getMediaUrlAtPoint(root, lookupRawX, lookupRawY);
+                String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
+                mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
             }
             if (mediaUrl == null) {
-                String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, lookupRawX, lookupRawY);
+                String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
                 if (textPreview == null) {
-                    textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, lookupRawX, lookupRawY);
-                }
-                if (textPreview == null && (lookupRawX != originalRawX || lookupRawY != originalRawY)) {
-                    textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, originalRawX, originalRawY);
+                    textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
                 if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
                     Log.i(LOG_TAG, "showing text preview");
@@ -628,7 +621,7 @@ public final class LongPressImagePreviewPatch {
             synchronized (MEDIA_URLS) {
                 String mediaUrl = MEDIA_URLS.get(linkId);
                 if (mediaUrl != null) {
-                    return mediaUrl;
+                    return RedditComposeFocusBridge.upgradePreviewMedia(linkId, null, mediaUrl);
                 }
             }
         }
@@ -654,7 +647,7 @@ public final class LongPressImagePreviewPatch {
 
             Log.i(LOG_TAG, "matched title=\"" + bestTitle + "\"");
             if (bestTitle != null) {
-                return TITLE_MEDIA_URLS.get(bestTitle);
+                return RedditComposeFocusBridge.upgradePreviewMedia(null, bestTitle, TITLE_MEDIA_URLS.get(bestTitle));
             }
         }
 

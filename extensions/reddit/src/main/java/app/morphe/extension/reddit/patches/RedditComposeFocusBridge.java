@@ -623,6 +623,33 @@ public final class RedditComposeFocusBridge {
         storePreviewRecord(record);
     }
 
+    public static String upgradePreviewMedia(String key, String title, String fallbackUrl) {
+        try {
+            PreviewRecord record = null;
+            if (key != null && key.length() > 0) {
+                synchronized (PREVIEWS_BY_KEY) {
+                    record = PREVIEWS_BY_KEY.get(key);
+                }
+            }
+            if (record == null && title != null && title.length() > 0) {
+                synchronized (PREVIEWS_BY_TITLE) {
+                    record = PREVIEWS_BY_TITLE.get(title);
+                }
+            }
+            if (record == null || !isUsablePreviewMedia(record.mediaUrl)) {
+                return fallbackUrl;
+            }
+            if (fallbackUrl == null || shouldReplaceMedia(fallbackUrl, record.mediaUrl)) {
+                Log.w(TAG, "upgradedPreviewMedia key=" + key + " title=\"" + title + "\" "
+                        + summarizeUrl(fallbackUrl) + " -> " + summarizeUrl(record.mediaUrl));
+                return record.mediaUrl;
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "upgradePreviewMedia failed", throwable);
+        }
+        return fallbackUrl;
+    }
+
     private static boolean shouldReplaceMedia(String oldUrl, String newUrl) {
         if (newUrl == null || newUrl.length() == 0) {
             return false;
