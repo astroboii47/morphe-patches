@@ -70,6 +70,8 @@ public final class LongPressImagePreviewPatch {
     private static final ExecutorService IMAGE_LOADER = Executors.newSingleThreadExecutor();
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
     private static boolean REDISPATCHING_FEED_KEY;
+    private static boolean FEED_HANDOFF_DONE;
+    private static int LAST_PREVIEW_Y;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -1310,24 +1312,90 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
-        int keyCode = event.getKeyCode();
-        if (keyCode != KeyEvent.KEYCODE_DPAD_DOWN
-                && keyCode != KeyEvent.KEYCODE_DPAD_UP) {
+        if (REDISPATCHING_FEED_KEY || hasKeyboardInputFocus(activity) || hasShortcutModifier(event)) {
             return false;
+        }
+
+        int keyCode = event.getKeyCode();
+        int mappedKeyCode = keyCode;
+        int direction = View.FOCUS_DOWN;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_I:
+                mappedKeyCode = KeyEvent.KEYCODE_DPAD_UP;
+                direction = View.FOCUS_UP;
+                break;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_K:
+                mappedKeyCode = KeyEvent.KEYCODE_DPAD_DOWN;
+                direction = View.FOCUS_DOWN;
+                break;
+            case KeyEvent.KEYCODE_J:
+                mappedKeyCode = KeyEvent.KEYCODE_DPAD_LEFT;
+                break;
+            case KeyEvent.KEYCODE_L:
+                mappedKeyCode = KeyEvent.KEYCODE_DPAD_RIGHT;
+                break;
+            case KeyEvent.KEYCODE_O:
+                mappedKeyCode = KeyEvent.KEYCODE_DPAD_CENTER;
+                break;
+            case KeyEvent.KEYCODE_U:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    FEED_HANDOFF_DONE = false;
+                    activity.onBackPressed();
+                }
+                return true;
+            case KeyEvent.KEYCODE_N:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
+                }
+                return true;
+            case KeyEvent.KEYCODE_P:
+                return handlePreviewKey(activity, event);
+            default:
+                return false;
         }
 
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
-            return false;
-        }
-
-        if (REDISPATCHING_FEED_KEY) {
-            return false;
+            return true;
         }
 
         View root = activity.getWindow().getDecorView();
-        return focusFeedContent(activity, root, event, keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                ? View.FOCUS_DOWN
-                : View.FOCUS_UP);
+        updatePreviewTargetY(root, mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1
+                : mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP ? -1 : 0);
+        if (FEED_HANDOFF_DONE) {
+            redispatchFeedKey(activity, mappedKeyCode);
+            return true;
+        }
+
+        return focusFeedContent(activity, root, direction, mappedKeyCode);
+    }
+
+    private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
+        if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
+            return false;
+        }
+
+        int action = event.getAction();
+        if (action == KeyEvent.ACTION_UP) {
+            hidePreview();
+            return true;
+        }
+        if (action != KeyEvent.ACTION_DOWN || activePreview != null) {
+            return true;
+        }
+
+        View root = activity.getWindow().getDecorView();
+        int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+        if (point != null) {
+            showPreview(activity, root, point[0], point[1]);
+            return true;
+        }
+
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        showPreview(activity, root, location[0] + ((root.getWidth() * 3) / 4), updatePreviewTargetY(root, 0));
+        return true;
     }
 
     private static boolean handleKeyboardShortcut(Activity activity, KeyEvent event) {
@@ -1403,9 +1471,7 @@ public final class LongPressImagePreviewPatch {
     private static void dispatchNavigationShortcut(Activity activity, int keyCode) {
         View root = activity.getWindow().getDecorView();
         int direction = keyCode == KeyEvent.KEYCODE_DPAD_UP ? View.FOCUS_UP : View.FOCUS_DOWN;
-        long now = SystemClock.uptimeMillis();
-        KeyEvent event = new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0);
-        if (!focusFeedContent(activity, root, event, direction)) {
+        if (!focusFeedContent(activity, root, direction, keyCode)) {
             redispatchFeedKey(activity, keyCode);
         }
     }
@@ -1447,19 +1513,21 @@ public final class LongPressImagePreviewPatch {
         return event.isAltPressed() || event.isCtrlPressed() || event.isMetaPressed();
     }
 
-    private static boolean focusFeedContent(Activity activity, View root, KeyEvent event, int direction) {
+    private static boolean focusFeedContent(Activity activity, View root, int direction, int keyCode) {
         if (root == null) {
             return false;
         }
 
-        View focused = root.findFocus();
-        if (isFeedFocus(focused, root)) {
+        if (isFeedFocus(root.findFocus(), root)) {
             return false;
         }
 
-        focusVisiblePostNode(root, direction);
-        synthesizeFeedFocusTouch(root, direction);
-        synthesizeBottomRightTabHandoff(activity, root, event);
+        if (!RedditComposeFocusBridge.resetComposeFocusForKey(root, keyCode)) {
+            return false;
+        }
+
+        FEED_HANDOFF_DONE = true;
+        RedditKeyInjector.handoff(activity, keyCode);
         return true;
     }
 
@@ -1578,63 +1646,50 @@ public final class LongPressImagePreviewPatch {
         return 100000 - distance + Math.min(bounds.height(), root.getHeight());
     }
 
-    private static void synthesizeFeedFocusTouch(View root, int direction) {
-        try {
-            float x = root.getWidth() * 0.5f;
-            float y = direction == View.FOCUS_UP
-                    ? root.getHeight() * 0.72f
-                    : root.getHeight() * 0.32f;
-            y = clamp(Math.round(y), dp(root, 128), root.getHeight() - dp(root, 128));
-
-            long now = SystemClock.uptimeMillis();
-            MotionEvent down = MotionEvent.obtain(
-                    now,
-                    now,
-                    MotionEvent.ACTION_DOWN,
-                    x,
-                    y,
-                    0
-            );
-            MotionEvent cancel = MotionEvent.obtain(
-                    now,
-                    now + 8,
-                    MotionEvent.ACTION_CANCEL,
-                    x,
-                    y,
-                    0
-            );
-            try {
-                root.dispatchTouchEvent(down);
-                root.dispatchTouchEvent(cancel);
-            } finally {
-                down.recycle();
-                cancel.recycle();
-            }
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed to synthesize Reddit feed focus touch", ex);
+    private static int updatePreviewTargetY(View root, int direction) {
+        if (root == null) {
+            return 0;
         }
-    }
 
-    private static void synthesizeBottomRightTabHandoff(Activity activity, View root, KeyEvent originalEvent) {
-        try {
-            long now = SystemClock.uptimeMillis();
-            float x = root.getWidth() - dp(root, 56);
-            float y = root.getHeight() - dp(root, 56);
-            MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
-            MotionEvent up = MotionEvent.obtain(now, now + 24, MotionEvent.ACTION_UP, x, y, 0);
-            try {
-                root.dispatchTouchEvent(down);
-                root.dispatchTouchEvent(up);
-            } finally {
-                down.recycle();
-                up.recycle();
+        ArrayList<DescriptionBounds> descriptions = new ArrayList<>();
+        collectPostDescriptions(root, descriptions);
+        collectAccessibilityPostDescriptions(root, descriptions);
+
+        int[] rootLocation = new int[2];
+        root.getLocationOnScreen(rootLocation);
+        int targetY = LAST_PREVIEW_Y > 0 ? LAST_PREVIEW_Y : rootLocation[1] + root.getHeight() / 3;
+        int tolerance = dp(root, 24);
+        int bestY = 0;
+        int bestDistance = Integer.MAX_VALUE;
+
+        for (DescriptionBounds item : descriptions) {
+            int centerY = item.bounds.centerY();
+            int distance;
+            if (direction > 0) {
+                distance = centerY - targetY;
+                if (distance <= tolerance) {
+                    continue;
+                }
+            } else if (direction < 0) {
+                distance = targetY - centerY;
+                if (distance <= tolerance) {
+                    continue;
+                }
+            } else {
+                distance = Math.abs(centerY - targetY);
             }
 
-            MAIN_HANDLER.postDelayed(() -> redispatchFeedKey(activity, KeyEvent.KEYCODE_TAB), 48);
-            MAIN_HANDLER.postDelayed(() -> redispatchFeedKey(activity, originalEvent.getKeyCode()), 96);
-        } catch (Throwable ex) {
-            Logger.printException(() -> "Failed Reddit bottom-nav feed focus handoff", ex);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestY = centerY;
+            }
         }
+
+        if (bestY <= 0) {
+            bestY = targetY;
+        }
+        LAST_PREVIEW_Y = bestY;
+        return bestY;
     }
 
     private static void redispatchFeedKey(Activity activity, int keyCode) {
@@ -1659,9 +1714,6 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
-            if (handleKeyboardShortcut(activity, event)) {
-                return true;
-            }
             if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
