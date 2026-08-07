@@ -1541,25 +1541,7 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
-        CharSequence description = view.getContentDescription();
-        if (isPostDescription(description)) {
-            return true;
-        }
-
-        int[] location = new int[2];
-        view.getLocationOnScreen(location);
-        int topChrome = dp(root, 96);
-        int bottomChrome = root.getHeight() - dp(root, 96);
-        int centerY = location[1] + view.getHeight() / 2;
-        if (centerY < topChrome || centerY > bottomChrome) {
-            return false;
-        }
-
-        String name = view.getClass().getName().toLowerCase();
-        return name.contains("recycler")
-                || name.contains("compose")
-                || view.canScrollVertically(1)
-                || view.canScrollVertically(-1);
+        return isPostDescription(view.getContentDescription());
     }
 
     private static boolean focusVisiblePostNode(View root, int direction) {
