@@ -1462,6 +1462,10 @@ public final class RedditComposeFocusBridge {
                 continue;
             }
             String text = readableTreeText(provider, info, 0);
+            String semanticText = readableSemanticTextInsidePost(provider, values, bounds);
+            if (semanticText.length() > 0 && !text.contains(semanticText)) {
+                text = text.length() == 0 ? semanticText : text + "\n" + semanticText;
+            }
             if (text != null && text.length() > 0 && bounds.height() < bestHeight) {
                 best = text;
                 bestHeight = bounds.height();
@@ -1469,6 +1473,78 @@ public final class RedditComposeFocusBridge {
         }
         String body = getCachedBodyForRowText(best);
         return body != null && body.length() > 0 ? body : best;
+    }
+
+    private static String readableSemanticTextInsidePost(
+            AccessibilityNodeProvider provider,
+            Object[] values,
+            Rect postBounds
+    ) {
+        if (provider == null || values == null || postBounds == null || postBounds.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder builder = new StringBuilder();
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            try {
+                Object node = readField(wrapper, "a");
+                if (node == null) {
+                    continue;
+                }
+                Object id = readField(node, "f");
+                if (!(id instanceof Integer)) {
+                    continue;
+                }
+                AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(((Integer) id).intValue());
+                if (info == null) {
+                    continue;
+                }
+                sealNode(info);
+                Rect bounds = new Rect();
+                info.getBoundsInScreen(bounds);
+                if (!isInsidePostBounds(bounds, postBounds)) {
+                    continue;
+                }
+                String text = readableTreeText(provider, info, 0);
+                appendUniqueText(builder, text);
+            } catch (Throwable ignored) {
+            }
+        }
+        return builder.toString().trim();
+    }
+
+    private static boolean isInsidePostBounds(Rect bounds, Rect postBounds) {
+        if (bounds == null || bounds.isEmpty()) {
+            return false;
+        }
+        if (!Rect.intersects(bounds, postBounds)) {
+            return false;
+        }
+        int slack = 3;
+        return bounds.left >= postBounds.left - slack
+                && bounds.right <= postBounds.right + slack
+                && bounds.top >= postBounds.top - slack
+                && bounds.bottom <= postBounds.bottom + slack;
+    }
+
+    private static void appendUniqueText(StringBuilder builder, String text) {
+        if (text == null) {
+            return;
+        }
+        String trimmed = text.trim();
+        if (trimmed.length() == 0) {
+            return;
+        }
+        if (builder.indexOf(trimmed) >= 0) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append('\n');
+        }
+        builder.append(trimmed);
     }
 
     private static String getCachedBodyForRowText(String rowText) {

@@ -628,9 +628,6 @@ public final class LongPressImagePreviewPatch {
 
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
         if (description == null) {
-            description = findNearestPostDescription(root, rawY);
-        }
-        if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
             return null;
         }
