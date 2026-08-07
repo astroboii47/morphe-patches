@@ -485,6 +485,9 @@ public final class LongPressImagePreviewPatch {
                 if (textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
+                if (textPreview == null) {
+                    textPreview = getRecentTextPreviewAtPoint(root, rawX, rawY);
+                }
                 if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
                     Log.i(LOG_TAG, "showing text preview");
                     overlay.addView(RedditComposeFocusBridge.createTextPreviewView(activity, textPreview), new FrameLayout.LayoutParams(
@@ -632,7 +635,8 @@ public final class LongPressImagePreviewPatch {
         }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            return null;
+            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
+            return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
         }
 
         String text = description.toString();
@@ -651,7 +655,8 @@ public final class LongPressImagePreviewPatch {
             }
         }
 
-        return null;
+        String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
+        return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
     }
 
     private static String findMediaLinkIdAtPoint(View root, int rawX, int rawY) {
@@ -1181,7 +1186,29 @@ public final class LongPressImagePreviewPatch {
             String title = RECENT_MEDIA_TITLES.get(firstIndex + row);
             String url = TITLE_MEDIA_URLS.get(title);
             debugLog("recent media fallback title=\"" + title + "\" url=" + summarizeUrl(url));
-            return url;
+            return RedditComposeFocusBridge.upgradePreviewMedia(null, title, url);
+        }
+    }
+
+    private static String getRecentTextPreviewAtPoint(View root, int rawX, int rawY) {
+        if (rawX < root.getWidth() * 0.40f) {
+            return null;
+        }
+
+        synchronized (TITLE_MEDIA_URLS) {
+            if (RECENT_MEDIA_TITLES.isEmpty()) {
+                return null;
+            }
+
+            int visibleCount = Math.min(RECENT_MEDIA_TITLES.size(), 6);
+            int firstIndex = RECENT_MEDIA_TITLES.size() - visibleCount;
+            int top = dp(root, 120);
+            int bottom = Math.max(top + 1, root.getHeight() - dp(root, 80));
+            int row = clamp((rawY - top) * visibleCount / (bottom - top), 0, visibleCount - 1);
+            String title = RECENT_MEDIA_TITLES.get(firstIndex + row);
+            String body = RedditComposeFocusBridge.getPreviewBodyForTitle(title);
+            debugLog("recent text fallback title=\"" + title + "\" body=" + (body == null ? 0 : body.length()));
+            return body;
         }
     }
 
