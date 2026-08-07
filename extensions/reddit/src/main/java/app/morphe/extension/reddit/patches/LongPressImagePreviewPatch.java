@@ -393,9 +393,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         boolean hadPreview = activePreview != null;
+        FEED_HANDOFF_DONE = false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
-                FEED_HANDOFF_DONE = false;
                 TouchState state = new TouchState(
                         event.getRawX(),
                         event.getRawY(),
@@ -467,13 +467,53 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+            if (postPoint != null) {
+                rawX = postPoint[0];
+                rawY = postPoint[1];
+            }
+
+            String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
+            String mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
             if (mediaUrl == null) {
+                String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+                if (textPreview == null) {
+                    textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
+                }
+                if (textPreview != null) {
+                    Log.i(LOG_TAG, "showing text preview");
+                    overlay.addView(RedditComposeFocusBridge.createTextPreviewView(activity, textPreview), new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            Gravity.CENTER
+                    ));
+                    decor.addView(overlay, new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                    ));
+                    activePreview = overlay;
+                    return;
+                }
                 Log.i(LOG_TAG, "no real media url for preview");
                 return;
             }
 
             Log.i(LOG_TAG, "showing image preview");
+            if (RedditComposeFocusBridge.isVideoPreviewUrl(mediaUrl)) {
+                Log.i(LOG_TAG, "showing video preview");
+                overlay.addView(RedditComposeFocusBridge.createMediaWebView(activity, mediaUrl), new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
+                ));
+                decor.addView(overlay, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+                activePreview = overlay;
+                return;
+            }
+
             ImageView preview = new ImageView(activity);
             preview.setBackgroundColor(Color.TRANSPARENT);
             preview.setAdjustViewBounds(true);
@@ -1365,6 +1405,9 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         updatePreviewTargetY(root, mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1
                 : mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP ? -1 : 0);
+        if (!isFeedFocus(root.findFocus(), root)) {
+            FEED_HANDOFF_DONE = false;
+        }
         if (FEED_HANDOFF_DONE) {
             redispatchFeedKey(activity, mappedKeyCode);
             return true;
