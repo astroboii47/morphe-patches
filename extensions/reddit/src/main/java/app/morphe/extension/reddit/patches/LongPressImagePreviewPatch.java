@@ -395,6 +395,7 @@ public final class LongPressImagePreviewPatch {
         boolean hadPreview = activePreview != null;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                FEED_HANDOFF_DONE = false;
                 TouchState state = new TouchState(
                         event.getRawX(),
                         event.getRawY(),
@@ -1312,7 +1313,8 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
-        if (REDISPATCHING_FEED_KEY || hasKeyboardInputFocus(activity) || hasShortcutModifier(event)) {
+        Log.w("MorpheRedditKeys", "handleKeyboardFeedFocusKey entry");
+        if (REDISPATCHING_FEED_KEY) {
             return false;
         }
 
@@ -1527,7 +1529,6 @@ public final class LongPressImagePreviewPatch {
         }
 
         FEED_HANDOFF_DONE = true;
-        RedditKeyInjector.handoff(activity, keyCode);
         return true;
     }
 
