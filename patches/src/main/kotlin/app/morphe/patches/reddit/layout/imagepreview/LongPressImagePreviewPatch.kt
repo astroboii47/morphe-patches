@@ -223,7 +223,8 @@ val longPressImagePreviewPatch = bytecodePatch(
                 addInstructions(
                     index,
                     """
-                        invoke-static { v$register }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cacheLinkModel(Ljava/lang/Object;)V
+                        move-object/from16 v0, v$register
+                        invoke-static { v0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cacheLinkModel(Ljava/lang/Object;)V
                     """
                 )
             }
