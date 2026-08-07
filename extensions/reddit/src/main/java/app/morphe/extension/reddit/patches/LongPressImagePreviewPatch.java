@@ -242,6 +242,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         RedditComposeFocusBridge.registerPreviewBase(title, onPost, onSubredditPost, onProfilePost);
+        RedditComposeFocusBridge.cachePostBodyFromModels(title, onPost, onSubredditPost, onProfilePost);
         debugLog("post preview base hook title=\"" + title + "\" url=" + summarizeUrl(url));
         if (title == null || title.length() == 0 || url == null || url.length() == 0) {
             return;
@@ -278,6 +279,7 @@ public final class LongPressImagePreviewPatch {
         if (url == null) {
             url = extractUrl(videoElement);
         }
+        url = RedditComposeFocusBridge.preferVideoUrl(videoElement, url);
 
         debugLog("video section hook linkId=" + linkId + " url=" + summarizeUrl(url));
         registerMediaUrl(linkId, url);
@@ -611,11 +613,6 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static String getMediaUrlAtPoint(View root, int rawX, int rawY) {
-        String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
-        if (modelMediaUrl != null) {
-            return modelMediaUrl;
-        }
-
         String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
         if (linkId != null) {
             synchronized (MEDIA_URLS) {
@@ -627,6 +624,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         CharSequence description = findPostDescriptionAtPoint(root, rawX, rawY);
+        if (description == null) {
+            description = findNearestPostDescription(root, rawY);
+        }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
             return null;
@@ -1547,6 +1547,86 @@ public final class LongPressImagePreviewPatch {
         return 100000 - distance + Math.min(bounds.height(), root.getHeight());
     }
 
+    private static void synthesizeFeedFocusTouch(View root, int direction) {
+        try {
+            float x = root.getWidth() * 0.5f;
+            float yRatio = direction == View.FOCUS_UP ? 0.72f : 0.32f;
+            float y = clamp(
+                    Math.round(root.getHeight() * yRatio),
+                    dp(root, 128),
+                    root.getHeight() - dp(root, 128)
+            );
+            long now = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
+            MotionEvent cancel = MotionEvent.obtain(now, now + 8, MotionEvent.ACTION_CANCEL, x, y, 0);
+            try {
+                root.dispatchTouchEvent(down);
+                root.dispatchTouchEvent(cancel);
+            } finally {
+                down.recycle();
+                cancel.recycle();
+            }
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to synthesize Reddit feed focus touch", ex);
+        }
+    }
+
+    private static void collectBottomRightNavCandidate(View view, int minBottom, Object[] out, int[] bestScore) {
+        if (view == null || view.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        int width = view.getWidth();
+        int height = view.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        int left = location[0];
+        int bottom = location[1] + height;
+        if (bottom >= minBottom && left >= 1000 && (view.isFocusable() || view.isClickable())) {
+            int score = (bottom * 10000) + left + width;
+            if (score > bestScore[0]) {
+                bestScore[0] = score;
+                out[0] = view;
+            }
+        }
+
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                collectBottomRightNavCandidate(group.getChildAt(i), minBottom, out, bestScore);
+            }
+        }
+    }
+
+    private static boolean focusBottomRightNav(View root) {
+        if (root == null) {
+            return DEBUG_LOGS;
+        }
+
+        Object[] out = new Object[1];
+        collectBottomRightNavCandidate(
+                root,
+                root.getHeight() - dp(root, 160),
+                out,
+                new int[]{Integer.MIN_VALUE}
+        );
+        Object candidate = out[0];
+        return candidate instanceof View && ((View) candidate).requestFocus();
+    }
+
+    private static void scheduleFeedKey(Activity activity, int keyCode, long delayMillis) {
+        MAIN_HANDLER.postDelayed(new FeedKeyRunnable(activity, keyCode), delayMillis);
+    }
+
+    private static void synthesizeBottomRightTabHandoff(Activity activity, View root, int keyCode) {
+        FEED_HANDOFF_DONE = true;
+        RedditKeyInjector.handoff(activity, keyCode);
+    }
+
     private static int updatePreviewTargetY(View root, int direction) {
         if (root == null) {
             return 0;
@@ -1593,7 +1673,7 @@ public final class LongPressImagePreviewPatch {
         return bestY;
     }
 
-    private static void redispatchFeedKey(Activity activity, int keyCode) {
+    public static void redispatchFeedKey(Activity activity, int keyCode) {
         long now = SystemClock.uptimeMillis();
         REDISPATCHING_FEED_KEY = true;
         try {
@@ -1601,6 +1681,21 @@ public final class LongPressImagePreviewPatch {
             activity.dispatchKeyEvent(new KeyEvent(now, now + 8, KeyEvent.ACTION_UP, keyCode, 0));
         } finally {
             REDISPATCHING_FEED_KEY = false;
+        }
+    }
+
+    public static final class FeedKeyRunnable implements Runnable {
+        private final Activity activity;
+        private final int keyCode;
+
+        FeedKeyRunnable(Activity activity, int keyCode) {
+            this.activity = activity;
+            this.keyCode = keyCode;
+        }
+
+        @Override
+        public void run() {
+            LongPressImagePreviewPatch.redispatchFeedKey(activity, keyCode);
         }
     }
 
