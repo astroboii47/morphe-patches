@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-07T08:33:00",
+  "created_at": "2026-08-07T08:45:00",
   "description": "Reddit v29 preview, feed focus, and keyboard shortcut fixes",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.17/patches-1.36.0-dev.17.mpp",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.18/patches-1.36.0-dev.18.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.17"
+  "version": "1.36.0-dev.18"
 }
