@@ -50,105 +50,105 @@ val longPressImagePreviewPatch = bytecodePatch(
             fingerprint.method.addInstructions(0, instructions)
         }
 
-        hookConstructor(
+        hookMethodStart(
             CompactSelfImageConstructorFingerprint,
             """
                 invoke-static { p4, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             CompactVideoConstructorFingerprint,
             """
                 invoke-static { p2, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             PostSelfImageElementConstructorFingerprint,
             """
                 invoke-static { p1, p5 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             ThumbnailUiModelConstructorFingerprint,
             """
                 invoke-static { p1, p3 }, $EXTENSION_CLASS->registerMediaUrl(Ljava/lang/String;Ljava/lang/String;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             PostTitleWithThumbnailSectionConstructorFingerprint,
             """
                 invoke-static { p2, p6 }, $EXTENSION_CLASS->registerPostMedia(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             TitleWithThumbnailElementConstructorFingerprint,
             """
                 invoke-static { p5, p7 }, $EXTENSION_CLASS->registerTitleThumbnailElement(Ljava/lang/Object;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             CompactLinkConstructorFingerprint,
             """
                 invoke-static { p6, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             PostTitleElementConstructorFingerprint,
             """
                 invoke-static { p1, p5 }, $EXTENSION_CLASS->registerPostTitle(Ljava/lang/String;Ljava/lang/String;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             PostMediaWebsiteElementConstructorFingerprint,
             """
                 invoke-static { p4, p1 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             GalleryElementConstructorFingerprint,
             """
                 invoke-static { p1, p6 }, $EXTENSION_CLASS->registerMediaPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             CompactPostPreviewItemConstructorFingerprint,
             """
                 invoke-static { p1, p4 }, $EXTENSION_CLASS->registerCompactPostPreview(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             CompactPostPreviewConstructorFingerprint,
             """
                 invoke-static { p5, p8 }, $EXTENSION_CLASS->registerPostMedia(Ljava/lang/String;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             CompactPostPreviewBaseInfoConstructorFingerprint,
             """
                 invoke-static { p7, p8, p9, p10 }, $EXTENSION_CLASS->registerPostPreviewBase(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             FeedImageSectionConstructorFingerprint,
             """
                 invoke-static { p1 }, $EXTENSION_CLASS->registerFeedImageSection(Ljava/lang/Object;)V
             """
         )
 
-        hookConstructor(
+        hookMethodStart(
             FeedVideoSectionConstructorFingerprint,
             """
                 invoke-static { p1 }, $EXTENSION_CLASS->registerFeedVideoSection(Ljava/lang/Object;)V
