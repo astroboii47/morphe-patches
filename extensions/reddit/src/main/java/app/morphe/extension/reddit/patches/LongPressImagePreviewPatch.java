@@ -1414,10 +1414,6 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
-        if (!Settings.LONG_PRESS_IMAGE_PREVIEW.get()) {
-            return false;
-        }
-
         int action = event.getAction();
         if (action == KeyEvent.ACTION_UP) {
             hidePreview();

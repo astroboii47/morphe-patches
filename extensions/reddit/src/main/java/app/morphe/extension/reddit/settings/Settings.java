@@ -42,14 +42,6 @@ public class Settings extends BaseSettings {
     public static final BooleanSetting HIDE_REDDIT_PRO_SHELF = new BooleanSetting("morphe_hide_reddit_pro_shelf", FALSE, true);
     public static final BooleanSetting REMEMBER_POST_SCROLL_POSITION = new BooleanSetting("morphe_remember_post_scroll_position", TRUE, true);
     public static final BooleanSetting LONG_PRESS_IMAGE_PREVIEW = new BooleanSetting("morphe_long_press_image_preview", TRUE, true);
-    public static final StringSetting KEYBOARD_SHORTCUT_UP = new StringSetting("morphe_keyboard_shortcut_up", "i", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_DOWN = new StringSetting("morphe_keyboard_shortcut_down", "k", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_LEFT = new StringSetting("morphe_keyboard_shortcut_left", "j", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_RIGHT = new StringSetting("morphe_keyboard_shortcut_right", "l", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_PREVIEW = new StringSetting("morphe_keyboard_shortcut_preview", "p", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_OPEN_POST = new StringSetting("morphe_keyboard_shortcut_open_post", "o", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_BACK = new StringSetting("morphe_keyboard_shortcut_back", "u", true);
-    public static final StringSetting KEYBOARD_SHORTCUT_NEXT_COMMENT = new StringSetting("morphe_keyboard_shortcut_next_comment", "n", true);
     public static final BooleanSetting HIDE_TRENDING_SHELVES = new BooleanSetting("morphe_hide_trending_shelves", FALSE, true);
     public static final BooleanSetting REMOVE_NSFW_DIALOG = new BooleanSetting("morphe_remove_nsfw_dialog", TRUE, true);
     public static final BooleanSetting REMOVE_NOTIFICATION_DIALOG = new BooleanSetting("morphe_remove_notification_dialog", TRUE, true);
