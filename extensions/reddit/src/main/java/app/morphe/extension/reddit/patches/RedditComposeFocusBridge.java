@@ -388,7 +388,11 @@ public final class RedditComposeFocusBridge {
                 }
                 String text = findPostUnitTextAt(compose.getClass().getClassLoader(), provider, delegate, rawX, rawY);
                 if (text != null && text.trim().length() > 0) {
-                    return text;
+                    String body = getCachedBodyForRowText(text);
+                    if (body != null && body.trim().length() > 0) {
+                        Log.w(TAG, "postTextPreview body length=" + body.length());
+                        return body.trim();
+                    }
                 }
             }
         } catch (Throwable throwable) {
@@ -584,6 +588,36 @@ public final class RedditComposeFocusBridge {
         }
     }
 
+    private static void storePostBody(String title, String id, String body) {
+        if (body == null) {
+            return;
+        }
+        String trimmed = body.trim();
+        if (trimmed.length() == 0) {
+            return;
+        }
+        synchronized (POST_BODIES) {
+            if (POST_BODIES.size() > MAX_POST_BODIES) {
+                POST_BODIES.clear();
+            }
+            if (title != null && title.length() > 0) {
+                POST_BODIES.put(title, trimmed);
+            }
+            if (id != null && id.length() > 0) {
+                POST_BODIES.put(id, trimmed);
+            }
+        }
+        PreviewRecord record = previewRecord(id, title);
+        if (id != null && id.length() > 0) {
+            record.key = id;
+        }
+        if (title != null && title.length() > 0) {
+            record.title = title;
+        }
+        record.body = trimmed;
+        storePreviewRecord(record);
+    }
+
     private static boolean shouldReplaceMedia(String oldUrl, String newUrl) {
         if (newUrl == null || newUrl.length() == 0) {
             return false;
@@ -655,12 +689,7 @@ public final class RedditComposeFocusBridge {
             }
             String body = extractModelBodyText(model);
             if (title != null && title.length() > 0 && body != null && body.trim().length() > 0) {
-                synchronized (POST_BODIES) {
-                    if (POST_BODIES.size() > MAX_POST_BODIES) {
-                        POST_BODIES.clear();
-                    }
-                    POST_BODIES.put(title, body.trim());
-                }
+                storePostBody(title, id, body);
             }
             String video = extractModelVideoUrl(model);
             String image = extractModelImageUrl(model);
@@ -709,12 +738,7 @@ public final class RedditComposeFocusBridge {
             if (body == null || body.trim().length() == 0) {
                 return;
             }
-            synchronized (POST_BODIES) {
-                if (POST_BODIES.size() > MAX_POST_BODIES) {
-                    POST_BODIES.clear();
-                }
-                POST_BODIES.put(title, body.trim());
-            }
+            storePostBody(title, null, body);
             Log.w(TAG, "cachedPostBody title=\"" + title + "\" length=" + body.length());
         } catch (Throwable throwable) {
             Log.w(TAG, "cachePostBody failed", throwable);
@@ -745,12 +769,7 @@ public final class RedditComposeFocusBridge {
             if (title == null || title.length() == 0 || !looksLikeBody(body)) {
                 return;
             }
-            synchronized (POST_BODIES) {
-                if (POST_BODIES.size() > MAX_POST_BODIES) {
-                    POST_BODIES.clear();
-                }
-                POST_BODIES.put(title, body.trim());
-            }
+            storePostBody(title, null, body);
             Log.w(TAG, "cachedPresentationBody title=\"" + title + "\" length=" + body.length());
         } catch (Throwable throwable) {
             Log.w(TAG, "cachePresentationPostBody failed", throwable);
@@ -770,12 +789,7 @@ public final class RedditComposeFocusBridge {
             if (body == null || body.trim().length() == 0) {
                 return;
             }
-            synchronized (POST_BODIES) {
-                if (POST_BODIES.size() > MAX_POST_BODIES) {
-                    POST_BODIES.clear();
-                }
-                POST_BODIES.put(title, body.trim());
-            }
+            storePostBody(title, null, body);
             Log.w(TAG, "cachedLinkBody title=\"" + title + "\" length=" + body.length());
         } catch (Throwable throwable) {
             Log.w(TAG, "cacheLinkModel failed", throwable);
