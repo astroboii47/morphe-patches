@@ -452,6 +452,14 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void showPreview(Activity activity, View root, int rawX, int rawY) {
+        showPreview(activity, root, rawX, rawY, false);
+    }
+
+    private static void showFocusedPreview(Activity activity, View root, int rawX, int rawY) {
+        showPreview(activity, root, rawX, rawY, true);
+    }
+
+    private static void showPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {
         try {
             hidePreview();
 
@@ -469,8 +477,10 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
-            if (mediaUrl == null) {
+            String mediaUrl = focusedOnly
+                    ? RedditComposeFocusBridge.getFocusedPostModelMediaPreview(root)
+                    : getMediaUrlAtPoint(root, rawX, rawY);
+            if (!focusedOnly && mediaUrl == null) {
                 int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
                 if (postPoint != null) {
                     rawX = postPoint[0];
@@ -481,12 +491,11 @@ public final class LongPressImagePreviewPatch {
                 mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
             }
             if (mediaUrl == null) {
-                String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
-                if (textPreview == null) {
+                String textPreview = focusedOnly
+                        ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
+                        : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+                if (!focusedOnly && textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
-                }
-                if (textPreview == null) {
-                    textPreview = getRecentTextPreviewAtPoint(root, rawX, rawY);
                 }
                 if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
                     Log.i(LOG_TAG, "showing text preview");
@@ -635,8 +644,7 @@ public final class LongPressImagePreviewPatch {
         }
         if (description == null) {
             Log.i(LOG_TAG, "no post description at " + rawX + "," + rawY + " cacheSize=" + TITLE_MEDIA_URLS.size());
-            String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
-            return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
+            return null;
         }
 
         String text = description.toString();
@@ -655,8 +663,7 @@ public final class LongPressImagePreviewPatch {
             }
         }
 
-        String recentUrl = getRecentMediaUrlAtPoint(root, rawX, rawY);
-        return recentUrl != null ? recentUrl : getRecentSourceUrlAtPoint(root, rawX, rawY);
+        return null;
     }
 
     private static String findMediaLinkIdAtPoint(View root, int rawX, int rawY) {
@@ -1453,7 +1460,7 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
         if (point != null) {
-            showPreview(activity, root, point[0], point[1]);
+            showFocusedPreview(activity, root, point[0], point[1]);
             return true;
         }
 

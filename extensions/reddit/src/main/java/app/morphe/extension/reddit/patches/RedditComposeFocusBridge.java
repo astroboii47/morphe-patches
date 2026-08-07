@@ -376,6 +376,55 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    public static String getFocusedPostModelMediaPreview(View root) {
+        try {
+            String rowText = getFocusedPostTextPreview(root);
+            PreviewRecord record = previewRecordForRowText(rowText);
+            if (record != null && isUsablePreviewMedia(record.mediaUrl)) {
+                Log.w(TAG, "focusedPreview media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
+                return record.mediaUrl;
+            }
+            Object model = registeredModelForRowText(rowText);
+            String video = extractModelVideoUrl(model);
+            if (video != null && video.length() > 0) {
+                Log.w(TAG, "focusedPreview model video " + summarizeUrl(video));
+                return video;
+            }
+            String image = extractModelImageUrl(model);
+            if (isUsablePreviewMedia(image)) {
+                Log.w(TAG, "focusedPreview model image " + summarizeUrl(image));
+                return image;
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedPreviewMedia failed", throwable);
+        }
+        return null;
+    }
+
+    public static String getFocusedPostModelTextPreview(View root) {
+        try {
+            String rowText = getFocusedPostTextPreview(root);
+            PreviewRecord record = previewRecordForRowText(rowText);
+            if (record != null && record.body != null && record.body.trim().length() > 0) {
+                Log.w(TAG, "focusedPreview text title=\"" + record.title + "\" length=" + record.body.length());
+                return record.body.trim();
+            }
+            String body = getCachedBodyForRowText(rowText);
+            if (body != null && body.trim().length() > 0) {
+                Log.w(TAG, "focusedPreview cached text length=" + body.length());
+                return body.trim();
+            }
+            body = extractModelBodyText(registeredModelForRowText(rowText));
+            if (body != null && body.trim().length() > 0) {
+                Log.w(TAG, "focusedPreview model text length=" + body.length());
+                return body.trim();
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedPreviewText failed", throwable);
+        }
+        return null;
+    }
+
     public static String getPostTextPreviewAt(View root, int rawX, int rawY) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -692,6 +741,10 @@ public final class RedditComposeFocusBridge {
 
     private static PreviewRecord findPreviewRecordForPostUnit(View root, int rawX, int rawY) throws Exception {
         String rowText = findPostUnitTextForPreview(root, rawX, rawY);
+        return previewRecordForRowText(rowText);
+    }
+
+    private static PreviewRecord previewRecordForRowText(String rowText) {
         if (rowText == null || rowText.length() == 0) {
             return null;
         }
