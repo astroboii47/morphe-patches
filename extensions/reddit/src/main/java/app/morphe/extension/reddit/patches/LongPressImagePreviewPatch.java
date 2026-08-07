@@ -393,9 +393,9 @@ public final class LongPressImagePreviewPatch {
         }
 
         boolean hadPreview = activePreview != null;
-        FEED_HANDOFF_DONE = false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                FEED_HANDOFF_DONE = false;
                 TouchState state = new TouchState(
                         event.getRawX(),
                         event.getRawY(),
@@ -1405,9 +1405,6 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         updatePreviewTargetY(root, mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1
                 : mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP ? -1 : 0);
-        if (!isFeedFocus(root.findFocus(), root)) {
-            FEED_HANDOFF_DONE = false;
-        }
         if (FEED_HANDOFF_DONE) {
             redispatchFeedKey(activity, mappedKeyCode);
             return true;
