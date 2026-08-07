@@ -4,6 +4,7 @@ import android.app.Instrumentation;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.net.Uri;
 import android.util.Log;
 import android.os.SystemClock;
 import android.view.KeyEvent;
@@ -12,6 +13,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
+import android.widget.FrameLayout;
+import android.widget.MediaController;
+import android.widget.VideoView;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.graphics.Rect;
@@ -1152,7 +1156,7 @@ public final class RedditComposeFocusBridge {
         if (model == null) {
             return null;
         }
-        String direct = findImageUrl(model, 0, new IdentityHashMap<Object, Boolean>());
+        String direct = findBestImageUrl(model);
         return direct != null && direct.length() > 0 ? direct : null;
     }
 
@@ -1171,6 +1175,10 @@ public final class RedditComposeFocusBridge {
             }
             if (name.equals("com.reddit.domain.model.Link")) {
                 return linkBodyText(model);
+            }
+            String body = extractPostBody(model, 0);
+            if (looksLikeBody(body)) {
+                return body;
             }
         } catch (Throwable ignored) {
         }
@@ -1223,7 +1231,7 @@ public final class RedditComposeFocusBridge {
         WebView webView = new WebView(context);
         webView.setBackgroundColor(0);
         WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(false);
+        settings.setJavaScriptEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         String escaped = escapeHtml(url);
         String tag = isVideoPreviewUrl(url)
@@ -1235,6 +1243,45 @@ public final class RedditComposeFocusBridge {
                 + "</head><body>" + tag + "</body></html>";
         webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
         return webView;
+    }
+
+    public static View createVideoPreviewView(Context context, String url) {
+        FrameLayout frame = new FrameLayout(context);
+        frame.setBackgroundColor(0xff000000);
+        VideoView videoView = new VideoView(context);
+        videoView.setBackgroundColor(0xff000000);
+        MediaController controller = new MediaController(context);
+        controller.setAnchorView(videoView);
+        videoView.setMediaController(controller);
+        frame.addView(videoView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        try {
+            videoView.setVideoURI(Uri.parse(url));
+            videoView.setOnPreparedListener(player -> {
+                player.setLooping(true);
+                player.setVolume(0.0f, 0.0f);
+                videoView.start();
+            });
+            videoView.setOnErrorListener((player, what, extra) -> {
+                frame.removeAllViews();
+                frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+                return true;
+            });
+            videoView.start();
+        } catch (Throwable throwable) {
+            Log.w(TAG, "videoPreviewView failed", throwable);
+            frame.removeAllViews();
+            frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+        }
+        return frame;
     }
 
     public static android.widget.TextView createTextPreviewView(Context context, String text) {
@@ -1667,6 +1714,18 @@ public final class RedditComposeFocusBridge {
         if (parsed == null) {
             parsed = parseBodyFromToString(rendered, "bodyText=");
         }
+        if (parsed == null) {
+            parsed = parseBodyFromToString(rendered, "selfText=");
+        }
+        if (parsed == null) {
+            parsed = parseBodyFromToString(rendered, "selftext=");
+        }
+        if (parsed == null) {
+            parsed = parseBodyFromToString(rendered, "markdown=");
+        }
+        if (parsed == null) {
+            parsed = parseBodyFromToString(rendered, "richtext=");
+        }
         return parsed;
     }
 
@@ -1741,6 +1800,137 @@ public final class RedditComposeFocusBridge {
             current = current.getSuperclass();
         }
         return null;
+    }
+
+    private static String findBestImageUrl(Object value) throws Exception {
+        String[] best = new String[] {null};
+        int[] bestScore = new int[] {Integer.MIN_VALUE};
+        collectImageUrls(value, 0, new IdentityHashMap<Object, Boolean>(), best, bestScore);
+        if (best[0] != null) {
+            Log.w(TAG, "bestImageUrl score=" + bestScore[0] + " " + summarizeUrl(best[0]));
+        }
+        return best[0];
+    }
+
+    private static void collectImageUrls(Object value, int depth, IdentityHashMap<Object, Boolean> seen, String[] best, int[] bestScore) throws Exception {
+        if (value == null || depth > 7) {
+            return;
+        }
+        if (value instanceof CharSequence) {
+            collectImageUrlsFromText(value.toString(), best, bestScore);
+            return;
+        }
+        Class<?> type = value.getClass();
+        if (type.isPrimitive() || value instanceof Number || value instanceof Boolean || value instanceof Enum) {
+            return;
+        }
+        if (seen.containsKey(value)) {
+            return;
+        }
+        seen.put(value, Boolean.TRUE);
+
+        if (value instanceof Iterable) {
+            for (Object item : (Iterable<?>) value) {
+                collectImageUrls(item, depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+        if (value instanceof Map) {
+            for (Object item : ((Map<?, ?>) value).values()) {
+                collectImageUrls(item, depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+        if (type.isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                collectImageUrls(java.lang.reflect.Array.get(value, i), depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+
+        collectImageUrlsFromText(value.toString(), best, bestScore);
+
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            Field[] fields = current.getDeclaredFields();
+            for (Field field : fields) {
+                try {
+                    field.setAccessible(true);
+                    collectImageUrls(field.get(value), depth + 1, seen, best, bestScore);
+                } catch (Throwable ignored) {
+                }
+            }
+            current = current.getSuperclass();
+        }
+    }
+
+    private static void collectImageUrlsFromText(String text, String[] best, int[] bestScore) {
+        if (text == null) {
+            return;
+        }
+        String[] markers = new String[] {"https://", "http://"};
+        for (String marker : markers) {
+            int start = text.indexOf(marker);
+            while (start >= 0) {
+                int end = start;
+                while (end < text.length()) {
+                    char ch = text.charAt(end);
+                    if (Character.isWhitespace(ch) || ch == ',' || ch == ')' || ch == ']' || ch == '"') {
+                        break;
+                    }
+                    end++;
+                }
+                String url = cleanMediaUrl(text.substring(start, end));
+                if (isImagePreviewUrl(url)) {
+                    int score = imagePreviewScore(url);
+                    if (score > bestScore[0]) {
+                        best[0] = url;
+                        bestScore[0] = score;
+                    }
+                }
+                start = text.indexOf(marker, end);
+            }
+        }
+    }
+
+    private static String cleanMediaUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        return url.replace("\\u0026", "&")
+                .replace("&amp;", "&")
+                .replace("\\/", "/")
+                .replace("amp;", "")
+                .trim();
+    }
+
+    private static int imagePreviewScore(String url) {
+        if (url == null) {
+            return Integer.MIN_VALUE;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        int score = 0;
+        if (lower.contains("i.redd.it")) {
+            score += 1000;
+        }
+        if (lower.contains("preview.redd.it")) {
+            score += 700;
+        }
+        if (lower.contains("external-preview.redd.it")) {
+            score -= 200;
+        }
+        if (lower.contains("thumbnail") || lower.contains("thumb")) {
+            score -= 500;
+        }
+        if (lower.contains("width=") || lower.contains("height=") || lower.contains("crop=")) {
+            score -= 150;
+        }
+        if (lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png") || lower.contains(".webp")) {
+            score += 100;
+        }
+        score += Math.min(url.length(), 500);
+        return score;
     }
 
     private static String findImageUrl(Object value, int depth, IdentityHashMap<Object, Boolean> seen) throws Exception {

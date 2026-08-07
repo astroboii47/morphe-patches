@@ -485,7 +485,7 @@ public final class LongPressImagePreviewPatch {
                 if (textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
-                if (textPreview != null) {
+                if (textPreview != null && textPreview.trim().length() > 0) {
                     Log.i(LOG_TAG, "showing text preview");
                     overlay.addView(RedditComposeFocusBridge.createTextPreviewView(activity, textPreview), new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -506,7 +506,7 @@ public final class LongPressImagePreviewPatch {
             Log.i(LOG_TAG, "showing image preview");
             if (RedditComposeFocusBridge.isVideoPreviewUrl(mediaUrl)) {
                 Log.i(LOG_TAG, "showing video preview");
-                overlay.addView(RedditComposeFocusBridge.createMediaWebView(activity, mediaUrl), new FrameLayout.LayoutParams(
+                overlay.addView(RedditComposeFocusBridge.createVideoPreviewView(activity, mediaUrl), new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         Gravity.CENTER
