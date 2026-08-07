@@ -803,10 +803,32 @@ public final class RedditComposeFocusBridge {
                 body = extractPostBody(link, 0);
             }
             if (body == null || body.trim().length() == 0) {
-                return;
+                body = null;
             }
-            storePostBody(title, id, body);
-            Log.w(TAG, "cachedLinkBody title=\"" + title + "\" id=" + id + " length=" + body.length());
+            String video = extractModelVideoUrl(link);
+            String image = extractModelImageUrl(link);
+            if (body != null) {
+                storePostBody(title, id, body);
+            }
+            PreviewRecord record = previewRecord(id, title);
+            if (id != null && id.length() > 0) {
+                record.key = id;
+            }
+            if (title != null && title.length() > 0) {
+                record.title = title;
+            }
+            if (body != null && body.trim().length() > 0) {
+                record.body = body.trim();
+            }
+            if (video != null && video.length() > 0) {
+                record.mediaUrl = video;
+            } else if (isUsablePreviewMedia(image) && shouldReplaceMedia(record.mediaUrl, image)) {
+                record.mediaUrl = image;
+            }
+            storePreviewRecord(record);
+            Log.w(TAG, "cachedLinkModel title=\"" + title + "\" id=" + id
+                    + " body=" + (body != null ? body.length() : 0)
+                    + " media=" + summarizeUrl(record.mediaUrl));
         } catch (Throwable throwable) {
             Log.w(TAG, "cacheLinkModel failed", throwable);
         }
