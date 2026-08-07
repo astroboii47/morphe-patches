@@ -1349,7 +1349,7 @@ public final class LongPressImagePreviewPatch {
         return Math.round(value * view.getResources().getDisplayMetrics().density);
     }
 
-    private static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
+    public static boolean handleKeyboardFeedFocusKey(Activity activity, KeyEvent event) {
         Log.w("MorpheRedditKeys", "handleKeyboardFeedFocusKey entry");
         if (REDISPATCHING_FEED_KEY) {
             return false;
