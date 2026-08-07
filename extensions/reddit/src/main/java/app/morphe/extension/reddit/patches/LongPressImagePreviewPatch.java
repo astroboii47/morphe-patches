@@ -469,23 +469,20 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
-            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
             int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
-            if (postPoint != null && mediaUrl == null) {
+            if (postPoint != null) {
                 rawX = postPoint[0];
                 rawY = postPoint[1];
             }
 
             String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
-            if (mediaUrl == null) {
-                mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
-            }
+            String mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
             if (mediaUrl == null) {
                 String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
                 if (textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
-                if (textPreview != null && textPreview.trim().length() > 0) {
+                if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
                     Log.i(LOG_TAG, "showing text preview");
                     overlay.addView(RedditComposeFocusBridge.createTextPreviewView(activity, textPreview), new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,

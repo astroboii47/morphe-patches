@@ -479,8 +479,9 @@ public final class RedditComposeFocusBridge {
         }
         try {
             String media = preferVideoUrl(source, url);
-            if (media == null || media.length() == 0) {
-                media = extractModelImageUrl(source);
+            String image = extractModelImageUrl(source);
+            if (image != null && image.length() > 0 && shouldReplaceMedia(media, image)) {
+                media = image;
             }
             PreviewRecord record = previewRecord(keyOrTitle, keyOrTitle);
             if (keyOrTitle != null && keyOrTitle.length() > 0) {
@@ -632,7 +633,13 @@ public final class RedditComposeFocusBridge {
         if (oldUrl == null || oldUrl.length() == 0) {
             return true;
         }
-        return !isVideoPreviewUrl(oldUrl) || isVideoPreviewUrl(newUrl);
+        if (isVideoPreviewUrl(newUrl) && !isVideoPreviewUrl(oldUrl)) {
+            return true;
+        }
+        if (isVideoPreviewUrl(oldUrl) && !isVideoPreviewUrl(newUrl)) {
+            return false;
+        }
+        return imagePreviewScore(newUrl) > imagePreviewScore(oldUrl);
     }
 
     private static PreviewRecord findPreviewRecordForPostUnit(View root, int rawX, int rawY) throws Exception {
@@ -725,6 +732,10 @@ public final class RedditComposeFocusBridge {
         }
         String lower = url.toLowerCase(Locale.US);
         return lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".m3u8") || lower.contains("v.redd.it");
+    }
+
+    public static boolean isTextBodyPreview(String text) {
+        return looksLikeBody(text);
     }
 
     public static void cachePostBodyFromModels(String title, Object first, Object second, Object third) {
