@@ -34,7 +34,6 @@ public final class RedditComposeFocusBridge {
     private static final Map<String, Object> POST_MODELS_BY_ID = new HashMap<String, Object>();
     private static final Map<String, PreviewRecord> PREVIEWS_BY_KEY = new HashMap<String, PreviewRecord>();
     private static final Map<String, PreviewRecord> PREVIEWS_BY_TITLE = new HashMap<String, PreviewRecord>();
-    private static final ArrayList<PreviewRecord> RECENT_POST_UNITS = new ArrayList<PreviewRecord>();
     private static final int MAX_POST_BODIES = 300;
     private static final int MAX_POST_MODELS = 300;
 
@@ -45,11 +44,6 @@ public final class RedditComposeFocusBridge {
         String title;
         String mediaUrl;
         String body;
-    }
-
-    private static final class RowPosition {
-        int index;
-        int count;
     }
 
     public static boolean moveFocus(View root, int direction) {
@@ -410,14 +404,8 @@ public final class RedditComposeFocusBridge {
                 model = findRegisteredModelForPostUnit(root, rawX, rawY);
             }
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
-            if (record != null && record.mediaUrl != null && record.mediaUrl.length() > 0) {
+            if (record != null && isUsablePreviewMedia(record.mediaUrl)) {
                 Log.w(TAG, "previewRecord media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
-                return record.mediaUrl;
-            }
-            record = findRecentPostUnitRecordForPoint(root, rawX, rawY);
-            record = preferTitlePreviewRecord(record);
-            if (record != null && record.mediaUrl != null && record.mediaUrl.length() > 0) {
-                Log.w(TAG, "recentPostUnit media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
                 return record.mediaUrl;
             }
             String video = extractModelVideoUrl(model);
@@ -426,7 +414,7 @@ public final class RedditComposeFocusBridge {
                 return video;
             }
             String image = extractModelImageUrl(model);
-            if (image != null && image.length() > 0) {
+            if (isUsablePreviewMedia(image)) {
                 Log.w(TAG, "postUnitModel image " + summarizeUrl(image));
                 return image;
             }
@@ -445,12 +433,6 @@ public final class RedditComposeFocusBridge {
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "previewRecord text title=\"" + record.title + "\" length=" + record.body.length());
-                return record.body.trim();
-            }
-            record = findRecentPostUnitRecordForPoint(root, rawX, rawY);
-            record = preferTitlePreviewRecord(record);
-            if (record != null && record.body != null && record.body.trim().length() > 0) {
-                Log.w(TAG, "recentPostUnit text title=\"" + record.title + "\" length=" + record.body.length());
                 return record.body.trim();
             }
             String body = extractModelBodyText(model);
@@ -606,6 +588,9 @@ public final class RedditComposeFocusBridge {
         if (newUrl == null || newUrl.length() == 0) {
             return false;
         }
+        if (isAvatarPreviewUrl(newUrl)) {
+            return false;
+        }
         if (oldUrl == null || oldUrl.length() == 0) {
             return true;
         }
@@ -688,73 +673,17 @@ public final class RedditComposeFocusBridge {
             }
             if (video != null && video.length() > 0) {
                 record.mediaUrl = video;
-            } else if (image != null && image.length() > 0) {
+            } else if (isUsablePreviewMedia(image)) {
                 record.mediaUrl = image;
             }
             if (body != null && body.trim().length() > 0) {
                 record.body = body.trim();
             }
             storePreviewRecord(record);
-            storeRecentPostUnitRecord(record);
             Log.w(TAG, "registeredPostUnit id=" + id + " title=\"" + title + "\" body=" + (body == null ? 0 : body.length()) + " video=" + (video != null) + " image=" + (image != null));
         } catch (Throwable throwable) {
             Log.w(TAG, "registerPostUnitModel failed", throwable);
         }
-    }
-
-    private static void storeRecentPostUnitRecord(PreviewRecord record) {
-        if (record == null || ((record.mediaUrl == null || record.mediaUrl.length() == 0)
-                && (record.body == null || record.body.length() == 0))) {
-            return;
-        }
-        synchronized (RECENT_POST_UNITS) {
-            for (int i = RECENT_POST_UNITS.size() - 1; i >= 0; i--) {
-                PreviewRecord existing = RECENT_POST_UNITS.get(i);
-                if ((record.key != null && record.key.equals(existing.key))
-                        || (record.title != null && record.title.equals(existing.title))) {
-                    RECENT_POST_UNITS.remove(i);
-                    break;
-                }
-            }
-            RECENT_POST_UNITS.add(record);
-            while (RECENT_POST_UNITS.size() > 48) {
-                RECENT_POST_UNITS.remove(0);
-            }
-        }
-    }
-
-    private static PreviewRecord findRecentPostUnitRecordForPoint(View root, int rawX, int rawY) throws Exception {
-        RowPosition position = findPostUnitRowPosition(root, rawX, rawY);
-        if (position == null || position.count <= 0) {
-            return null;
-        }
-        synchronized (RECENT_POST_UNITS) {
-            if (RECENT_POST_UNITS.isEmpty()) {
-                return null;
-            }
-            int visibleCount = Math.min(position.count, RECENT_POST_UNITS.size());
-            int first = RECENT_POST_UNITS.size() - visibleCount;
-            int index = first + Math.min(position.index, visibleCount - 1);
-            PreviewRecord record = RECENT_POST_UNITS.get(index);
-            Log.w(TAG, "recentPostUnit matched row=" + position.index + "/" + position.count
-                    + " title=\"" + record.title + "\"");
-            return record;
-        }
-    }
-
-    private static PreviewRecord preferTitlePreviewRecord(PreviewRecord record) {
-        if (record == null || record.title == null || record.title.length() == 0) {
-            return record;
-        }
-        synchronized (PREVIEWS_BY_TITLE) {
-            PreviewRecord byTitle = PREVIEWS_BY_TITLE.get(record.title);
-            if (byTitle != null && ((byTitle.mediaUrl != null && byTitle.mediaUrl.length() > 0)
-                    || (byTitle.body != null && byTitle.body.length() > 0))) {
-                Log.w(TAG, "recentPostUnit title cache hit title=\"" + record.title + "\"");
-                return byTitle;
-            }
-        }
-        return record;
     }
 
     public static boolean isVideoPreviewUrl(String url) {
@@ -1491,87 +1420,6 @@ public final class RedditComposeFocusBridge {
         return best;
     }
 
-    private static RowPosition findPostUnitRowPosition(View root, int rawX, int rawY) throws Exception {
-        ArrayList<View> composeViews = new ArrayList<View>();
-        collectComposeViews(root, composeViews);
-        for (int i = composeViews.size() - 1; i >= 0; i--) {
-            View compose = composeViews.get(i);
-            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
-            if (provider == null) {
-                continue;
-            }
-            Object delegate = readField(provider, "a");
-            if (delegate == null) {
-                continue;
-            }
-            RowPosition position = findPostUnitRowPosition(compose.getClass().getClassLoader(), provider, delegate, rawX, rawY);
-            if (position != null) {
-                return position;
-            }
-        }
-        return null;
-    }
-
-    private static RowPosition findPostUnitRowPosition(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate, int rawX, int rawY) throws Exception {
-        Object accessibilityDelegate = readField(delegate, "i");
-        if (accessibilityDelegate == null) {
-            accessibilityDelegate = delegate;
-        }
-        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
-        semanticsMapMethod.setAccessible(true);
-        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
-        if (map == null) {
-            return null;
-        }
-
-        Object[] values = (Object[]) readField(map, "c");
-        if (values == null) {
-            return null;
-        }
-
-        Class<?> semanticsKeys = loader.loadClass("androidx.compose.ui.semantics.d");
-        Object testTagKey = readStaticField(semanticsKeys, "A");
-        ArrayList<Rect> rows = new ArrayList<Rect>();
-        for (Object wrapper : values) {
-            if (wrapper == null) {
-                continue;
-            }
-            Object node = readField(wrapper, "a");
-            if (node == null) {
-                continue;
-            }
-            Object config = readField(node, "d");
-            Object tag = getSemanticsValue(config, testTagKey);
-            if (!"post_unit".equals(String.valueOf(tag))) {
-                continue;
-            }
-            Object id = readField(node, "f");
-            if (!(id instanceof Integer)) {
-                continue;
-            }
-            Rect bounds = getProviderBounds(provider, ((Integer) id).intValue());
-            if (bounds == null || bounds.height() <= 0 || bounds.bottom <= 120) {
-                continue;
-            }
-            int insert = 0;
-            while (insert < rows.size() && rows.get(insert).top <= bounds.top) {
-                insert++;
-            }
-            rows.add(insert, bounds);
-        }
-
-        for (int i = 0; i < rows.size(); i++) {
-            Rect bounds = rows.get(i);
-            if (bounds.contains(rawX, rawY)) {
-                RowPosition position = new RowPosition();
-                position.index = i;
-                position.count = rows.size();
-                return position;
-            }
-        }
-        return null;
-    }
-
     private static String findFocusedPostUnitText(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {
         return findPostUnitText(loader, provider, delegate, Integer.MIN_VALUE, Integer.MIN_VALUE, true);
     }
@@ -1894,10 +1742,27 @@ public final class RedditComposeFocusBridge {
         if (isVideoPreviewUrl(lower)) {
             return false;
         }
+        if (isAvatarPreviewUrl(lower)) {
+            return false;
+        }
         return lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
                 || lower.contains(".webp") || lower.contains(".gif")
                 || lower.contains("preview.redd.it") || lower.contains("i.redd.it")
                 || lower.contains("external-preview.redd.it");
+    }
+
+    private static boolean isUsablePreviewMedia(String url) {
+        return url != null && url.length() > 0 && !isAvatarPreviewUrl(url);
+    }
+
+    private static boolean isAvatarPreviewUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        return lower.contains("redditstatic.com/avatars")
+                || lower.contains("snoovatar/avatars")
+                || lower.contains("/avatars/defaults/");
     }
 
     private static String firstThingId(String text) {

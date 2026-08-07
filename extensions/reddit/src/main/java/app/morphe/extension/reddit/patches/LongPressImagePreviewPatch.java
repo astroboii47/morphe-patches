@@ -469,14 +469,17 @@ public final class LongPressImagePreviewPatch {
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
 
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
             int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
-            if (postPoint != null) {
+            if (postPoint != null && mediaUrl == null) {
                 rawX = postPoint[0];
                 rawY = postPoint[1];
             }
 
             String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
-            String mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl == null) {
+                mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
+            }
             if (mediaUrl == null) {
                 String textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
                 if (textPreview == null) {
