@@ -196,6 +196,7 @@ val longPressImagePreviewPatch = bytecodePatch(
             hookMethodStart(
                 LinkPresentationModelToPostUnitFingerprint,
                 """
+                    invoke-static { p1 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cachePresentationPostBody(Ljava/lang/Object;)V
                     invoke-static { p1 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerPostUnitModel(Ljava/lang/Object;)V
                 """
             )
@@ -204,6 +205,7 @@ val longPressImagePreviewPatch = bytecodePatch(
         hookConstructor(
             LinkPresentationModelConstructorFingerprint,
             """
+                invoke-static { p0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cachePresentationPostBody(Ljava/lang/Object;)V
                 invoke-static { p0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerPostUnitModel(Ljava/lang/Object;)V
             """
         )

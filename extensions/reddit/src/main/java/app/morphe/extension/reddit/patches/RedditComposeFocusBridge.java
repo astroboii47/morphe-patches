@@ -390,6 +390,10 @@ public final class RedditComposeFocusBridge {
             if (focusedId != null && focusedId.length() > 0) {
                 synchronized (PREVIEWS_BY_KEY) {
                     PreviewRecord byId = PREVIEWS_BY_KEY.get(focusedId);
+                    if (shouldPreferTextOverMedia(byId)) {
+                        Log.w(TAG, "focusedPreview id prefers text id=" + focusedId + " media=" + summarizeUrl(byId.mediaUrl));
+                        return null;
+                    }
                     if (byId != null && isUsablePreviewMedia(byId.mediaUrl)) {
                         Log.w(TAG, "focusedPreview id media id=" + focusedId + " " + summarizeUrl(byId.mediaUrl));
                         return byId.mediaUrl;
@@ -402,13 +406,17 @@ public final class RedditComposeFocusBridge {
                 return video;
             }
             String image = extractModelImageUrl(focusedModel);
-            if (isUsablePreviewMedia(image)) {
+            if (isUsablePreviewMedia(image) && !isWeakPreviewImage(image)) {
                 Log.w(TAG, "focusedPreview direct model image id=" + focusedId + " " + summarizeUrl(image));
                 return image;
             }
 
             String rowText = getFocusedPostTextPreview(root);
             PreviewRecord record = previewRecordForRowText(rowText);
+            if (shouldPreferTextOverMedia(record)) {
+                Log.w(TAG, "focusedPreview prefers text title=\"" + record.title + "\" media=" + summarizeUrl(record.mediaUrl));
+                return null;
+            }
             if (record != null && isUsablePreviewMedia(record.mediaUrl)) {
                 Log.w(TAG, "focusedPreview media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
                 return record.mediaUrl;
@@ -420,7 +428,7 @@ public final class RedditComposeFocusBridge {
                 return video;
             }
             image = extractModelImageUrl(model);
-            if (isUsablePreviewMedia(image)) {
+            if (isUsablePreviewMedia(image) && !isWeakPreviewImage(image)) {
                 Log.w(TAG, "focusedPreview model image " + summarizeUrl(image));
                 return image;
             }
@@ -517,6 +525,10 @@ public final class RedditComposeFocusBridge {
                 model = findRegisteredModelForPostUnit(root, rawX, rawY);
             }
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
+            if (shouldPreferTextOverMedia(record)) {
+                Log.w(TAG, "previewRecord prefers text title=\"" + record.title + "\" media=" + summarizeUrl(record.mediaUrl));
+                return null;
+            }
             if (record != null && isUsablePreviewMedia(record.mediaUrl)) {
                 Log.w(TAG, "previewRecord media title=\"" + record.title + "\" " + summarizeUrl(record.mediaUrl));
                 return record.mediaUrl;
@@ -527,7 +539,7 @@ public final class RedditComposeFocusBridge {
                 return video;
             }
             String image = extractModelImageUrl(model);
-            if (isUsablePreviewMedia(image)) {
+            if (isUsablePreviewMedia(image) && !isWeakPreviewImage(image)) {
                 Log.w(TAG, "postUnitModel image " + summarizeUrl(image));
                 return image;
             }
@@ -919,6 +931,30 @@ public final class RedditComposeFocusBridge {
             return false;
         }
         return imagePreviewScore(newUrl) > imagePreviewScore(oldUrl);
+    }
+
+    private static boolean shouldPreferTextOverMedia(PreviewRecord record) {
+        return record != null
+                && record.body != null
+                && record.body.trim().length() > 0
+                && isWeakPreviewImage(record.mediaUrl);
+    }
+
+    private static boolean isWeakPreviewImage(String url) {
+        if (url == null || url.length() == 0 || isVideoPreviewUrl(url)) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        return lower.contains("thumbs.redditmedia.com")
+                || lower.contains("external-preview.redd.it")
+                || lower.contains("thumbnail")
+                || lower.contains("avatar")
+                || lower.contains("award")
+                || lower.contains("badge")
+                || lower.contains("icon")
+                || lower.contains("logo")
+                || lower.contains("snoo")
+                || imagePreviewScore(url) < 900;
     }
 
     private static PreviewRecord findPreviewRecordForPostUnit(View root, int rawX, int rawY) throws Exception {
