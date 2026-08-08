@@ -1,3 +1,5 @@
+## 1.0.0 (2026-08-08)
+
 ## [1.36.0-dev.6](https://github.com/MorpheApp/morphe-patches/compare/v1.36.0-dev.5...v1.36.0-dev.6) (2026-07-21)
 
 ### 🐛 Bug Fixes
