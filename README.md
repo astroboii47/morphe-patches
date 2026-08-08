@@ -35,7 +35,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.36.0-dev.6](https://github.com/MorpheApp/morphe-patches/releases/tag/v1.36.0-dev.6)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;131 patches total
+> **[v1.0.0-dev.1](https://github.com/astroboii47/morphe-patches/releases/tag/v1.0.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;134 patches total
 <details>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;73 patches</summary>
 <br>
@@ -175,7 +175,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 </details>
 
 <details>
-<summary>📦 Reddit&nbsp;&nbsp;•&nbsp;&nbsp;18 patches</summary>
+<summary>📦 Reddit&nbsp;&nbsp;•&nbsp;&nbsp;21 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -187,8 +187,9 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 |----------|----------------|-----------|
 | [Custom branding name for Reddit](#custom-branding-name-for-reddit) | Changes the Reddit app name to the name specified in patch options. | • App name |
 | [Custom font](#custom-font) | Adds an option to replace Reddit Sans / Roboto with a custom TTF or OTF font file at runtime. |  |
-| [Disable modern home](#disable-modern-home) | Adds an option to disable the modern home UI. This patch works with Reddit 2026.24.0 and earlier. |  |
+| [Disable modern home](#disable-modern-home) | Adds an option to disable the modern home UI. |  |
 | [Disable screenshot popup](#disable-screenshot-popup) | Adds an option to disable the popup that appears when taking a screenshot. |  |
+| [Force bottom navigation](#force-bottom-navigation) | Adds an option to use the bottom navigation bar instead of the side navigation rail. |  |
 | [Force system font](#force-system-font) | Adds an option that renders Reddit with the device system font instead of Reddit Sans / Roboto. |  |
 | [Hide Ask button](#hide-ask-button) | Adds an option to hide Ask button in the search bar. |  |
 | [Hide Reddit search](#hide-reddit-search) | Permanently hides the Reddit search in the contextual menu. This patch does not work with root mounting |  |
@@ -197,8 +198,10 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | [Hide communities shelf](#hide-communities-shelf) | Adds an option to hide the related or suggested communities shelf in subreddits. |  |
 | [Hide navigation buttons](#hide-navigation-buttons) | Adds options to hide buttons in the navigation bar. |  |
 | [Hide sidebar components](#hide-sidebar-components) | Adds options to hide the sidebar components. |  |
+| [Long press image preview](#long-press-image-preview) | Shows a large image preview while holding a feed image. |  |
 | [Open links directly](#open-links-directly) | Adds an option to skip over redirection URLs in external links. |  |
 | [Open links externally](#open-links-externally) | Adds an option to always open links in your browser instead of with the in-app-browser. |  |
+| [Remember post scroll position](#remember-post-scroll-position) | Restores the comment list position when reopening the same post. |  |
 | [Remove subreddit dialog](#remove-subreddit-dialog) | Adds options to remove the NSFW community warning and notifications suggestion dialogs by dismissing them automatically. |  |
 | [Sanitize sharing links](#sanitize-sharing-links) | Adds an option to sanitize sharing links by removing tracking query parameters. |  |
 | [Show view count](#show-view-count) | Adds an option to show the view count of Posts. |  |
