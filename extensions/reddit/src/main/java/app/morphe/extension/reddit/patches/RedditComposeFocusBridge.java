@@ -456,6 +456,11 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "focusedPreview model text length=" + body.length());
                 return buildTextPreviewText(record, rowText, body);
             }
+            String fallback = buildRowFallbackPreview(record, rowText);
+            if (fallback != null && fallback.length() > 0) {
+                Log.w(TAG, "focusedPreview row metadata fallback length=" + fallback.length());
+                return fallback;
+            }
             if (looksLikeBody(rowText)) {
                 Log.w(TAG, "focusedPreview row body length=" + rowText.trim().length());
                 return rowText.trim();
@@ -538,6 +543,11 @@ public final class RedditComposeFocusBridge {
             if (body != null && body.trim().length() > 0) {
                 Log.w(TAG, "postUnitModel text length=" + body.length());
                 return buildTextPreviewText(record, rowText, body);
+            }
+            String fallback = buildRowFallbackPreview(record, rowText);
+            if (fallback != null && fallback.length() > 0) {
+                Log.w(TAG, "postUnit row metadata fallback length=" + fallback.length());
+                return fallback;
             }
             if (looksLikeBody(rowText)) {
                 Log.w(TAG, "postUnit row body length=" + rowText.trim().length());
@@ -785,6 +795,25 @@ public final class RedditComposeFocusBridge {
         }
         builder.append(trimmedBody);
         return builder.toString().trim();
+    }
+
+    private static String buildRowFallbackPreview(PreviewRecord record, String rowText) {
+        String title = record == null ? null : record.title;
+        if (title == null || title.trim().length() == 0) {
+            title = titleFromRowText(rowText);
+        }
+        String meta = metadataFromRowText(rowText);
+        StringBuilder builder = new StringBuilder();
+        if (title != null && title.trim().length() > 0) {
+            builder.append(title.trim());
+        }
+        if (meta != null && meta.length() > 0) {
+            if (builder.length() > 0) {
+                builder.append("\n");
+            }
+            builder.append(meta);
+        }
+        return builder.length() > 0 ? builder.toString() : null;
     }
 
     private static boolean samePreviewText(String first, String second) {
