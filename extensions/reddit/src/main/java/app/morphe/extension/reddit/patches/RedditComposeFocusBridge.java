@@ -56,6 +56,7 @@ public final class RedditComposeFocusBridge {
         String title;
         String mediaUrl;
         String body;
+        String postUrl;
     }
 
     private static <K, V> void trimCache(Map<K, V> cache, int maxSize, int targetSize) {
@@ -500,6 +501,49 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "focusedPreviewText failed", throwable);
         }
         return null;
+    }
+
+    public static String getFocusedPostEmbedUrl(View root) {
+        try {
+            Object focusedModel = findFocusedPostUnitModel(root);
+            String focusedId = modelKindWithId(focusedModel);
+            if (focusedId != null && focusedId.length() > 0) {
+                synchronized (PREVIEWS_BY_KEY) {
+                    PreviewRecord byId = PREVIEWS_BY_KEY.get(focusedId);
+                    if (byId != null && byId.postUrl != null && byId.postUrl.length() > 0) {
+                        return byId.postUrl;
+                    }
+                }
+            }
+            String directUrl = linkPostUrl(focusedModel);
+            if (directUrl != null && directUrl.length() > 0) {
+                return directUrl;
+            }
+            String rowText = getFocusedPostTextPreview(root);
+            PreviewRecord record = previewRecordForRowText(rowText);
+            return record != null ? record.postUrl : null;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedPostEmbedUrl failed", throwable);
+            return null;
+        }
+    }
+
+    public static String getPostEmbedUrlAt(View root, int rawX, int rawY) {
+        try {
+            Object model = findPostUnitModelAt(root, rawX, rawY);
+            if (model == null) {
+                model = findRegisteredModelForPostUnit(root, rawX, rawY);
+            }
+            String directUrl = linkPostUrl(model);
+            if (directUrl != null && directUrl.length() > 0) {
+                return directUrl;
+            }
+            PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
+            return record != null ? record.postUrl : null;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "postEmbedUrlAt failed", throwable);
+            return null;
+        }
     }
 
     public static String getPostTextPreviewAt(View root, int rawX, int rawY) {
@@ -1030,6 +1074,7 @@ public final class RedditComposeFocusBridge {
             }
             String video = extractModelVideoUrl(model);
             String image = extractModelImageUrl(model);
+            String postUrl = linkPostUrl(model);
             PreviewRecord record = previewRecord(id, title);
             if (id != null && id.length() > 0) {
                 record.key = id;
@@ -1037,9 +1082,12 @@ public final class RedditComposeFocusBridge {
             if (title != null && title.length() > 0) {
                 record.title = title;
             }
+            if (postUrl != null && postUrl.length() > 0) {
+                record.postUrl = postUrl;
+            }
             if (video != null && video.length() > 0) {
                 record.mediaUrl = video;
-            } else if (isUsablePreviewMedia(image)) {
+            } else if (isUsablePreviewMedia(image) && shouldReplaceMedia(record.mediaUrl, image)) {
                 record.mediaUrl = image;
             }
             if (body != null && body.trim().length() > 0) {
@@ -1058,6 +1106,10 @@ public final class RedditComposeFocusBridge {
         }
         String lower = url.toLowerCase(Locale.US);
         return isDirectPlayableVideoUrl(lower);
+    }
+
+    public static boolean isUsablePreviewUrl(String url) {
+        return isUsablePreviewMedia(url);
     }
 
     public static boolean isTextBodyPreview(String text) {
@@ -1133,6 +1185,7 @@ public final class RedditComposeFocusBridge {
             }
             String video = extractModelVideoUrl(link);
             String image = extractModelImageUrl(link);
+            String postUrl = linkPostUrl(link);
             if (body != null) {
                 storePostBody(title, id, body);
             }
@@ -1145,6 +1198,9 @@ public final class RedditComposeFocusBridge {
             }
             if (body != null && body.trim().length() > 0) {
                 record.body = body.trim();
+            }
+            if (postUrl != null && postUrl.length() > 0) {
+                record.postUrl = postUrl;
             }
             if (video != null && video.length() > 0) {
                 record.mediaUrl = video;
@@ -1163,6 +1219,63 @@ public final class RedditComposeFocusBridge {
     public static String linkTitle(Object link) {
         Object title = invokeNoArg(link, "getTitle");
         return title instanceof CharSequence ? title.toString() : null;
+    }
+
+    public static String linkPostUrl(Object link) {
+        if (link == null) {
+            return null;
+        }
+        try {
+            String className = link.getClass().getName();
+            if (className.equals("com.reddit.presentation.listing.model.LinkPresentationModel")) {
+                String nestedUrl = linkPostUrl(readField(link, "A2"));
+                if (nestedUrl != null && nestedUrl.length() > 0) {
+                    return nestedUrl;
+                }
+            }
+
+            String permalink = asString(invokeNoArg(link, "getPermalink"));
+            if (permalink == null || permalink.length() == 0) {
+                permalink = asString(readField(link, "permalink"));
+            }
+            if (permalink != null && permalink.length() > 0) {
+                return normalizeRedditPostUrl(permalink);
+            }
+
+            String url = asString(invokeNoArg(link, "getUrl"));
+            if (url != null && isRedditPostUrl(url)) {
+                return normalizeRedditPostUrl(url);
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "linkPostUrl failed", throwable);
+        }
+        return null;
+    }
+
+    private static String normalizeRedditPostUrl(String value) {
+        if (value == null) {
+            return null;
+        }
+        String url = value.replace("\\u0026", "&").replace("&amp;", "&").trim();
+        if (url.length() == 0) {
+            return null;
+        }
+        if (url.startsWith("/")) {
+            url = "https://www.reddit.com" + url;
+        }
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return null;
+        }
+        return isRedditPostUrl(url) ? url : null;
+    }
+
+    private static boolean isRedditPostUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        return (lower.contains("reddit.com/") || lower.contains("redd.it/"))
+                && (lower.contains("/comments/") || lower.contains("redd.it/"));
     }
 
     public static String linkVideoUrl(Object link) {
@@ -1802,6 +1915,25 @@ public final class RedditComposeFocusBridge {
         FrameLayout frame = new FrameLayout(context);
         frame.setBackgroundColor(0xff000000);
         frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        return frame;
+    }
+
+    public static View createPostEmbedView(Context context, String url) {
+        FrameLayout frame = new FrameLayout(context);
+        frame.setBackgroundColor(0xff000000);
+        WebView webView = new WebView(context);
+        webView.setBackgroundColor(0xff111111);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        webView.loadUrl(url);
+        frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
@@ -2618,7 +2750,10 @@ public final class RedditComposeFocusBridge {
             score -= 500;
         }
         if (lower.contains("avatar") || lower.contains("award") || lower.contains("badge")
-                || lower.contains("icon") || lower.contains("logo") || lower.contains("snoo")) {
+                || lower.contains("icon") || lower.contains("logo") || lower.contains("snoo")
+                || lower.contains("apple-touch") || lower.contains("mstile")
+                || lower.contains("site-icon") || lower.contains("app-icon")
+                || lower.contains("launcher") || lower.contains("favicon")) {
             score -= 1200;
         }
         if (lower.contains("width=216") || lower.contains("width=320")
@@ -2819,7 +2954,8 @@ public final class RedditComposeFocusBridge {
         String lower = url.toLowerCase(Locale.US);
         return lower.contains("redditstatic.com/avatars")
                 || lower.contains("snoovatar/avatars")
-                || lower.contains("/avatars/defaults/");
+                || lower.contains("/avatars/defaults/")
+                || lower.contains("/profile/");
     }
 
     private static boolean isUiAssetPreviewUrl(String url) {
@@ -2840,6 +2976,11 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("favicon")
                 || lower.contains("logo")
                 || lower.contains("snoo")
+                || lower.contains("apple-touch")
+                || lower.contains("mstile")
+                || lower.contains("site-icon")
+                || lower.contains("app-icon")
+                || lower.contains("launcher")
                 || lower.contains("redditstatic.com/")
                 || lower.contains("styles.redditmedia.com/")
                 || lower.contains("emoji.redditmedia.com/")

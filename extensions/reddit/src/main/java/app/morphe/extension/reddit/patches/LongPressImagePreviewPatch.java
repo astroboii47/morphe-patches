@@ -137,6 +137,9 @@ public final class LongPressImagePreviewPatch {
             if (MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
                 MEDIA_URLS.clear();
             }
+            if (!RedditComposeFocusBridge.isUsablePreviewUrl(normalizedUrl)) {
+                return;
+            }
             String existingUrl = MEDIA_URLS.get(linkId);
             if (existingUrl != null
                     && RedditComposeFocusBridge.isVideoPreviewUrl(existingUrl)
@@ -683,7 +686,8 @@ public final class LongPressImagePreviewPatch {
             synchronized (MEDIA_URLS) {
                 String mediaUrl = MEDIA_URLS.get(linkId);
                 if (mediaUrl != null) {
-                    return RedditComposeFocusBridge.upgradePreviewMedia(linkId, null, mediaUrl);
+                    mediaUrl = RedditComposeFocusBridge.upgradePreviewMedia(linkId, null, mediaUrl);
+                    return RedditComposeFocusBridge.isUsablePreviewUrl(mediaUrl) ? mediaUrl : null;
                 }
             }
         }
@@ -1215,6 +1219,12 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void cacheTitleMediaUrl(String title, String url) {
+        if (title == null || title.length() == 0 || url == null || url.length() == 0) {
+            return;
+        }
+        if (!RedditComposeFocusBridge.isUsablePreviewUrl(url)) {
+            return;
+        }
         if (TITLE_MEDIA_URLS.size() > MAX_CACHED_MEDIA_URLS) {
             TITLE_MEDIA_URLS.clear();
             RECENT_MEDIA_TITLES.clear();
@@ -1485,6 +1495,8 @@ public final class LongPressImagePreviewPatch {
                 return true;
             case KeyEvent.KEYCODE_P:
                 return handlePreviewKey(activity, event);
+            case KeyEvent.KEYCODE_M:
+                return handlePostModalKey(activity, event);
             default:
                 return false;
         }
@@ -1525,6 +1537,90 @@ public final class LongPressImagePreviewPatch {
         root.getLocationOnScreen(location);
         showPreview(activity, root, location[0] + ((root.getWidth() * 3) / 4), updatePreviewTargetY(root, 0));
         return true;
+    }
+
+    private static boolean handlePostModalKey(Activity activity, KeyEvent event) {
+        int action = event.getAction();
+        if (action == KeyEvent.ACTION_UP) {
+            hidePreview(activity);
+            return true;
+        }
+        if (action != KeyEvent.ACTION_DOWN || activePreview != null) {
+            return true;
+        }
+
+        View root = activity.getWindow().getDecorView();
+        int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+        if (point != null && showPostEmbedPreview(activity, root, point[0], point[1], true)) {
+            return true;
+        }
+
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        showPostEmbedPreview(
+                activity,
+                root,
+                location[0] + ((root.getWidth() * 3) / 4),
+                updatePreviewTargetY(root, 0),
+                false
+        );
+        return true;
+    }
+
+    private static boolean showPostEmbedPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {
+        try {
+            hidePreview();
+
+            View decorView = activity.getWindow().getDecorView();
+            if (!(decorView instanceof ViewGroup)) {
+                return false;
+            }
+
+            String postUrl = focusedOnly
+                    ? RedditComposeFocusBridge.getFocusedPostEmbedUrl(root)
+                    : RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
+            if (postUrl == null || postUrl.length() == 0) {
+                int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+                if (!focusedOnly && postPoint != null) {
+                    postUrl = RedditComposeFocusBridge.getPostEmbedUrlAt(root, postPoint[0], postPoint[1]);
+                }
+            }
+            if (postUrl == null || postUrl.length() == 0) {
+                Log.i(LOG_TAG, "no reddit post url for modal");
+                return false;
+            }
+
+            ViewGroup decor = (ViewGroup) decorView;
+            FrameLayout overlay = new FrameLayout(activity);
+            overlay.setBackgroundColor(Color.argb(230, 0, 0, 0));
+            overlay.setClickable(true);
+            overlay.setFocusable(false);
+            overlay.setOnTouchListener((view, touchEvent) -> {
+                if (touchEvent.getActionMasked() == MotionEvent.ACTION_UP
+                        || touchEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    hidePreview();
+                }
+                return true;
+            });
+
+            int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
+            int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
+            overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+            overlay.addView(RedditComposeFocusBridge.createPostEmbedView(activity, postUrl), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER
+            ));
+            decor.addView(overlay, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            activePreview = overlay;
+            return true;
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to show Reddit post modal", ex);
+            return false;
+        }
     }
 
     private static boolean focusFeedContent(Activity activity, View root, int direction, int keyCode) {
