@@ -1822,9 +1822,48 @@ public final class RedditComposeFocusBridge {
             if (builder.length() > 0) {
                 builder.append("\n\n");
             }
-            builder.append(body.trim());
+            appendMarkdownText(builder, body.trim());
         }
         return builder.length() > 0 ? builder : value;
+    }
+
+    private static void appendMarkdownText(SpannableStringBuilder builder, String markdown) {
+        if (markdown == null || markdown.length() == 0) {
+            return;
+        }
+        int index = 0;
+        while (index < markdown.length()) {
+            int bold = markdown.indexOf("**", index);
+            int italic = markdown.indexOf('*', index);
+            if (bold < 0 && italic < 0) {
+                builder.append(markdown.substring(index));
+                return;
+            }
+            boolean useBold = bold >= 0 && (italic < 0 || bold <= italic);
+            int markerStart = useBold ? bold : italic;
+            if (markerStart > index) {
+                builder.append(markdown.substring(index, markerStart));
+            }
+            String marker = useBold ? "**" : "*";
+            int contentStart = markerStart + marker.length();
+            int markerEnd = markdown.indexOf(marker, contentStart);
+            if (markerEnd < 0) {
+                builder.append(markdown.substring(markerStart));
+                return;
+            }
+            int spanStart = builder.length();
+            builder.append(markdown.substring(contentStart, markerEnd));
+            int spanEnd = builder.length();
+            if (spanEnd > spanStart) {
+                builder.setSpan(
+                        new StyleSpan(useBold ? Typeface.BOLD : Typeface.ITALIC),
+                        spanStart,
+                        spanEnd,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                );
+            }
+            index = markerEnd + marker.length();
+        }
     }
 
     private static boolean focusFirstPostUnitViaProvider(View compose, int index) {
