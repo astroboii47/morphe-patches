@@ -28,8 +28,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,13 +38,14 @@ import java.util.regex.Pattern;
 
 public final class RedditComposeFocusBridge {
     private static final String TAG = "MorpheComposeFocus";
-    private static final Map<String, String> POST_BODIES = new HashMap<String, String>();
-    private static final Map<String, Object> POST_MODELS_BY_TITLE = new HashMap<String, Object>();
-    private static final Map<String, Object> POST_MODELS_BY_ID = new HashMap<String, Object>();
-    private static final Map<String, PreviewRecord> PREVIEWS_BY_KEY = new HashMap<String, PreviewRecord>();
-    private static final Map<String, PreviewRecord> PREVIEWS_BY_TITLE = new HashMap<String, PreviewRecord>();
-    private static final int MAX_POST_BODIES = 300;
-    private static final int MAX_POST_MODELS = 300;
+    private static final Map<String, String> POST_BODIES = new LinkedHashMap<String, String>(512, 0.75f, true);
+    private static final Map<String, Object> POST_MODELS_BY_TITLE = new LinkedHashMap<String, Object>(256, 0.75f, true);
+    private static final Map<String, Object> POST_MODELS_BY_ID = new LinkedHashMap<String, Object>(256, 0.75f, true);
+    private static final Map<String, PreviewRecord> PREVIEWS_BY_KEY = new LinkedHashMap<String, PreviewRecord>(512, 0.75f, true);
+    private static final Map<String, PreviewRecord> PREVIEWS_BY_TITLE = new LinkedHashMap<String, PreviewRecord>(512, 0.75f, true);
+    private static final int MAX_POST_BODIES = 1500;
+    private static final int MAX_POST_MODELS = 600;
+    private static final int MAX_PREVIEW_RECORDS = 1000;
     private static final String TEXT_PREVIEW_SEPARATOR = "\n\u0001\n";
     private static final Pattern RICHTEXT_TEXT_PATTERN = Pattern.compile("\\\"t\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\\\\\"])*)\\\"");
 
@@ -55,6 +56,18 @@ public final class RedditComposeFocusBridge {
         String title;
         String mediaUrl;
         String body;
+    }
+
+    private static <K, V> void trimCache(Map<K, V> cache, int maxSize, int targetSize) {
+        if (cache.size() <= maxSize) {
+            return;
+        }
+        int removeCount = Math.max(1, cache.size() - targetSize);
+        ArrayList<K> keys = new ArrayList<K>(cache.keySet());
+        for (int i = 0; i < removeCount && i < keys.size(); i++) {
+            cache.remove(keys.get(i));
+        }
+        Log.w(TAG, "trimmed preview cache from " + (cache.size() + removeCount) + " to " + cache.size());
     }
 
     public static boolean moveFocus(View root, int direction) {
@@ -703,17 +716,13 @@ public final class RedditComposeFocusBridge {
             return;
         }
         synchronized (PREVIEWS_BY_KEY) {
-            if (PREVIEWS_BY_KEY.size() > MAX_POST_MODELS) {
-                PREVIEWS_BY_KEY.clear();
-            }
+            trimCache(PREVIEWS_BY_KEY, MAX_PREVIEW_RECORDS, MAX_PREVIEW_RECORDS - 100);
             if (record.key != null && record.key.length() > 0) {
                 PREVIEWS_BY_KEY.put(record.key, record);
             }
         }
         synchronized (PREVIEWS_BY_TITLE) {
-            if (PREVIEWS_BY_TITLE.size() > MAX_POST_MODELS) {
-                PREVIEWS_BY_TITLE.clear();
-            }
+            trimCache(PREVIEWS_BY_TITLE, MAX_PREVIEW_RECORDS, MAX_PREVIEW_RECORDS - 100);
             if (record.title != null && record.title.length() > 0) {
                 PREVIEWS_BY_TITLE.put(record.title, record);
             }
@@ -729,9 +738,7 @@ public final class RedditComposeFocusBridge {
             return;
         }
         synchronized (POST_BODIES) {
-            if (POST_BODIES.size() > MAX_POST_BODIES) {
-                POST_BODIES.clear();
-            }
+            trimCache(POST_BODIES, MAX_POST_BODIES, MAX_POST_BODIES - 150);
             if (title != null && title.length() > 0) {
                 POST_BODIES.put(title, trimmed);
             }
@@ -1006,17 +1013,13 @@ public final class RedditComposeFocusBridge {
                 return;
             }
             synchronized (POST_MODELS_BY_TITLE) {
-                if (POST_MODELS_BY_TITLE.size() > MAX_POST_MODELS) {
-                    POST_MODELS_BY_TITLE.clear();
-                }
+                trimCache(POST_MODELS_BY_TITLE, MAX_POST_MODELS, MAX_POST_MODELS - 75);
                 if (title != null && title.length() > 0) {
                     POST_MODELS_BY_TITLE.put(title, model);
                 }
             }
             synchronized (POST_MODELS_BY_ID) {
-                if (POST_MODELS_BY_ID.size() > MAX_POST_MODELS) {
-                    POST_MODELS_BY_ID.clear();
-                }
+                trimCache(POST_MODELS_BY_ID, MAX_POST_MODELS, MAX_POST_MODELS - 75);
                 if (id != null && id.length() > 0) {
                     POST_MODELS_BY_ID.put(id, model);
                 }
@@ -1858,9 +1861,20 @@ public final class RedditComposeFocusBridge {
             if (builder.length() > 0) {
                 builder.append("\n\n");
             }
-            appendMarkdownText(builder, body.trim());
+            appendMarkdownText(builder, normalizePreviewBody(body));
         }
         return builder.length() > 0 ? builder : value;
+    }
+
+    private static String normalizePreviewBody(String body) {
+        if (body == null) {
+            return "";
+        }
+        String text = body.replace("\r\n", "\n").replace('\r', '\n').replace('\u00a0', ' ');
+        text = text.replaceAll("[ \\t\\x0B\\f]+", " ");
+        text = text.replaceAll(" *\\n *", "\n");
+        text = text.replaceAll("\\n{3,}", "\n\n");
+        return text.trim();
     }
 
     private static void appendMarkdownText(SpannableStringBuilder builder, String markdown) {
