@@ -72,6 +72,7 @@ public final class LongPressImagePreviewPatch {
     private static boolean REDISPATCHING_FEED_KEY;
     private static boolean FEED_HANDOFF_DONE;
     private static int LAST_PREVIEW_Y;
+    private static boolean DISPATCHING_PREVIEW_CANCEL;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -393,6 +394,9 @@ public final class LongPressImagePreviewPatch {
             hidePreview();
             return false;
         }
+        if (DISPATCHING_PREVIEW_CANCEL && event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            return false;
+        }
 
         boolean hadPreview = activePreview != null;
         switch (event.getActionMasked()) {
@@ -474,9 +478,15 @@ public final class LongPressImagePreviewPatch {
                     rawY - location[1],
                     0
             );
-            root.dispatchTouchEvent(cancel);
-            cancel.recycle();
+            DISPATCHING_PREVIEW_CANCEL = true;
+            try {
+                root.dispatchTouchEvent(cancel);
+            } finally {
+                DISPATCHING_PREVIEW_CANCEL = false;
+                cancel.recycle();
+            }
         } catch (Throwable throwable) {
+            DISPATCHING_PREVIEW_CANCEL = false;
             Log.w(LOG_TAG, "cancel long press failed", throwable);
         }
     }
