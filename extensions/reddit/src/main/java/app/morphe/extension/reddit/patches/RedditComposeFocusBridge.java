@@ -462,6 +462,11 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "focusedPreview model text length=" + body.length());
                 return body.trim();
             }
+            String readable = readablePostRowFallback(rowText);
+            if (readable != null) {
+                Log.w(TAG, "focusedPreview row fallback length=" + readable.length());
+                return readable;
+            }
         } catch (Throwable throwable) {
             Log.w(TAG, "focusedPreviewText failed", throwable);
         }
@@ -544,6 +549,11 @@ public final class RedditComposeFocusBridge {
             if (body != null && body.trim().length() > 0) {
                 Log.w(TAG, "postUnitModel text length=" + body.length());
                 return body.trim();
+            }
+            String readable = readablePostRowFallback(rowText);
+            if (readable != null) {
+                Log.w(TAG, "postUnit row fallback length=" + readable.length());
+                return readable;
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "postUnitModelText failed", throwable);
@@ -996,6 +1006,21 @@ public final class RedditComposeFocusBridge {
         try {
             Object media = invokeNoArg(link, "getMedia");
             Object redditVideo = invokeNoArg(media, "getRedditVideo");
+            String fallback = firstNonEmptyString(
+                    invokeNoArg(redditVideo, "getFallbackUrl"),
+                    invokeNoArg(redditVideo, "getFallbackURL"),
+                    invokeNoArg(redditVideo, "getScrubberMediaUrl"),
+                    invokeNoArg(redditVideo, "getScrubberMediaURL")
+            );
+            if (fallback != null && fallback.length() > 0 && !isHlsPreviewUrl(fallback)) {
+                Log.w(TAG, "linkVideoUrl fallback " + summarizeUrl(fallback));
+                return fallback;
+            }
+            String recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
+            if (recursive != null && recursive.length() > 0 && !isHlsPreviewUrl(recursive)) {
+                Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
+                return recursive;
+            }
             String hls = asString(invokeNoArg(redditVideo, "getHlsUrl"));
             if (hls != null && hls.length() > 0) {
                 Log.w(TAG, "linkVideoUrl hls " + summarizeUrl(hls));
@@ -1006,7 +1031,7 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "linkVideoUrl dash " + summarizeUrl(dash));
                 return dash;
             }
-            String recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
+            recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
             if (recursive != null && recursive.length() > 0) {
                 Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
                 return recursive;
@@ -1501,6 +1526,19 @@ public final class RedditComposeFocusBridge {
 
     private static String asString(Object value) {
         return value instanceof CharSequence ? value.toString() : null;
+    }
+
+    private static String firstNonEmptyString(Object... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Object value : values) {
+            String text = asString(value);
+            if (text != null && text.length() > 0) {
+                return text;
+            }
+        }
+        return null;
     }
 
     public static WebView createMediaWebView(Context context, String url) {
@@ -2415,10 +2453,17 @@ public final class RedditComposeFocusBridge {
         if (isUiAssetPreviewUrl(lower)) {
             return false;
         }
-        return lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
-                || lower.contains(".webp") || lower.contains(".gif")
-                || lower.contains("preview.redd.it") || lower.contains("i.redd.it")
-                || lower.contains("external-preview.redd.it");
+        if (lower.contains("preview.redd.it") || lower.contains("i.redd.it")
+                || lower.contains("external-preview.redd.it")) {
+            return true;
+        }
+        return (lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
+                || lower.contains(".webp") || lower.contains(".gif"))
+                && !lower.contains("favicon")
+                && !lower.contains("logo")
+                && !lower.contains("profile")
+                && !lower.contains("author")
+                && !lower.contains("community");
     }
 
     private static boolean isUsablePreviewMedia(String url) {
@@ -2449,6 +2494,8 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("award")
                 || lower.contains("badge")
                 || lower.contains("icon")
+                || lower.contains("favicon")
+                || lower.contains("logo")
                 || lower.contains("snoo")
                 || lower.contains("redditstatic.com/")
                 || lower.contains("styles.redditmedia.com/")
@@ -2505,6 +2552,40 @@ public final class RedditComposeFocusBridge {
             return false;
         }
         return true;
+    }
+
+    private static String readablePostRowFallback(String rowText) {
+        if (rowText == null) {
+            return null;
+        }
+        String text = normalizeWhitespace(rowText);
+        if (text.length() == 0 || looksLikeBody(text)) {
+            return text.length() == 0 ? null : text;
+        }
+        if (text.startsWith("From ") && text.contains(", Posted ")) {
+            String[] parts = text.split(", ");
+            StringBuilder builder = new StringBuilder();
+            for (String part : parts) {
+                String lower = part.toLowerCase(Locale.US);
+                if (part.startsWith("From ")
+                        || part.startsWith("Posted ")
+                        || lower.startsWith("link domain:")
+                        || lower.contains(" upvote")
+                        || lower.contains(" comment")
+                        || lower.startsWith("shared ")) {
+                    continue;
+                }
+                if (builder.length() > 0) {
+                    builder.append('\n');
+                }
+                builder.append(part);
+            }
+            text = normalizeWhitespace(builder.toString());
+        }
+        if (text.length() < 8) {
+            return null;
+        }
+        return text;
     }
 
     private static String parseBodyFromToString(String value, String marker) {
