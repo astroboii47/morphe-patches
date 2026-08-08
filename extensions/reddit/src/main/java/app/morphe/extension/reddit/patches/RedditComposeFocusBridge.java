@@ -761,7 +761,7 @@ public final class RedditComposeFocusBridge {
         synchronized (PREVIEWS_BY_TITLE) {
             String bestTitle = null;
             for (String title : PREVIEWS_BY_TITLE.keySet()) {
-                if (rowText.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
                     bestTitle = title;
                 }
             }
@@ -1075,7 +1075,7 @@ public final class RedditComposeFocusBridge {
         synchronized (POST_MODELS_BY_TITLE) {
             String bestTitle = null;
             for (String title : POST_MODELS_BY_TITLE.keySet()) {
-                if (rowText.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
                     bestTitle = title;
                 }
             }
@@ -1804,6 +1804,23 @@ public final class RedditComposeFocusBridge {
         return value.replace('\u00a0', ' ').replaceAll("\\s+", " ").trim();
     }
 
+    private static String normalizeForMatch(String value) {
+        String text = normalizeWhitespace(value).toLowerCase(Locale.US);
+        return text.replaceAll("[^\\p{Alnum}]+", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static boolean rowContainsTitle(String rowText, String title) {
+        if (rowText == null || title == null || title.length() == 0) {
+            return false;
+        }
+        if (rowText.contains(title)) {
+            return true;
+        }
+        String normalizedRow = normalizeForMatch(rowText);
+        String normalizedTitle = normalizeForMatch(title);
+        return normalizedTitle.length() > 0 && normalizedRow.contains(normalizedTitle);
+    }
+
     private static String summarizeText(String value) {
         String text = normalizeWhitespace(value);
         return text.length() <= 160 ? text : text.substring(0, 160) + "...";
@@ -1816,7 +1833,7 @@ public final class RedditComposeFocusBridge {
         synchronized (POST_BODIES) {
             String bestTitle = null;
             for (String title : POST_BODIES.keySet()) {
-                if (rowText.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
                     bestTitle = title;
                 }
             }
