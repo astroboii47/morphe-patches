@@ -378,6 +378,28 @@ public final class RedditComposeFocusBridge {
 
     public static String getFocusedPostModelMediaPreview(View root) {
         try {
+            Object focusedModel = findFocusedPostUnitModel(root);
+            String focusedId = modelKindWithId(focusedModel);
+            if (focusedId != null && focusedId.length() > 0) {
+                synchronized (PREVIEWS_BY_KEY) {
+                    PreviewRecord byId = PREVIEWS_BY_KEY.get(focusedId);
+                    if (byId != null && isUsablePreviewMedia(byId.mediaUrl)) {
+                        Log.w(TAG, "focusedPreview id media id=" + focusedId + " " + summarizeUrl(byId.mediaUrl));
+                        return byId.mediaUrl;
+                    }
+                }
+            }
+            String video = extractModelVideoUrl(focusedModel);
+            if (video != null && video.length() > 0) {
+                Log.w(TAG, "focusedPreview direct model video id=" + focusedId + " " + summarizeUrl(video));
+                return video;
+            }
+            String image = extractModelImageUrl(focusedModel);
+            if (isUsablePreviewMedia(image)) {
+                Log.w(TAG, "focusedPreview direct model image id=" + focusedId + " " + summarizeUrl(image));
+                return image;
+            }
+
             String rowText = getFocusedPostTextPreview(root);
             PreviewRecord record = previewRecordForRowText(rowText);
             if (record != null && isUsablePreviewMedia(record.mediaUrl)) {
@@ -385,12 +407,12 @@ public final class RedditComposeFocusBridge {
                 return record.mediaUrl;
             }
             Object model = registeredModelForRowText(rowText);
-            String video = extractModelVideoUrl(model);
+            video = extractModelVideoUrl(model);
             if (video != null && video.length() > 0) {
                 Log.w(TAG, "focusedPreview model video " + summarizeUrl(video));
                 return video;
             }
-            String image = extractModelImageUrl(model);
+            image = extractModelImageUrl(model);
             if (isUsablePreviewMedia(image)) {
                 Log.w(TAG, "focusedPreview model image " + summarizeUrl(image));
                 return image;
@@ -403,6 +425,23 @@ public final class RedditComposeFocusBridge {
 
     public static String getFocusedPostModelTextPreview(View root) {
         try {
+            Object focusedModel = findFocusedPostUnitModel(root);
+            String focusedId = modelKindWithId(focusedModel);
+            if (focusedId != null && focusedId.length() > 0) {
+                synchronized (PREVIEWS_BY_KEY) {
+                    PreviewRecord byId = PREVIEWS_BY_KEY.get(focusedId);
+                    if (byId != null && byId.body != null && byId.body.trim().length() > 0) {
+                        Log.w(TAG, "focusedPreview id text id=" + focusedId + " length=" + byId.body.length());
+                        return byId.body.trim();
+                    }
+                }
+            }
+            String directBody = extractModelBodyText(focusedModel);
+            if (directBody != null && directBody.trim().length() > 0) {
+                Log.w(TAG, "focusedPreview direct model text id=" + focusedId + " length=" + directBody.length());
+                return directBody.trim();
+            }
+
             String rowText = getFocusedPostTextPreview(root);
             PreviewRecord record = previewRecordForRowText(rowText);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
@@ -760,16 +799,20 @@ public final class RedditComposeFocusBridge {
         }
         synchronized (PREVIEWS_BY_TITLE) {
             String bestTitle = null;
+            int bestScore = 0;
             for (String title : PREVIEWS_BY_TITLE.keySet()) {
-                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                int score = rowTitleMatchScore(rowText, title);
+                if (score > bestScore || (score == bestScore && score > 0 && (bestTitle == null || title.length() > bestTitle.length()))) {
                     bestTitle = title;
+                    bestScore = score;
                 }
             }
             if (bestTitle != null) {
-                Log.w(TAG, "previewRecord matched title=\"" + bestTitle + "\"");
+                Log.w(TAG, "previewRecord matched title=\"" + bestTitle + "\" score=" + bestScore);
                 return PREVIEWS_BY_TITLE.get(bestTitle);
             }
         }
+        Log.w(TAG, "previewRecord no match row=\"" + compact(rowText) + "\" previews=" + PREVIEWS_BY_TITLE.size());
         return null;
     }
 
@@ -1027,6 +1070,34 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    private static Object findFocusedPostUnitModel(View root) throws Exception {
+        ArrayList<View> composeViews = new ArrayList<View>();
+        collectComposeViews(root, composeViews);
+        for (int i = composeViews.size() - 1; i >= 0; i--) {
+            View compose = composeViews.get(i);
+            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+            if (provider == null) {
+                continue;
+            }
+            Object delegate = readField(provider, "a");
+            if (delegate == null) {
+                continue;
+            }
+            Object wrapper = findFocusedPostUnitWrapper(compose.getClass().getClassLoader(), provider, delegate);
+            if (wrapper == null) {
+                continue;
+            }
+            Object model = findInterestingRedditModel(wrapper, 0, new IdentityHashMap<Object, Boolean>());
+            if (model != null) {
+                Log.w(TAG, "focusedPostUnitModel found " + model.getClass().getName() + " id=" + modelKindWithId(model));
+                return model;
+            }
+            Log.w(TAG, "focusedPostUnitModel no model wrapper=" + wrapper.getClass().getName());
+            logInterestingClassNames(wrapper, 0, new IdentityHashMap<Object, Boolean>(), new int[] {0});
+        }
+        return null;
+    }
+
     private static Object findRegisteredModelForPostUnit(View root, int rawX, int rawY) throws Exception {
         String rowText = findPostUnitTextForPreview(root, rawX, rawY);
         if (rowText == null || rowText.length() == 0) {
@@ -1071,16 +1142,73 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    private static Object findFocusedPostUnitWrapper(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return null;
+        }
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return null;
+        }
+        Class<?> semanticsKeys = loader.loadClass("androidx.compose.ui.semantics.d");
+        Object testTagKey = readStaticField(semanticsKeys, "A");
+        Object best = null;
+        int bestHeight = Integer.MAX_VALUE;
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object config = readField(node, "d");
+            Object tag = getSemanticsValue(config, testTagKey);
+            if (!"post_unit".equals(String.valueOf(tag))) {
+                continue;
+            }
+            Object id = readField(node, "f");
+            if (!(id instanceof Integer)) {
+                continue;
+            }
+            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(((Integer) id).intValue());
+            if (info == null) {
+                continue;
+            }
+            sealNode(info);
+            if (!info.isFocused()) {
+                continue;
+            }
+            Rect bounds = new Rect();
+            info.getBoundsInScreen(bounds);
+            if (bounds.height() > 0 && bounds.height() < bestHeight) {
+                best = wrapper;
+                bestHeight = bounds.height();
+            }
+        }
+        return best;
+    }
+
     private static Object registeredModelForRowText(String rowText) {
         synchronized (POST_MODELS_BY_TITLE) {
             String bestTitle = null;
+            int bestScore = 0;
             for (String title : POST_MODELS_BY_TITLE.keySet()) {
-                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                int score = rowTitleMatchScore(rowText, title);
+                if (score > bestScore || (score == bestScore && score > 0 && (bestTitle == null || title.length() > bestTitle.length()))) {
                     bestTitle = title;
+                    bestScore = score;
                 }
             }
             if (bestTitle != null) {
-                Log.w(TAG, "registeredPostUnit matched title=\"" + bestTitle + "\"");
+                Log.w(TAG, "registeredPostUnit matched title=\"" + bestTitle + "\" score=" + bestScore);
                 return POST_MODELS_BY_TITLE.get(bestTitle);
             }
         }
@@ -1810,15 +1938,54 @@ public final class RedditComposeFocusBridge {
     }
 
     private static boolean rowContainsTitle(String rowText, String title) {
+        return rowTitleMatchScore(rowText, title) > 0;
+    }
+
+    private static int rowTitleMatchScore(String rowText, String title) {
         if (rowText == null || title == null || title.length() == 0) {
-            return false;
+            return 0;
         }
         if (rowText.contains(title)) {
-            return true;
+            return 100000 + title.length();
         }
         String normalizedRow = normalizeForMatch(rowText);
         String normalizedTitle = normalizeForMatch(title);
-        return normalizedTitle.length() > 0 && normalizedRow.contains(normalizedTitle);
+        if (normalizedTitle.length() == 0) {
+            return 0;
+        }
+        if (normalizedRow.contains(normalizedTitle)) {
+            return 90000 + normalizedTitle.length();
+        }
+
+        String[] tokens = normalizedTitle.split(" ");
+        int total = 0;
+        int matched = 0;
+        int tokenChars = 0;
+        int lastIndex = -1;
+        boolean ordered = true;
+        for (String token : tokens) {
+            if (token.length() < 3) {
+                continue;
+            }
+            total++;
+            tokenChars += token.length();
+            int index = normalizedRow.indexOf(token);
+            if (index >= 0) {
+                matched++;
+                if (index < lastIndex) {
+                    ordered = false;
+                }
+                lastIndex = index;
+            }
+        }
+        if (total == 0 || matched < 2) {
+            return 0;
+        }
+        int percent = (matched * 100) / total;
+        if (percent < 70) {
+            return 0;
+        }
+        return (ordered ? 50000 : 40000) + (percent * 100) + tokenChars;
     }
 
     private static String summarizeText(String value) {
@@ -1832,9 +1999,12 @@ public final class RedditComposeFocusBridge {
         }
         synchronized (POST_BODIES) {
             String bestTitle = null;
+            int bestScore = 0;
             for (String title : POST_BODIES.keySet()) {
-                if (rowContainsTitle(rowText, title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                int score = rowTitleMatchScore(rowText, title);
+                if (score > bestScore || (score == bestScore && score > 0 && (bestTitle == null || title.length() > bestTitle.length()))) {
                     bestTitle = title;
+                    bestScore = score;
                 }
             }
             return bestTitle == null ? null : POST_BODIES.get(bestTitle);
