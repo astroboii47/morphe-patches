@@ -1522,6 +1522,16 @@ public final class RedditComposeFocusBridge {
     }
 
     public static View createVideoPreviewView(Context context, String url) {
+        if (isHlsPreviewUrl(url)) {
+            FrameLayout frame = new FrameLayout(context);
+            frame.setBackgroundColor(0xff000000);
+            frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            return frame;
+        }
+
         FrameLayout frame = new FrameLayout(context);
         frame.setBackgroundColor(0xff000000);
         VideoView videoView = new VideoView(context);
@@ -2244,6 +2254,9 @@ public final class RedditComposeFocusBridge {
             return Integer.MIN_VALUE;
         }
         String lower = url.toLowerCase(Locale.US);
+        if (isUiAssetPreviewUrl(lower)) {
+            return Integer.MIN_VALUE;
+        }
         int score = 0;
         if (lower.contains("i.redd.it")) {
             score += 1000;
@@ -2399,7 +2412,7 @@ public final class RedditComposeFocusBridge {
         if (isVideoPreviewUrl(lower)) {
             return false;
         }
-        if (isAvatarPreviewUrl(lower)) {
+        if (isUiAssetPreviewUrl(lower)) {
             return false;
         }
         return lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
@@ -2409,7 +2422,11 @@ public final class RedditComposeFocusBridge {
     }
 
     private static boolean isUsablePreviewMedia(String url) {
-        return url != null && url.length() > 0 && !isAvatarPreviewUrl(url);
+        return url != null && url.length() > 0 && !isUiAssetPreviewUrl(url);
+    }
+
+    private static boolean isHlsPreviewUrl(String url) {
+        return url != null && url.toLowerCase(Locale.US).contains(".m3u8");
     }
 
     private static boolean isAvatarPreviewUrl(String url) {
@@ -2420,6 +2437,23 @@ public final class RedditComposeFocusBridge {
         return lower.contains("redditstatic.com/avatars")
                 || lower.contains("snoovatar/avatars")
                 || lower.contains("/avatars/defaults/");
+    }
+
+    private static boolean isUiAssetPreviewUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        return isAvatarPreviewUrl(lower)
+                || lower.contains("emoji")
+                || lower.contains("award")
+                || lower.contains("badge")
+                || lower.contains("icon")
+                || lower.contains("snoo")
+                || lower.contains("redditstatic.com/")
+                || lower.contains("styles.redditmedia.com/")
+                || lower.contains("/subreddit_styles/")
+                || lower.contains("/profile_images/");
     }
 
     private static String firstThingId(String text) {
@@ -2461,7 +2495,7 @@ public final class RedditComposeFocusBridge {
             return false;
         }
         String trimmed = text.trim();
-        if (trimmed.length() < 20) {
+        if (trimmed.length() < 8) {
             return false;
         }
         if (trimmed.startsWith("From ") && trimmed.contains(", Posted ")) {
