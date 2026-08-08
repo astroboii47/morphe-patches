@@ -422,11 +422,15 @@ public final class LongPressImagePreviewPatch {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                TouchState endState;
                 synchronized (TOUCH_STATES) {
-                    TOUCH_STATES.remove(activity);
+                    endState = TOUCH_STATES.remove(activity);
                 }
                 if (hadPreview) {
                     hidePreview();
+                }
+                if (endState != null && endState.previewShown) {
+                    return true;
                 }
                 break;
             default:
@@ -451,6 +455,30 @@ public final class LongPressImagePreviewPatch {
 
         View root = activity.getWindow().getDecorView();
         showPreview(activity, root, Math.round(state.rawX), Math.round(state.rawY));
+        if (activePreview != null) {
+            state.previewShown = true;
+            cancelUnderlyingLongPress(root, Math.round(state.rawX), Math.round(state.rawY));
+        }
+    }
+
+    private static void cancelUnderlyingLongPress(View root, int rawX, int rawY) {
+        try {
+            int[] location = new int[2];
+            root.getLocationOnScreen(location);
+            long now = SystemClock.uptimeMillis();
+            MotionEvent cancel = MotionEvent.obtain(
+                    now,
+                    now,
+                    MotionEvent.ACTION_CANCEL,
+                    rawX - location[0],
+                    rawY - location[1],
+                    0
+            );
+            root.dispatchTouchEvent(cancel);
+            cancel.recycle();
+        } catch (Throwable throwable) {
+            Log.w(LOG_TAG, "cancel long press failed", throwable);
+        }
     }
 
     private static void showPreview(Activity activity, View root, int rawX, int rawY) {
@@ -473,8 +501,15 @@ public final class LongPressImagePreviewPatch {
             ViewGroup decor = (ViewGroup) decorView;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackgroundColor(Color.argb(220, 0, 0, 0));
-            overlay.setClickable(false);
+            overlay.setClickable(true);
             overlay.setFocusable(false);
+            overlay.setOnTouchListener((view, touchEvent) -> {
+                if (touchEvent.getActionMasked() == MotionEvent.ACTION_UP
+                        || touchEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                    hidePreview();
+                }
+                return true;
+            });
 
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
@@ -1917,6 +1952,7 @@ public final class LongPressImagePreviewPatch {
         float rawX;
         float rawY;
         boolean movedTooFar;
+        boolean previewShown;
 
         TouchState(float rawX, float rawY, int touchSlop) {
             this.startRawX = rawX;

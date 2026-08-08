@@ -4,7 +4,6 @@ import android.app.Instrumentation;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
-import android.net.Uri;
 import android.util.Log;
 import android.os.SystemClock;
 import android.view.KeyEvent;
@@ -14,8 +13,6 @@ import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
-import android.widget.MediaController;
-import android.widget.VideoView;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.graphics.Rect;
@@ -443,10 +440,6 @@ public final class RedditComposeFocusBridge {
             }
 
             String rowText = getFocusedPostTextPreview(root);
-            if (looksLikeBody(rowText)) {
-                Log.w(TAG, "focusedPreview row body length=" + rowText.trim().length());
-                return rowText.trim();
-            }
             PreviewRecord record = previewRecordForRowText(rowText);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview text title=\"" + record.title + "\" length=" + record.body.length());
@@ -462,10 +455,9 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "focusedPreview model text length=" + body.length());
                 return body.trim();
             }
-            String readable = readablePostRowFallback(rowText);
-            if (readable != null) {
-                Log.w(TAG, "focusedPreview row fallback length=" + readable.length());
-                return readable;
+            if (looksLikeBody(rowText)) {
+                Log.w(TAG, "focusedPreview row body length=" + rowText.trim().length());
+                return rowText.trim();
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "focusedPreviewText failed", throwable);
@@ -536,10 +528,6 @@ public final class RedditComposeFocusBridge {
                 model = findRegisteredModelForPostUnit(root, rawX, rawY);
             }
             String rowText = findPostUnitTextForPreview(root, rawX, rawY);
-            if (looksLikeBody(rowText)) {
-                Log.w(TAG, "postUnit row body length=" + rowText.trim().length());
-                return rowText.trim();
-            }
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "previewRecord text title=\"" + record.title + "\" length=" + record.body.length());
@@ -550,10 +538,9 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "postUnitModel text length=" + body.length());
                 return body.trim();
             }
-            String readable = readablePostRowFallback(rowText);
-            if (readable != null) {
-                Log.w(TAG, "postUnit row fallback length=" + readable.length());
-                return readable;
+            if (looksLikeBody(rowText)) {
+                Log.w(TAG, "postUnit row body length=" + rowText.trim().length());
+                return rowText.trim();
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "postUnitModelText failed", throwable);
@@ -1067,8 +1054,9 @@ public final class RedditComposeFocusBridge {
 
     private static String linkBodyText(Object link) {
         String[] methods = new String[] {
-                "getBody", "getBodyText", "getRawBodyText", "getSelfText", "getSelftext",
-                "getSelfTextHtml", "getSelftextHtml", "getMarkdown", "getRichtext", "getRichText"
+                "getSelftext", "getSelfText", "getRawBodyText", "getBodyText", "getMarkdown",
+                "getRichtext", "getRichText", "getRtjson", "getBody",
+                "getSelfTextHtml", "getSelftextHtml"
         };
         for (String method : methods) {
             String body = extractBodyCandidate(invokeNoArg(link, method), 0);
@@ -1608,64 +1596,30 @@ public final class RedditComposeFocusBridge {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setDomStorageEnabled(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         String escaped = escapeHtml(url);
         String tag = isVideoPreviewUrl(url)
-                ? "<video src=\"" + escaped + "\" autoplay muted loop playsinline controls></video>"
+                ? "<video id=\"v\" src=\"" + escaped + "\" autoplay muted loop playsinline controls preload=\"auto\"></video>"
                 : "<img src=\"" + escaped + "\" />";
         String html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}"
                 + "body{display:flex;align-items:center;justify-content:center;}img,video{max-width:100%;max-height:100%;object-fit:contain;}</style>"
-                + "</head><body>" + tag + "</body></html>";
-        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null);
+                + "</head><body>" + tag
+                + "<script>var v=document.getElementById('v');if(v){v.muted=true;v.playsInline=true;setTimeout(function(){v.play().catch(function(){});},50);}</script>"
+                + "</body></html>";
+        webView.loadDataWithBaseURL("https://www.reddit.com/", html, "text/html", "UTF-8", null);
         return webView;
     }
 
     public static View createVideoPreviewView(Context context, String url) {
-        if (isHlsPreviewUrl(url)) {
-            FrameLayout frame = new FrameLayout(context);
-            frame.setBackgroundColor(0xff000000);
-            frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-            ));
-            return frame;
-        }
-
         FrameLayout frame = new FrameLayout(context);
         frame.setBackgroundColor(0xff000000);
-        VideoView videoView = new VideoView(context);
-        videoView.setBackgroundColor(0xff000000);
-        MediaController controller = new MediaController(context);
-        controller.setAnchorView(videoView);
-        videoView.setMediaController(controller);
-        frame.addView(videoView, new FrameLayout.LayoutParams(
+        frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        try {
-            videoView.setVideoURI(Uri.parse(url));
-            videoView.setOnPreparedListener(player -> {
-                player.setLooping(true);
-                player.setVolume(0.0f, 0.0f);
-                videoView.start();
-            });
-            videoView.setOnErrorListener((player, what, extra) -> {
-                frame.removeAllViews();
-                frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                ));
-                return true;
-            });
-            videoView.start();
-        } catch (Throwable throwable) {
-            Log.w(TAG, "videoPreviewView failed", throwable);
-            frame.removeAllViews();
-            frame.addView(createMediaWebView(context, url), new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-            ));
-        }
         return frame;
     }
 
@@ -2533,7 +2487,9 @@ public final class RedditComposeFocusBridge {
     }
 
     private static boolean isUsablePreviewMedia(String url) {
-        return url != null && url.length() > 0 && !isUiAssetPreviewUrl(url);
+        return url != null && url.length() > 0
+                && !isUiAssetPreviewUrl(url)
+                && (isVideoPreviewUrl(url) || isImagePreviewUrl(url));
     }
 
     private static boolean isHlsPreviewUrl(String url) {
