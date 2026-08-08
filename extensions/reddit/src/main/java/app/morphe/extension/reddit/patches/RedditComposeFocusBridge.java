@@ -894,7 +894,7 @@ public final class RedditComposeFocusBridge {
             return false;
         }
         String lower = url.toLowerCase(Locale.US);
-        return lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".m3u8") || lower.contains("v.redd.it");
+        return isDirectPlayableVideoUrl(lower);
     }
 
     public static boolean isTextBodyPreview(String text) {
@@ -1012,27 +1012,27 @@ public final class RedditComposeFocusBridge {
                     invokeNoArg(redditVideo, "getScrubberMediaUrl"),
                     invokeNoArg(redditVideo, "getScrubberMediaURL")
             );
-            if (fallback != null && fallback.length() > 0 && !isHlsPreviewUrl(fallback)) {
+            if (fallback != null && fallback.length() > 0 && isDirectPlayableVideoUrl(fallback) && !isHlsPreviewUrl(fallback)) {
                 Log.w(TAG, "linkVideoUrl fallback " + summarizeUrl(fallback));
                 return fallback;
             }
             String recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
-            if (recursive != null && recursive.length() > 0 && !isHlsPreviewUrl(recursive)) {
+            if (recursive != null && recursive.length() > 0 && isDirectPlayableVideoUrl(recursive) && !isHlsPreviewUrl(recursive)) {
                 Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
                 return recursive;
             }
             String hls = asString(invokeNoArg(redditVideo, "getHlsUrl"));
-            if (hls != null && hls.length() > 0) {
+            if (hls != null && hls.length() > 0 && isDirectPlayableVideoUrl(hls)) {
                 Log.w(TAG, "linkVideoUrl hls " + summarizeUrl(hls));
                 return hls;
             }
             String dash = asString(invokeNoArg(redditVideo, "getDashUrl"));
-            if (dash != null && dash.length() > 0) {
+            if (dash != null && dash.length() > 0 && isDirectPlayableVideoUrl(dash)) {
                 Log.w(TAG, "linkVideoUrl dash " + summarizeUrl(dash));
                 return dash;
             }
             recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
-            if (recursive != null && recursive.length() > 0) {
+            if (recursive != null && recursive.length() > 0 && isDirectPlayableVideoUrl(recursive)) {
                 Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
                 return recursive;
             }
@@ -1056,24 +1056,22 @@ public final class RedditComposeFocusBridge {
     }
 
     private static String linkBodyText(Object link) {
-        String body = asString(invokeNoArg(link, "getBody"));
-        if (looksLikeBody(body)) {
-            return body;
+        String[] methods = new String[] {
+                "getBody", "getBodyText", "getRawBodyText", "getSelfText", "getSelftext",
+                "getSelfTextHtml", "getSelftextHtml", "getMarkdown", "getRichtext", "getRichText"
+        };
+        for (String method : methods) {
+            String body = extractBodyCandidate(invokeNoArg(link, method), 0);
+            if (looksLikeBody(body)) {
+                return body;
+            }
         }
         Object rtjson = invokeNoArg(link, "getRtjson");
-        String richText = asString(invokeNoArg(rtjson, "getRichTextString"));
+        String richText = extractBodyCandidate(invokeNoArg(rtjson, "getRichTextString"), 0);
         if (looksLikeBody(richText)) {
             return richText;
         }
-        String selfText = asString(invokeNoArg(link, "getSelfText"));
-        if (looksLikeBody(selfText)) {
-            return selfText;
-        }
-        selfText = asString(invokeNoArg(link, "getSelftext"));
-        if (looksLikeBody(selfText)) {
-            return selfText;
-        }
-        return null;
+        return extractPostBody(link, 0);
     }
 
     private static Object findPostUnitModelAt(View root, int rawX, int rawY) throws Exception {
@@ -2117,8 +2115,9 @@ public final class RedditComposeFocusBridge {
         }
         if (value instanceof CharSequence) {
             String text = value.toString();
-            if (isVideoPreviewUrl(text)) {
-                return text;
+            String video = extractPlayableVideoUrlFromText(text);
+            if (video != null) {
+                return video;
             }
             return null;
         }
@@ -2161,7 +2160,7 @@ public final class RedditComposeFocusBridge {
         }
 
         String rendered = value.toString();
-        String renderedVideo = extractVideoUrlFromText(rendered);
+        String renderedVideo = extractPlayableVideoUrlFromText(rendered);
         if (renderedVideo != null) {
             return renderedVideo;
         }
@@ -2391,6 +2390,10 @@ public final class RedditComposeFocusBridge {
     }
 
     private static String extractVideoUrlFromText(String text) {
+        return extractPlayableVideoUrlFromText(text);
+    }
+
+    private static String extractPlayableVideoUrlFromText(String text) {
         if (text == null) {
             return null;
         }
@@ -2406,8 +2409,8 @@ public final class RedditComposeFocusBridge {
                     }
                     end++;
                 }
-                String url = text.substring(start, end);
-                if (isVideoPreviewUrl(url)) {
+                String url = cleanMediaUrl(text.substring(start, end));
+                if (isDirectPlayableVideoUrl(url)) {
                     return url;
                 }
                 start = text.indexOf(marker, end);
@@ -2474,6 +2477,21 @@ public final class RedditComposeFocusBridge {
         return url != null && url.toLowerCase(Locale.US).contains(".m3u8");
     }
 
+    private static boolean isDirectPlayableVideoUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        if (lower.contains(".mp4") || lower.contains(".webm") || lower.contains(".m3u8")) {
+            return true;
+        }
+        if (!lower.contains("v.redd.it")) {
+            return false;
+        }
+        return lower.contains("dash_") || lower.contains("hlsplaylist") || lower.contains("dashplaylist")
+                || lower.endsWith(".mp4") || lower.contains(".mp4?");
+    }
+
     private static boolean isAvatarPreviewUrl(String url) {
         if (url == null) {
             return false;
@@ -2493,14 +2511,81 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("emoji")
                 || lower.contains("award")
                 || lower.contains("badge")
+                || lower.contains("achievement")
+                || lower.contains("trophy")
+                || lower.contains("avatar")
+                || lower.contains("profile")
+                || lower.contains("snoovatar")
                 || lower.contains("icon")
                 || lower.contains("favicon")
                 || lower.contains("logo")
                 || lower.contains("snoo")
                 || lower.contains("redditstatic.com/")
                 || lower.contains("styles.redditmedia.com/")
+                || lower.contains("emoji.redditmedia.com/")
+                || lower.contains("redditmedia.com/award")
+                || lower.contains("redditmedia.com/gold")
+                || lower.contains("redditmedia.com/trophy")
                 || lower.contains("/subreddit_styles/")
                 || lower.contains("/profile_images/");
+    }
+
+    private static String extractBodyCandidate(Object value, int depth) {
+        if (value == null || depth > 4) {
+            return null;
+        }
+        if (value instanceof CharSequence) {
+            String text = value.toString();
+            if (looksLikeBody(text)) {
+                return text;
+            }
+            String parsed = parseBodyFromToString(text, "text=");
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
+            parsed = parseBodyFromToString(text, "markdown=");
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
+            return null;
+        }
+        Class<?> type = value.getClass();
+        if (type.isPrimitive() || value instanceof Number || value instanceof Boolean || value instanceof Enum) {
+            return null;
+        }
+        if (value instanceof Iterable) {
+            for (Object item : (Iterable<?>) value) {
+                String body = extractBodyCandidate(item, depth + 1);
+                if (looksLikeBody(body)) {
+                    return body;
+                }
+            }
+            return null;
+        }
+        if (value instanceof Map) {
+            for (Object item : ((Map<?, ?>) value).values()) {
+                String body = extractBodyCandidate(item, depth + 1);
+                if (looksLikeBody(body)) {
+                    return body;
+                }
+            }
+            return null;
+        }
+        if (type.isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                String body = extractBodyCandidate(java.lang.reflect.Array.get(value, i), depth + 1);
+                if (looksLikeBody(body)) {
+                    return body;
+                }
+            }
+            return null;
+        }
+        String body = extractPostBody(value, depth + 1);
+        if (looksLikeBody(body)) {
+            return body;
+        }
+        return null;
     }
 
     private static String firstThingId(String text) {
