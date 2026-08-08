@@ -443,6 +443,10 @@ public final class RedditComposeFocusBridge {
             }
 
             String rowText = getFocusedPostTextPreview(root);
+            if (looksLikeBody(rowText)) {
+                Log.w(TAG, "focusedPreview row body length=" + rowText.trim().length());
+                return rowText.trim();
+            }
             PreviewRecord record = previewRecordForRowText(rowText);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview text title=\"" + record.title + "\" length=" + record.body.length());
@@ -525,6 +529,11 @@ public final class RedditComposeFocusBridge {
             Object model = findPostUnitModelAt(root, rawX, rawY);
             if (model == null) {
                 model = findRegisteredModelForPostUnit(root, rawX, rawY);
+            }
+            String rowText = findPostUnitTextForPreview(root, rawX, rawY);
+            if (looksLikeBody(rowText)) {
+                Log.w(TAG, "postUnit row body length=" + rowText.trim().length());
+                return rowText.trim();
             }
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
