@@ -208,6 +208,13 @@ val longPressImagePreviewPatch = bytecodePatch(
             """
         )
 
+        hookMethodStart(
+            PreviewTextElementFromLinkFingerprint,
+            """
+                invoke-static { p0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cacheLinkModel(Ljava/lang/Object;)V
+            """
+        )
+
         LinkJsonAdapterFromJsonFingerprint.method.apply {
             val returns = implementation!!.instructions.mapIndexedNotNull { index, instruction ->
                 if (instruction.opcode == Opcode.RETURN_OBJECT) {

@@ -425,7 +425,9 @@ public final class LongPressImagePreviewPatch {
                 synchronized (TOUCH_STATES) {
                     TOUCH_STATES.remove(activity);
                 }
-                hidePreview(activity);
+                if (hadPreview) {
+                    hidePreview();
+                }
                 break;
             default:
                 break;
@@ -1383,17 +1385,6 @@ public final class LongPressImagePreviewPatch {
 
     private static void hidePreview(Activity activity) {
         hidePreview();
-        if (activity == null) {
-            return;
-        }
-        MAIN_HANDLER.postDelayed(() -> {
-            try {
-                View root = activity.getWindow().getDecorView();
-                RedditComposeFocusBridge.resetComposeFocusForKey(root, KeyEvent.KEYCODE_DPAD_DOWN);
-            } catch (Throwable ex) {
-                Logger.printException(() -> "Failed to restore Reddit feed focus after preview", ex);
-            }
-        }, 80);
     }
 
     private static int clamp(int value, int min, int max) {

@@ -421,6 +421,14 @@ internal object LinkPresentationModelToPostUnitFingerprint : Fingerprint(
     )
 )
 
+internal object PreviewTextElementFromLinkFingerprint : Fingerprint(
+    definingClass = "Lla0;",
+    name = "c0",
+    returnType = "Lgm20;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC, AccessFlags.FINAL),
+    parameters = listOf("Lcom/reddit/domain/model/Link;")
+)
+
 internal object LinkJsonAdapterFromJsonFingerprint : Fingerprint(
     definingClass = "Lcom/reddit/domain/model/LinkJsonAdapter;",
     name = "fromJson",
