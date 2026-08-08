@@ -2319,6 +2319,18 @@ public final class RedditComposeFocusBridge {
         }
         if (value instanceof CharSequence) {
             String text = value.toString();
+            String parsed = parseRichTextBody(text);
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
+            parsed = parseBodyFromToString(text, "text=");
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
+            parsed = parseBodyFromToString(text, "markdown=");
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
             return looksLikeBody(text) ? text : null;
         }
 
@@ -2728,7 +2740,7 @@ public final class RedditComposeFocusBridge {
     private static boolean isUsablePreviewMedia(String url) {
         return url != null && url.length() > 0
                 && !isUiAssetPreviewUrl(url)
-                && (isVideoPreviewUrl(url) || isImagePreviewUrl(url));
+                && (isVideoPreviewUrl(url) || (isImagePreviewUrl(url) && imagePreviewScore(url) > 0));
     }
 
     private static boolean isHlsPreviewUrl(String url) {
