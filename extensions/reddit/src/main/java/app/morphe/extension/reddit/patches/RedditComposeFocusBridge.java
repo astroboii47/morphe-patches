@@ -1006,15 +1006,20 @@ public final class RedditComposeFocusBridge {
         try {
             Object media = invokeNoArg(link, "getMedia");
             Object redditVideo = invokeNoArg(media, "getRedditVideo");
-            String fallback = firstNonEmptyString(
+            String direct = firstPlayableVideoString(
+                    invokeNoArg(redditVideo, "getPackagedMp4Url"),
                     invokeNoArg(redditVideo, "getFallbackUrl"),
                     invokeNoArg(redditVideo, "getFallbackURL"),
-                    invokeNoArg(redditVideo, "getScrubberMediaUrl"),
-                    invokeNoArg(redditVideo, "getScrubberMediaURL")
+                    invokeNoArg(redditVideo, "getFallBackUrl")
             );
-            if (fallback != null && fallback.length() > 0 && isDirectPlayableVideoUrl(fallback) && !isHlsPreviewUrl(fallback)) {
-                Log.w(TAG, "linkVideoUrl fallback " + summarizeUrl(fallback));
-                return fallback;
+            if (direct != null && direct.length() > 0) {
+                Log.w(TAG, "linkVideoUrl direct " + summarizeUrl(direct));
+                return direct;
+            }
+            direct = bestPlaybackMp4Url(invokeNoArg(redditVideo, "getPlaybackMp4s"));
+            if (direct != null && direct.length() > 0) {
+                Log.w(TAG, "linkVideoUrl playback " + summarizeUrl(direct));
+                return direct;
             }
             String recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
             if (recursive != null && recursive.length() > 0 && isDirectPlayableVideoUrl(recursive) && !isHlsPreviewUrl(recursive)) {
@@ -1031,10 +1036,15 @@ public final class RedditComposeFocusBridge {
                 Log.w(TAG, "linkVideoUrl dash " + summarizeUrl(dash));
                 return dash;
             }
-            recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());
-            if (recursive != null && recursive.length() > 0 && isDirectPlayableVideoUrl(recursive)) {
-                Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
-                return recursive;
+            direct = firstPlayableVideoString(
+                    invokeNoArg(redditVideo, "getDownloadUrl"),
+                    invokeNoArg(redditVideo, "getScrubbedMediaUrl"),
+                    invokeNoArg(redditVideo, "getScrubberMediaUrl"),
+                    invokeNoArg(redditVideo, "getScrubberMediaURL")
+            );
+            if (direct != null && direct.length() > 0) {
+                Log.w(TAG, "linkVideoUrl secondary " + summarizeUrl(direct));
+                return direct;
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "linkVideoUrl failed", throwable);
@@ -1537,6 +1547,59 @@ public final class RedditComposeFocusBridge {
             }
         }
         return null;
+    }
+
+    private static String firstPlayableVideoString(Object... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Object value : values) {
+            String text = asString(value);
+            if (text != null) {
+                text = cleanMediaUrl(text);
+            }
+            if (isDirectPlayableVideoUrl(text)) {
+                return text;
+            }
+        }
+        return null;
+    }
+
+    private static String bestPlaybackMp4Url(Object playbackMp4s) {
+        try {
+            Object permutations = invokeNoArg(playbackMp4s, "getPermutations");
+            if (!(permutations instanceof Iterable)) {
+                return null;
+            }
+            String bestUrl = null;
+            int bestScore = Integer.MIN_VALUE;
+            for (Object permutation : (Iterable<?>) permutations) {
+                String url = asString(invokeNoArg(permutation, "getUrl"));
+                if (url != null) {
+                    url = cleanMediaUrl(url);
+                }
+                if (!isDirectPlayableVideoUrl(url)) {
+                    continue;
+                }
+                int score = 0;
+                Object height = invokeNoArg(permutation, "getHeight");
+                if (height instanceof Number) {
+                    score += ((Number) height).intValue() * 10;
+                }
+                Object bitrate = invokeNoArg(permutation, "getBitrateBps");
+                if (bitrate instanceof Number) {
+                    score += ((Number) bitrate).intValue() / 1000;
+                }
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestUrl = url;
+                }
+            }
+            return bestUrl;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "bestPlaybackMp4 failed", throwable);
+            return null;
+        }
     }
 
     public static WebView createMediaWebView(Context context, String url) {
