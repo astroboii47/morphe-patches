@@ -4,6 +4,12 @@ import android.app.Instrumentation;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.graphics.Typeface;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
 import android.util.Log;
 import android.os.SystemClock;
 import android.view.KeyEvent;
@@ -27,6 +33,8 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class RedditComposeFocusBridge {
     private static final String TAG = "MorpheComposeFocus";
@@ -37,6 +45,8 @@ public final class RedditComposeFocusBridge {
     private static final Map<String, PreviewRecord> PREVIEWS_BY_TITLE = new HashMap<String, PreviewRecord>();
     private static final int MAX_POST_BODIES = 300;
     private static final int MAX_POST_MODELS = 300;
+    private static final String TEXT_PREVIEW_SEPARATOR = "\n\u0001\n";
+    private static final Pattern RICHTEXT_TEXT_PATTERN = Pattern.compile("\\\"t\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\\\\\"])*)\\\"");
 
     private RedditComposeFocusBridge() {}
 
@@ -785,13 +795,10 @@ public final class RedditComposeFocusBridge {
         String meta = metadataFromRowText(rowText);
         StringBuilder builder = new StringBuilder();
         if (title != null && title.trim().length() > 0 && !samePreviewText(title, trimmedBody)) {
-            builder.append(title.trim()).append("\n");
+            builder.append(title.trim()).append(TEXT_PREVIEW_SEPARATOR);
         }
         if (meta != null && meta.length() > 0) {
-            builder.append(meta).append("\n");
-        }
-        if (builder.length() > 0) {
-            builder.append("\n");
+            builder.append(meta).append(TEXT_PREVIEW_SEPARATOR);
         }
         builder.append(trimmedBody);
         return builder.toString().trim();
@@ -809,7 +816,7 @@ public final class RedditComposeFocusBridge {
         }
         if (meta != null && meta.length() > 0) {
             if (builder.length() > 0) {
-                builder.append("\n");
+                builder.append(TEXT_PREVIEW_SEPARATOR);
             }
             builder.append(meta);
         }
@@ -1732,7 +1739,7 @@ public final class RedditComposeFocusBridge {
         String escaped = escapeHtml(url);
         String tag = isVideoPreviewUrl(url)
                 ? "<video id=\"v\" src=\"" + escaped + "\" autoplay muted loop playsinline controls preload=\"auto\"></video>"
-                + "<div id=\"hud\"><span id=\"time\">0:00 left</span><div id=\"track\"><div id=\"fill\"></div></div></div>"
+                + "<div id=\"hud\"><span id=\"time\">0:00 / 0:00</span><div id=\"track\"><div id=\"fill\"></div></div></div>"
                 : "<img src=\"" + escaped + "\" />";
         String html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}"
@@ -1744,7 +1751,7 @@ public final class RedditComposeFocusBridge {
                 + "</head><body>" + tag
                 + "<script>var v=document.getElementById('v'),t=document.getElementById('time'),f=document.getElementById('fill');"
                 + "function fmt(s){if(!isFinite(s)||s<0)return '0:00';s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}"
-                + "function tick(){if(v&&t&&f){var d=v.duration||0,c=v.currentTime||0;t.textContent=fmt(Math.max(0,d-c))+' left';f.style.width=d?Math.min(100,(c/d)*100)+'%':'0';}}"
+                + "function tick(){if(v&&t&&f){var d=v.duration||0,c=v.currentTime||0;t.textContent=fmt(c)+' / '+fmt(d);f.style.width=d?Math.min(100,(c/d)*100)+'%':'0';}}"
                 + "if(v){v.muted=true;v.playsInline=true;v.addEventListener('timeupdate',tick);v.addEventListener('loadedmetadata',tick);"
                 + "setInterval(tick,250);setTimeout(function(){v.play().catch(function(){});tick();},50);}</script>"
                 + "</body></html>";
@@ -1767,7 +1774,7 @@ public final class RedditComposeFocusBridge {
         scrollView.setFillViewport(true);
         scrollView.setBackgroundColor(0xff111111);
         android.widget.TextView textView = new android.widget.TextView(context);
-        textView.setText(text == null ? "" : text);
+        textView.setText(styledPreviewText(text));
         textView.setTextColor(0xffffffff);
         textView.setTextSize(18.0f);
         textView.setLineSpacing(0.0f, 1.12f);
@@ -1780,6 +1787,44 @@ public final class RedditComposeFocusBridge {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
         return scrollView;
+    }
+
+    private static CharSequence styledPreviewText(String text) {
+        String value = text == null ? "" : text;
+        String[] parts = value.split(TEXT_PREVIEW_SEPARATOR, -1);
+        SpannableStringBuilder builder = new SpannableStringBuilder();
+        if (parts.length > 0 && parts[0].length() > 0) {
+            int start = builder.length();
+            builder.append(parts[0].trim());
+            int end = builder.length();
+            builder.setSpan(new StyleSpan(Typeface.BOLD), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            builder.setSpan(new RelativeSizeSpan(1.2f), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        if (parts.length > 1 && parts[1].length() > 0) {
+            if (builder.length() > 0) {
+                builder.append("\n");
+            }
+            int start = builder.length();
+            builder.append(parts[1].trim());
+            int end = builder.length();
+            builder.setSpan(new RelativeSizeSpan(0.78f), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            builder.setSpan(new ForegroundColorSpan(0xffa7b3ba), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        String body;
+        if (parts.length > 2) {
+            body = parts[2];
+        } else if (parts.length > 1) {
+            body = "";
+        } else {
+            body = value;
+        }
+        if (body != null && body.trim().length() > 0) {
+            if (builder.length() > 0) {
+                builder.append("\n\n");
+            }
+            builder.append(body.trim());
+        }
+        return builder.length() > 0 ? builder : value;
     }
 
     private static boolean focusFirstPostUnitViaProvider(View compose, int index) {
@@ -2710,9 +2755,6 @@ public final class RedditComposeFocusBridge {
         }
         if (value instanceof CharSequence) {
             String text = value.toString();
-            if (looksLikeBody(text)) {
-                return text;
-            }
             String parsed = parseBodyFromToString(text, "text=");
             if (looksLikeBody(parsed)) {
                 return parsed;
@@ -2720,6 +2762,13 @@ public final class RedditComposeFocusBridge {
             parsed = parseBodyFromToString(text, "markdown=");
             if (looksLikeBody(parsed)) {
                 return parsed;
+            }
+            parsed = parseRichTextBody(text);
+            if (looksLikeBody(parsed)) {
+                return parsed;
+            }
+            if (looksLikeBody(text)) {
+                return text;
             }
             return null;
         }
@@ -2868,6 +2917,82 @@ public final class RedditComposeFocusBridge {
             return null;
         }
         return looksLikeBody(body) ? body : null;
+    }
+
+    private static String parseRichTextBody(String value) {
+        if (value == null || !value.contains("\"document\"") || !value.contains("\"t\"")) {
+            return null;
+        }
+        try {
+            Matcher matcher = RICHTEXT_TEXT_PATTERN.matcher(value);
+            StringBuilder builder = new StringBuilder();
+            while (matcher.find()) {
+                String piece = unescapeJsonText(matcher.group(1));
+                if (piece == null || piece.trim().length() == 0) {
+                    continue;
+                }
+                if (builder.length() > 0 && !endsWithWhitespace(builder)) {
+                    builder.append(' ');
+                }
+                builder.append(piece.trim());
+            }
+            String text = normalizeWhitespace(builder.toString());
+            return looksLikeBody(text) ? text : null;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "parseRichTextBody failed", throwable);
+            return null;
+        }
+    }
+
+    private static boolean endsWithWhitespace(StringBuilder builder) {
+        return builder.length() > 0 && Character.isWhitespace(builder.charAt(builder.length() - 1));
+    }
+
+    private static String unescapeJsonText(String value) {
+        if (value == null) {
+            return null;
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch != '\\' || i + 1 >= value.length()) {
+                builder.append(ch);
+                continue;
+            }
+            char next = value.charAt(++i);
+            switch (next) {
+                case 'n':
+                    builder.append('\n');
+                    break;
+                case 'r':
+                    builder.append('\n');
+                    break;
+                case 't':
+                    builder.append('\t');
+                    break;
+                case '"':
+                    builder.append('"');
+                    break;
+                case '\\':
+                    builder.append('\\');
+                    break;
+                case 'u':
+                    if (i + 4 < value.length()) {
+                        try {
+                            builder.append((char) Integer.parseInt(value.substring(i + 1, i + 5), 16));
+                            i += 4;
+                            break;
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    builder.append("\\u");
+                    break;
+                default:
+                    builder.append(next);
+                    break;
+            }
+        }
+        return builder.toString();
     }
 
     private static boolean clickMatchingNode(AccessibilityNodeInfo node, String needle) {
