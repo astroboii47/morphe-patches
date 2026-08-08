@@ -527,9 +527,9 @@ public final class LongPressImagePreviewPatch {
             String mediaUrl = focusedOnly
                     ? RedditComposeFocusBridge.getFocusedPostModelMediaPreview(root)
                     : getMediaUrlAtPoint(root, rawX, rawY);
-            if (!focusedOnly && mediaUrl == null) {
+            if (mediaUrl == null) {
                 int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
-                if (postPoint != null) {
+                if (!focusedOnly && postPoint != null) {
                     rawX = postPoint[0];
                     rawY = postPoint[1];
                 }
@@ -541,7 +541,10 @@ public final class LongPressImagePreviewPatch {
                 String textPreview = focusedOnly
                         ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
                         : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
-                if (!focusedOnly && textPreview == null) {
+                if (focusedOnly && textPreview == null) {
+                    textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+                }
+                if (textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
                 if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {

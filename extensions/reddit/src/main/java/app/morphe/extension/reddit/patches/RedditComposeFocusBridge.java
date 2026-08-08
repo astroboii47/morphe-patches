@@ -429,31 +429,32 @@ public final class RedditComposeFocusBridge {
                     PreviewRecord byId = PREVIEWS_BY_KEY.get(focusedId);
                     if (byId != null && byId.body != null && byId.body.trim().length() > 0) {
                         Log.w(TAG, "focusedPreview id text id=" + focusedId + " length=" + byId.body.length());
-                        return byId.body.trim();
+                        return buildTextPreviewText(byId, null, byId.body);
                     }
                 }
             }
             String directBody = extractModelBodyText(focusedModel);
             if (directBody != null && directBody.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview direct model text id=" + focusedId + " length=" + directBody.length());
-                return directBody.trim();
+                PreviewRecord record = previewRecord(focusedId, modelTitle(focusedModel));
+                return buildTextPreviewText(record, null, directBody);
             }
 
             String rowText = getFocusedPostTextPreview(root);
             PreviewRecord record = previewRecordForRowText(rowText);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview text title=\"" + record.title + "\" length=" + record.body.length());
-                return record.body.trim();
+                return buildTextPreviewText(record, rowText, record.body);
             }
             String body = getCachedBodyForRowText(rowText);
             if (body != null && body.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview cached text length=" + body.length());
-                return body.trim();
+                return buildTextPreviewText(record, rowText, body);
             }
             body = extractModelBodyText(registeredModelForRowText(rowText));
             if (body != null && body.trim().length() > 0) {
                 Log.w(TAG, "focusedPreview model text length=" + body.length());
-                return body.trim();
+                return buildTextPreviewText(record, rowText, body);
             }
             if (looksLikeBody(rowText)) {
                 Log.w(TAG, "focusedPreview row body length=" + rowText.trim().length());
@@ -484,7 +485,7 @@ public final class RedditComposeFocusBridge {
                     String body = getCachedBodyForRowText(text);
                     if (body != null && body.trim().length() > 0) {
                         Log.w(TAG, "postTextPreview body length=" + body.length());
-                        return body.trim();
+                        return buildTextPreviewText(previewRecordForRowText(text), text, body);
                     }
                 }
             }
@@ -531,12 +532,12 @@ public final class RedditComposeFocusBridge {
             PreviewRecord record = findPreviewRecordForPostUnit(root, rawX, rawY);
             if (record != null && record.body != null && record.body.trim().length() > 0) {
                 Log.w(TAG, "previewRecord text title=\"" + record.title + "\" length=" + record.body.length());
-                return record.body.trim();
+                return buildTextPreviewText(record, rowText, record.body);
             }
             String body = extractModelBodyText(model);
             if (body != null && body.trim().length() > 0) {
                 Log.w(TAG, "postUnitModel text length=" + body.length());
-                return body.trim();
+                return buildTextPreviewText(record, rowText, body);
             }
             if (looksLikeBody(rowText)) {
                 Log.w(TAG, "postUnit row body length=" + rowText.trim().length());
@@ -763,6 +764,106 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "getPreviewBodyForTitle failed", throwable);
             return null;
         }
+    }
+
+    private static String buildTextPreviewText(PreviewRecord record, String rowText, String body) {
+        String trimmedBody = body == null ? "" : body.trim();
+        String title = record == null ? null : record.title;
+        if (title == null || title.trim().length() == 0) {
+            title = titleFromRowText(rowText);
+        }
+        String meta = metadataFromRowText(rowText);
+        StringBuilder builder = new StringBuilder();
+        if (title != null && title.trim().length() > 0 && !samePreviewText(title, trimmedBody)) {
+            builder.append(title.trim()).append("\n");
+        }
+        if (meta != null && meta.length() > 0) {
+            builder.append(meta).append("\n");
+        }
+        if (builder.length() > 0) {
+            builder.append("\n");
+        }
+        builder.append(trimmedBody);
+        return builder.toString().trim();
+    }
+
+    private static boolean samePreviewText(String first, String second) {
+        if (first == null || second == null) {
+            return false;
+        }
+        return first.trim().equals(second.trim());
+    }
+
+    private static String titleFromRowText(String rowText) {
+        if (rowText == null) {
+            return null;
+        }
+        String[] pieces = rowText.split(",");
+        String best = null;
+        for (String piece : pieces) {
+            String text = piece.trim();
+            String lower = text.toLowerCase(Locale.US);
+            if (text.length() == 0
+                    || lower.startsWith("from ")
+                    || lower.startsWith("posted ")
+                    || lower.contains(" upvote")
+                    || lower.contains(" comment")
+                    || lower.startsWith("shared ")) {
+                continue;
+            }
+            if (best == null || text.length() > best.length()) {
+                best = text;
+            }
+        }
+        return best;
+    }
+
+    private static String metadataFromRowText(String rowText) {
+        if (rowText == null) {
+            return null;
+        }
+        String[] pieces = rowText.split(",");
+        String subreddit = null;
+        String age = null;
+        String votes = null;
+        String comments = null;
+        String shares = null;
+        String reposts = null;
+        for (String piece : pieces) {
+            String text = piece.trim();
+            String lower = text.toLowerCase(Locale.US);
+            if (lower.startsWith("from ") && subreddit == null) {
+                subreddit = "r/" + text.substring(5).trim();
+            } else if (lower.startsWith("posted ") && age == null) {
+                age = text.substring(7).trim();
+            } else if (lower.contains(" upvote") && votes == null) {
+                votes = text;
+            } else if (lower.contains(" comment") && comments == null) {
+                comments = text;
+            } else if (lower.startsWith("shared ") && shares == null) {
+                shares = text;
+            } else if (lower.startsWith("reposted ") && reposts == null) {
+                reposts = text;
+            }
+        }
+        StringBuilder builder = new StringBuilder();
+        appendMeta(builder, subreddit);
+        appendMeta(builder, age);
+        appendMeta(builder, votes);
+        appendMeta(builder, comments);
+        appendMeta(builder, shares);
+        appendMeta(builder, reposts);
+        return builder.length() > 0 ? builder.toString() : null;
+    }
+
+    private static void appendMeta(StringBuilder builder, String value) {
+        if (value == null || value.length() == 0) {
+            return;
+        }
+        if (builder.length() > 0) {
+            builder.append("  |  ");
+        }
+        builder.append(value);
     }
 
     private static boolean shouldReplaceMedia(String oldUrl, String newUrl) {
@@ -1602,12 +1703,21 @@ public final class RedditComposeFocusBridge {
         String escaped = escapeHtml(url);
         String tag = isVideoPreviewUrl(url)
                 ? "<video id=\"v\" src=\"" + escaped + "\" autoplay muted loop playsinline controls preload=\"auto\"></video>"
+                + "<div id=\"hud\"><span id=\"time\">0:00 left</span><div id=\"track\"><div id=\"fill\"></div></div></div>"
                 : "<img src=\"" + escaped + "\" />";
         String html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}"
-                + "body{display:flex;align-items:center;justify-content:center;}img,video{max-width:100%;max-height:100%;object-fit:contain;}</style>"
+                + "body{display:flex;align-items:center;justify-content:center;}img,video{max-width:100%;max-height:100%;object-fit:contain;}"
+                + "#hud{position:fixed;left:18px;right:18px;bottom:18px;display:flex;align-items:center;gap:10px;"
+                + "padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.62);color:white;font:14px sans-serif;}"
+                + "#track{height:4px;flex:1;background:rgba(255,255,255,.28);border-radius:3px;overflow:hidden;}"
+                + "#fill{height:100%;width:0;background:white;border-radius:3px;}</style>"
                 + "</head><body>" + tag
-                + "<script>var v=document.getElementById('v');if(v){v.muted=true;v.playsInline=true;setTimeout(function(){v.play().catch(function(){});},50);}</script>"
+                + "<script>var v=document.getElementById('v'),t=document.getElementById('time'),f=document.getElementById('fill');"
+                + "function fmt(s){if(!isFinite(s)||s<0)return '0:00';s=Math.floor(s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}"
+                + "function tick(){if(v&&t&&f){var d=v.duration||0,c=v.currentTime||0;t.textContent=fmt(Math.max(0,d-c))+' left';f.style.width=d?Math.min(100,(c/d)*100)+'%':'0';}}"
+                + "if(v){v.muted=true;v.playsInline=true;v.addEventListener('timeupdate',tick);v.addEventListener('loadedmetadata',tick);"
+                + "setInterval(tick,250);setTimeout(function(){v.play().catch(function(){});tick();},50);}</script>"
                 + "</body></html>";
         webView.loadDataWithBaseURL("https://www.reddit.com/", html, "text/html", "UTF-8", null);
         return webView;
@@ -1623,16 +1733,24 @@ public final class RedditComposeFocusBridge {
         return frame;
     }
 
-    public static android.widget.TextView createTextPreviewView(Context context, String text) {
+    public static View createTextPreviewView(Context context, String text) {
+        android.widget.ScrollView scrollView = new android.widget.ScrollView(context);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(0xff111111);
         android.widget.TextView textView = new android.widget.TextView(context);
         textView.setText(text == null ? "" : text);
         textView.setTextColor(0xffffffff);
-        textView.setTextSize(20.0f);
+        textView.setTextSize(18.0f);
+        textView.setLineSpacing(0.0f, 1.12f);
         int padding = (int) (20.0f * context.getResources().getDisplayMetrics().density);
         textView.setPadding(padding, padding, padding, padding);
         textView.setBackgroundColor(0xff111111);
-        textView.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        return textView;
+        textView.setGravity(android.view.Gravity.START);
+        scrollView.addView(textView, new android.widget.ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        return scrollView;
     }
 
     private static boolean focusFirstPostUnitViaProvider(View compose, int index) {
@@ -2323,6 +2441,14 @@ public final class RedditComposeFocusBridge {
         }
         if (lower.contains("thumbnail") || lower.contains("thumb")) {
             score -= 500;
+        }
+        if (lower.contains("avatar") || lower.contains("award") || lower.contains("badge")
+                || lower.contains("icon") || lower.contains("logo") || lower.contains("snoo")) {
+            score -= 1200;
+        }
+        if (lower.contains("width=216") || lower.contains("width=320")
+                || lower.contains("height=216") || lower.contains("height=320")) {
+            score -= 300;
         }
         if (lower.contains("width=") || lower.contains("height=") || lower.contains("crop=")) {
             score -= 150;
