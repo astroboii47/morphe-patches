@@ -1818,8 +1818,7 @@ public final class RedditComposeFocusBridge {
                 bestHeight = bounds.height();
             }
         }
-        String body = getCachedBodyForRowText(best);
-        return body != null && body.length() > 0 ? body : best;
+        return best;
     }
 
     private static String readableSemanticsText(ClassLoader loader, Object config) {
@@ -1941,7 +1940,7 @@ public final class RedditComposeFocusBridge {
         return rowTitleMatchScore(rowText, title) > 0;
     }
 
-    private static int rowTitleMatchScore(String rowText, String title) {
+    public static int rowTitleMatchScore(String rowText, String title) {
         if (rowText == null || title == null || title.length() == 0) {
             return 0;
         }

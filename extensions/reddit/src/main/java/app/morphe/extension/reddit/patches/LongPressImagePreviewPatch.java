@@ -651,13 +651,16 @@ public final class LongPressImagePreviewPatch {
         synchronized (TITLE_MEDIA_URLS) {
             Log.i(LOG_TAG, "pressed row=\"" + text + "\" cacheSize=" + TITLE_MEDIA_URLS.size());
             String bestTitle = null;
+            int bestScore = 0;
             for (String title : TITLE_MEDIA_URLS.keySet()) {
-                if (text.contains(title) && (bestTitle == null || title.length() > bestTitle.length())) {
+                int score = RedditComposeFocusBridge.rowTitleMatchScore(text, title);
+                if (score > bestScore || (score == bestScore && score > 0 && (bestTitle == null || title.length() > bestTitle.length()))) {
                     bestTitle = title;
+                    bestScore = score;
                 }
             }
 
-            Log.i(LOG_TAG, "matched title=\"" + bestTitle + "\"");
+            Log.i(LOG_TAG, "matched title=\"" + bestTitle + "\" score=" + bestScore);
             if (bestTitle != null) {
                 return RedditComposeFocusBridge.upgradePreviewMedia(null, bestTitle, TITLE_MEDIA_URLS.get(bestTitle));
             }
