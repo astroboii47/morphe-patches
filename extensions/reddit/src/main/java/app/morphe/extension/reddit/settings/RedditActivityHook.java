@@ -54,6 +54,8 @@ public class RedditActivityHook {
      * Injection point.
      */
     public static boolean hook(Activity activity) {
+        LongPressImagePreviewPatch.attach(activity);
+
         Intent intent = activity.getIntent();
         if (MORPHE_LABEL.equals(intent.getStringExtra("com.reddit.extra.initial_url"))) {
             initialize(activity);

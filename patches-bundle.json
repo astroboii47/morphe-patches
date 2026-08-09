@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-09T05:50:00",
-  "description": "## 1.36.0-dev.77 (2026-08-09)\n\n- Reddit: choose the best available video candidate across playback, fallback, recursive, HLS, and DASH sources.\n- Reddit: make T a distinct text-card preview and force-refresh missing post body text from selected post JSON.\n- Reddit: prevent the G web modal overlay from taking focus while open.\n- Reddit: improve G modal read-more/NSFW view handling without changing Reddit embed sizing.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.77/patches-1.36.0-dev.77.mpp",
+  "created_at": "2026-08-09T06:10:00",
+  "description": "## 1.36.0-dev.78 (2026-08-09)\n\n- Reddit: keep P/long-hold video previews on direct MP4/WebM streams to avoid black/still playlist playback.\n- Reddit: attach preview keyboard handling through the secondary Reddit activity hook so M can close after opening native posts.\n- Reddit: run G modal read-more/NSFW expansion earlier while keeping the non-focus web overlay behavior.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.78/patches-1.36.0-dev.78.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.77"
+  "version": "1.36.0-dev.78"
 }

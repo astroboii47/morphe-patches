@@ -1357,7 +1357,7 @@ public final class RedditComposeFocusBridge {
             return false;
         }
         String lower = url.toLowerCase(Locale.US);
-        return isDirectPlayableVideoUrl(lower);
+        return isPreviewPlayableVideoUrl(lower);
     }
 
     public static boolean isUsablePreviewUrl(String url) {
@@ -1567,10 +1567,6 @@ public final class RedditComposeFocusBridge {
             );
             best = betterVideoUrl(best, candidate);
             candidate = findBestVideoUrl(link);
-            best = betterVideoUrl(best, candidate);
-            candidate = cleanMediaUrl(asString(invokeNoArg(redditVideo, "getHlsUrl")));
-            best = betterVideoUrl(best, candidate);
-            candidate = cleanMediaUrl(asString(invokeNoArg(redditVideo, "getDashUrl")));
             best = betterVideoUrl(best, candidate);
             candidate = bestPlayableVideoString(
                     invokeNoArg(redditVideo, "getDownloadUrl"),
@@ -2114,7 +2110,7 @@ public final class RedditComposeFocusBridge {
             if (text != null) {
                 text = cleanMediaUrl(text);
             }
-            if (!isDirectPlayableVideoUrl(text)) {
+            if (!isPreviewPlayableVideoUrl(text)) {
                 continue;
             }
             int score = videoPreviewScore(text);
@@ -2127,10 +2123,10 @@ public final class RedditComposeFocusBridge {
     }
 
     private static String betterVideoUrl(String oldUrl, String newUrl) {
-        if (!isDirectPlayableVideoUrl(newUrl)) {
+        if (!isPreviewPlayableVideoUrl(newUrl)) {
             return oldUrl;
         }
-        if (!isDirectPlayableVideoUrl(oldUrl)) {
+        if (!isPreviewPlayableVideoUrl(oldUrl)) {
             return newUrl;
         }
         return videoPreviewScore(newUrl) > videoPreviewScore(oldUrl) ? newUrl : oldUrl;
@@ -2149,7 +2145,7 @@ public final class RedditComposeFocusBridge {
                 if (url != null) {
                     url = cleanMediaUrl(url);
                 }
-                if (!isDirectPlayableVideoUrl(url)) {
+                if (!isPreviewPlayableVideoUrl(url)) {
                     continue;
                 }
                 int score = videoPreviewScore(url);
@@ -2254,6 +2250,12 @@ public final class RedditComposeFocusBridge {
             }
 
             @Override
+            public void onPageCommitVisible(WebView view, String loadedUrl) {
+                super.onPageCommitVisible(view, loadedUrl);
+                expandRedditEmbed(view);
+            }
+
+            @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
                 expandRedditEmbed(view);
@@ -2262,6 +2264,8 @@ public final class RedditComposeFocusBridge {
         String embedUrl = redditPostEmbedUrl(url);
         Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
         webView.loadUrl(embedUrl != null ? embedUrl : url);
+        webView.postDelayed(() -> expandRedditEmbed(webView), 80L);
+        webView.postDelayed(() -> expandRedditEmbed(webView), 220L);
         frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2298,7 +2302,7 @@ public final class RedditComposeFocusBridge {
                             + "try{if((n.style.filter||'').indexOf('blur')>=0)n.style.filter='none';if((n.style.backdropFilter||'').indexOf('blur')>=0)n.style.backdropFilter='none';}catch(e){}"
                             + "}"
                             + "}"
-                            + "expand();setTimeout(expand,250);setTimeout(expand,800);setTimeout(expand,1600);setTimeout(expand,2600);"
+                            + "expand();setTimeout(expand,60);setTimeout(expand,150);setTimeout(expand,350);setTimeout(expand,700);setTimeout(expand,1400);"
                             + "})()",
                     null
             );
@@ -3407,7 +3411,7 @@ public final class RedditComposeFocusBridge {
                     end++;
                 }
                 String url = cleanMediaUrl(text.substring(start, end));
-                if (isDirectPlayableVideoUrl(url)) {
+                if (isPreviewPlayableVideoUrl(url)) {
                     return url;
                 }
                 start = text.indexOf(marker, end);
@@ -3433,7 +3437,7 @@ public final class RedditComposeFocusBridge {
                     end++;
                 }
                 String url = cleanMediaUrl(text.substring(start, end));
-                if (isDirectPlayableVideoUrl(url)) {
+                if (isPreviewPlayableVideoUrl(url)) {
                     int score = videoPreviewScore(url);
                     if (score > bestScore[0]) {
                         best[0] = url;
@@ -3569,6 +3573,14 @@ public final class RedditComposeFocusBridge {
         }
         return lower.contains("dash_") || lower.contains("hlsplaylist") || lower.contains("dashplaylist")
                 || lower.endsWith(".mp4") || lower.contains(".mp4?");
+    }
+
+    private static boolean isPreviewPlayableVideoUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        return lower.contains(".mp4") || lower.contains(".webm");
     }
 
     private static boolean isAvatarPreviewUrl(String url) {
