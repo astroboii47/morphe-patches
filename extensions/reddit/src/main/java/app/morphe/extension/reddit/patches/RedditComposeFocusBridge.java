@@ -384,10 +384,6 @@ public final class RedditComposeFocusBridge {
         return clickCommentJumpButton(root, "next comment", "nextComment");
     }
 
-    public static boolean clickPreviousCommentButton(View root) {
-        return clickCommentJumpButton(root, "previous comment", "previousComment");
-    }
-
     private static boolean clickCommentJumpButton(View root, String label, String logPrefix) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -658,6 +654,42 @@ public final class RedditComposeFocusBridge {
         }
     }
 
+    public static String fetchFreshTextPreviewForPostUrl(String postUrl) {
+        try {
+            String normalized = normalizeRedditPostUrl(postUrl);
+            if (normalized == null || normalized.length() == 0) {
+                return null;
+            }
+            JSONObject data = fetchPostJsonData(normalized);
+            if (data == null) {
+                return null;
+            }
+            String title = data.optString("title", null);
+            String body = data.optString("selftext", null);
+            if (!looksLikeBody(body)) {
+                body = data.optString("selftext_html", null);
+            }
+            body = decodeJsonBodyText(body);
+            if (!looksLikeBody(body)) {
+                return null;
+            }
+            PreviewRecord record = previewRecord(data.optString("name", null), title);
+            record.postUrl = normalized;
+            record.body = body.trim();
+            storePreviewRecord(record);
+            synchronized (POST_BODIES_BY_URL) {
+                trimCache(POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL - 100);
+                POST_BODIES_BY_URL.put(normalized, record.body);
+            }
+            storePostBody(title, record.key, record.body);
+            Log.w(TAG, "fetchedFreshTextForUrl title=\"" + title + "\" length=" + record.body.length());
+            return buildTextPreviewText(record, null, record.body);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "fetchFreshTextForUrl failed", throwable);
+            return null;
+        }
+    }
+
     private static PreviewRecord previewRecordForPostUrl(String normalizedUrl) {
         if (normalizedUrl == null || normalizedUrl.length() == 0) {
             return null;
@@ -749,6 +781,10 @@ public final class RedditComposeFocusBridge {
             return null;
         }
         String text = body;
+        String richText = parseRichTextBody(text);
+        if (looksLikeBody(richText)) {
+            return richText;
+        }
         if (text.indexOf('<') >= 0 && text.toLowerCase(Locale.US).contains("&lt;")) {
             text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
         }
@@ -1520,45 +1556,32 @@ public final class RedditComposeFocusBridge {
         try {
             Object media = invokeNoArg(link, "getMedia");
             Object redditVideo = invokeNoArg(media, "getRedditVideo");
-            String direct = bestPlaybackMp4Url(invokeNoArg(redditVideo, "getPlaybackMp4s"));
-            if (direct != null && direct.length() > 0) {
-                Log.w(TAG, "linkVideoUrl playback " + summarizeUrl(direct));
-                return direct;
-            }
-            direct = bestPlayableVideoString(
+            String best = null;
+            String candidate = bestPlaybackMp4Url(invokeNoArg(redditVideo, "getPlaybackMp4s"));
+            best = betterVideoUrl(best, candidate);
+            candidate = bestPlayableVideoString(
                     invokeNoArg(redditVideo, "getPackagedMp4Url"),
                     invokeNoArg(redditVideo, "getFallbackUrl"),
                     invokeNoArg(redditVideo, "getFallbackURL"),
                     invokeNoArg(redditVideo, "getFallBackUrl")
             );
-            if (direct != null && direct.length() > 0) {
-                Log.w(TAG, "linkVideoUrl direct " + summarizeUrl(direct));
-                return direct;
-            }
-            String recursive = findBestVideoUrl(link);
-            if (recursive != null && recursive.length() > 0 && isDirectPlayableVideoUrl(recursive) && !isHlsPreviewUrl(recursive)) {
-                Log.w(TAG, "linkVideoUrl recursive " + summarizeUrl(recursive));
-                return recursive;
-            }
-            String hls = asString(invokeNoArg(redditVideo, "getHlsUrl"));
-            if (hls != null && hls.length() > 0 && isDirectPlayableVideoUrl(hls)) {
-                Log.w(TAG, "linkVideoUrl hls " + summarizeUrl(hls));
-                return hls;
-            }
-            String dash = asString(invokeNoArg(redditVideo, "getDashUrl"));
-            if (dash != null && dash.length() > 0 && isDirectPlayableVideoUrl(dash)) {
-                Log.w(TAG, "linkVideoUrl dash " + summarizeUrl(dash));
-                return dash;
-            }
-            direct = bestPlayableVideoString(
+            best = betterVideoUrl(best, candidate);
+            candidate = findBestVideoUrl(link);
+            best = betterVideoUrl(best, candidate);
+            candidate = cleanMediaUrl(asString(invokeNoArg(redditVideo, "getHlsUrl")));
+            best = betterVideoUrl(best, candidate);
+            candidate = cleanMediaUrl(asString(invokeNoArg(redditVideo, "getDashUrl")));
+            best = betterVideoUrl(best, candidate);
+            candidate = bestPlayableVideoString(
                     invokeNoArg(redditVideo, "getDownloadUrl"),
                     invokeNoArg(redditVideo, "getScrubbedMediaUrl"),
                     invokeNoArg(redditVideo, "getScrubberMediaUrl"),
                     invokeNoArg(redditVideo, "getScrubberMediaURL")
             );
-            if (direct != null && direct.length() > 0) {
-                Log.w(TAG, "linkVideoUrl secondary " + summarizeUrl(direct));
-                return direct;
+            best = betterVideoUrl(best, candidate);
+            if (best != null && best.length() > 0) {
+                Log.w(TAG, "linkVideoUrl best " + summarizeUrl(best));
+                return best;
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "linkVideoUrl failed", throwable);
@@ -2103,6 +2126,16 @@ public final class RedditComposeFocusBridge {
         return best;
     }
 
+    private static String betterVideoUrl(String oldUrl, String newUrl) {
+        if (!isDirectPlayableVideoUrl(newUrl)) {
+            return oldUrl;
+        }
+        if (!isDirectPlayableVideoUrl(oldUrl)) {
+            return newUrl;
+        }
+        return videoPreviewScore(newUrl) > videoPreviewScore(oldUrl) ? newUrl : oldUrl;
+    }
+
     private static String bestPlaybackMp4Url(Object playbackMp4s) {
         try {
             Object permutations = invokeNoArg(playbackMp4s, "getPermutations");
@@ -2244,19 +2277,28 @@ public final class RedditComposeFocusBridge {
                             + "document.body.style.background='#111';"
                             + "document.documentElement.style.colorScheme='dark';"
                             + "var css='html,body{background:#111!important;color-scheme:dark!important;}"
-                            + "*{max-height:none!important;}';"
+                            + "img,video,picture,source{filter:none!important;backdrop-filter:none!important;}';"
                             + "var style=document.getElementById('morpheEmbedStyle');"
                             + "if(!style){style=document.createElement('style');style.id='morpheEmbedStyle';document.head.appendChild(style);}"
                             + "style.textContent=css;"
+                            + "function collect(root,out){"
+                            + "if(!root)return out;"
+                            + "var nodes=[];try{nodes=[].slice.call(root.querySelectorAll('*'));}catch(e){}"
+                            + "for(var i=0;i<nodes.length;i++){out.push(nodes[i]);if(nodes[i].shadowRoot)collect(nodes[i].shadowRoot,out);}"
+                            + "return out;"
+                            + "}"
                             + "function expand(){"
-                            + "var nodes=[].slice.call(document.querySelectorAll('button,a'));"
+                            + "var nodes=collect(document,[]);"
                             + "for(var i=0;i<nodes.length;i++){"
-                            + "var t=(nodes[i].innerText||nodes[i].textContent||'').trim().toLowerCase();"
+                            + "var n=nodes[i];"
+                            + "var t=((n.innerText||n.textContent||'')+' '+(n.getAttribute('aria-label')||'')+' '+(n.getAttribute('title')||'')).trim().toLowerCase();"
                             + "if(t==='read more'||t.indexOf('read more')===0||t==='show more'||t.indexOf('show more')===0"
-                            + "||t==='view'||t==='view post'||t==='view content'||t==='continue'||t==='yes'){try{nodes[i].click();}catch(e){}}"
+                            + "||t==='view'||t.indexOf('view ')===0||t==='view post'||t==='view content'||t==='continue'||t==='yes'"
+                            + "||t.indexOf('mature')>=0||t.indexOf('nsfw')>=0){try{n.click();}catch(e){}}"
+                            + "try{if((n.style.filter||'').indexOf('blur')>=0)n.style.filter='none';if((n.style.backdropFilter||'').indexOf('blur')>=0)n.style.backdropFilter='none';}catch(e){}"
                             + "}"
                             + "}"
-                            + "expand();setTimeout(expand,250);setTimeout(expand,800);setTimeout(expand,1600);"
+                            + "expand();setTimeout(expand,250);setTimeout(expand,800);setTimeout(expand,1600);setTimeout(expand,2600);"
                             + "})()",
                     null
             );
@@ -2286,15 +2328,77 @@ public final class RedditComposeFocusBridge {
     }
 
     public static void updateTextPreviewView(View preview, String text) {
-        if (preview instanceof ScrollView) {
-            ScrollView scroll = (ScrollView) preview;
-            if (scroll.getChildCount() > 0 && scroll.getChildAt(0) instanceof TextView) {
-                ((TextView) scroll.getChildAt(0)).setText(styledPreviewText(text));
-                scroll.scrollTo(0, 0);
-            }
-        } else if (preview instanceof TextView) {
-            ((TextView) preview).setText(styledPreviewText(text));
+        TextView textView = findPreviewTextView(preview);
+        if (textView != null) {
+            textView.setText(styledPreviewText(text));
         }
+        ScrollView scrollView = findPreviewScrollView(preview);
+        if (scrollView != null) {
+            scrollView.scrollTo(0, 0);
+        }
+    }
+
+    private static TextView findPreviewTextView(View view) {
+        if (view instanceof TextView) {
+            return (TextView) view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            TextView found = findPreviewTextView(group.getChildAt(i));
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static ScrollView findPreviewScrollView(View view) {
+        if (view instanceof ScrollView) {
+            return (ScrollView) view;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return null;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            ScrollView found = findPreviewScrollView(group.getChildAt(i));
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    public static View createTextCardPreviewView(Context context, String text) {
+        FrameLayout frame = new FrameLayout(context);
+        frame.setBackgroundColor(0xff111111);
+        int outer = (int) (18.0f * context.getResources().getDisplayMetrics().density);
+        frame.setPadding(outer, outer, outer, outer);
+
+        ScrollView scrollView = new ScrollView(context);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(0xff181818);
+        TextView textView = new TextView(context);
+        textView.setText(styledPreviewText(text));
+        textView.setTextColor(0xffffffff);
+        textView.setTextSize(17.0f);
+        textView.setLineSpacing(0.0f, 1.08f);
+        int inner = (int) (18.0f * context.getResources().getDisplayMetrics().density);
+        textView.setPadding(inner, inner, inner, inner);
+        textView.setBackgroundColor(0xff181818);
+        textView.setGravity(android.view.Gravity.START);
+        scrollView.addView(textView, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        frame.addView(scrollView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        return frame;
     }
 
     private static CharSequence styledPreviewText(String text) {
@@ -3362,6 +3466,15 @@ public final class RedditComposeFocusBridge {
         if (lower.contains("scrub") || lower.contains("preview") || lower.contains("thumbnail")) {
             score -= 700;
         }
+        if (lower.contains("muxed")) {
+            score += 1800;
+        }
+        if (lower.contains("medium")) {
+            score += 800;
+        }
+        if (lower.contains("high")) {
+            score += 1200;
+        }
         Matcher height = Pattern.compile("(?i)(?:dash_|cmaf_|height=|h=)(\\d{2,4})").matcher(lower);
         while (height.find()) {
             try {
@@ -3679,17 +3792,23 @@ public final class RedditComposeFocusBridge {
         try {
             Matcher matcher = RICHTEXT_TEXT_PATTERN.matcher(value);
             StringBuilder builder = new StringBuilder();
+            int lastEnd = 0;
             while (matcher.find()) {
+                String between = value.substring(lastEnd, matcher.start());
                 String piece = unescapeJsonText(matcher.group(1));
                 if (piece == null || piece.trim().length() == 0) {
+                    lastEnd = matcher.end();
                     continue;
                 }
-                if (builder.length() > 0 && !endsWithWhitespace(builder)) {
+                if (builder.length() > 0 && between.contains("\"par\"")) {
+                    builder.append("\n\n");
+                } else if (builder.length() > 0 && !endsWithWhitespace(builder)) {
                     builder.append(' ');
                 }
                 builder.append(piece.trim());
+                lastEnd = matcher.end();
             }
-            String text = normalizeWhitespace(builder.toString());
+            String text = normalizePreviewBody(builder.toString());
             return looksLikeBody(text) ? text : null;
         } catch (Throwable throwable) {
             Log.w(TAG, "parseRichTextBody failed", throwable);

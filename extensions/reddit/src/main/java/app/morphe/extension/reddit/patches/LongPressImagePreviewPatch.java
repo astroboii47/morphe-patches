@@ -1500,6 +1500,7 @@ public final class LongPressImagePreviewPatch {
         activePreviewRoot = null;
         activePreviewX = Integer.MIN_VALUE;
         activePreviewY = Integer.MIN_VALUE;
+        preview.clearFocus();
         destroyWebViews(preview);
         ViewParent parent = preview.getParent();
         if (parent instanceof ViewGroup) {
@@ -1596,11 +1597,6 @@ public final class LongPressImagePreviewPatch {
                     RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
                 }
                 return true;
-            case KeyEvent.KEYCODE_B:
-                if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    RedditComposeFocusBridge.clickPreviousCommentButton(activity.getWindow().getDecorView());
-                }
-                return true;
             case KeyEvent.KEYCODE_P:
                 return handlePreviewKey(activity, event);
             case KeyEvent.KEYCODE_M:
@@ -1695,6 +1691,7 @@ public final class LongPressImagePreviewPatch {
         try {
             rememberNativePostReturn(root, rawX, rawY);
             nativePostHeldOpen = true;
+            hidePreview();
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
             activity.startActivity(intent);
@@ -1799,7 +1796,7 @@ public final class LongPressImagePreviewPatch {
             int verticalPadding = Math.max(dp(root, 12), root.getHeight() / 30);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
 
-            View textView = RedditComposeFocusBridge.createTextPreviewView(activity, textPreview);
+            View textView = RedditComposeFocusBridge.createTextCardPreviewView(activity, textPreview);
             attachPreviewDismissHandlers(textView);
             overlay.addView(textView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1813,7 +1810,7 @@ public final class LongPressImagePreviewPatch {
             activePreview = overlay;
             rememberPreviewFocus(root, rawX, rawY);
             overlay.requestFocus();
-            maybeUpgradeTextPreview(postUrl, textView, PREVIEW_GENERATION.get());
+            maybeUpgradeTextPreview(postUrl, textView, PREVIEW_GENERATION.get(), true);
             return true;
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to show Reddit text card preview", throwable);
@@ -1822,11 +1819,17 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void maybeUpgradeTextPreview(String postUrl, View textView, int generation) {
+        maybeUpgradeTextPreview(postUrl, textView, generation, false);
+    }
+
+    private static void maybeUpgradeTextPreview(String postUrl, View textView, int generation, boolean forceFresh) {
         if (postUrl == null || postUrl.length() == 0 || textView == null) {
             return;
         }
         IMAGE_LOADER.execute(() -> {
-            String fetched = RedditComposeFocusBridge.fetchTextPreviewForPostUrl(postUrl);
+            String fetched = forceFresh
+                    ? RedditComposeFocusBridge.fetchFreshTextPreviewForPostUrl(postUrl)
+                    : RedditComposeFocusBridge.fetchTextPreviewForPostUrl(postUrl);
             if (fetched == null || fetched.trim().length() == 0) {
                 return;
             }
@@ -1893,13 +1896,16 @@ public final class LongPressImagePreviewPatch {
             ViewGroup decor = (ViewGroup) decorView;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackgroundColor(Color.argb(230, 0, 0, 0));
-            configurePreviewOverlay(overlay);
+            overlay.setClickable(false);
+            overlay.setFocusable(false);
+            overlay.setFocusableInTouchMode(false);
 
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
             View modalView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
-            attachPreviewDismissHandlers(modalView);
+            modalView.setFocusable(false);
+            modalView.setFocusableInTouchMode(false);
             overlay.addView(modalView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1911,7 +1917,6 @@ public final class LongPressImagePreviewPatch {
             ));
             activePreview = overlay;
             rememberPreviewFocus(root, rawX, rawY);
-            overlay.requestFocus();
             return true;
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to show Reddit post modal", ex);
