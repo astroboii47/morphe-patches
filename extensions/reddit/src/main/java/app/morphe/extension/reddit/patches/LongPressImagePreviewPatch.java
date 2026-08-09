@@ -543,6 +543,9 @@ public final class LongPressImagePreviewPatch {
                 mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
             }
             if (mediaUrl == null) {
+                String postUrl = focusedOnly
+                        ? RedditComposeFocusBridge.getFocusedPostEmbedUrl(root)
+                        : RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
                 String textPreview = focusedOnly
                         ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
                         : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
@@ -552,7 +555,13 @@ public final class LongPressImagePreviewPatch {
                 if (textPreview == null) {
                     textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
                 }
-                if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
+                if (textPreview == null || textPreview.trim().length() == 0) {
+                    textPreview = RedditComposeFocusBridge.getCachedTextPreviewForPostUrl(postUrl);
+                }
+                if (textPreview == null || textPreview.trim().length() == 0) {
+                    textPreview = postUrl != null && postUrl.length() > 0 ? "Loading post text..." : null;
+                }
+                if (textPreview != null && textPreview.trim().length() > 0) {
                     Log.i(LOG_TAG, "showing text preview");
                     View textView = RedditComposeFocusBridge.createTextPreviewView(activity, textPreview);
                     attachPreviewDismissHandlers(textView);
@@ -568,6 +577,7 @@ public final class LongPressImagePreviewPatch {
                     activePreview = overlay;
                     rememberPreviewFocus(root, rawX, rawY);
                     overlay.requestFocus();
+                    maybeUpgradeTextPreview(postUrl, textView, PREVIEW_GENERATION.get());
                     return;
                 }
                 Log.i(LOG_TAG, "no real media url for preview");
@@ -1586,6 +1596,11 @@ public final class LongPressImagePreviewPatch {
                     RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
                 }
                 return true;
+            case KeyEvent.KEYCODE_B:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    RedditComposeFocusBridge.clickPreviousCommentButton(activity.getWindow().getDecorView());
+                }
+                return true;
             case KeyEvent.KEYCODE_P:
                 return handlePreviewKey(activity, event);
             case KeyEvent.KEYCODE_M:
@@ -1752,6 +1767,9 @@ public final class LongPressImagePreviewPatch {
             String textPreview = focusedOnly
                     ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
                     : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+            String postUrl = focusedOnly
+                    ? RedditComposeFocusBridge.getFocusedPostEmbedUrl(root)
+                    : RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
             if (focusedOnly && textPreview == null) {
                 textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
             }
@@ -1760,6 +1778,12 @@ public final class LongPressImagePreviewPatch {
             }
             if (textPreview == null || textPreview.trim().length() == 0) {
                 textPreview = RedditComposeFocusBridge.getFocusedPostTextPreview(root);
+            }
+            if (textPreview == null || textPreview.trim().length() == 0) {
+                textPreview = RedditComposeFocusBridge.getCachedTextPreviewForPostUrl(postUrl);
+            }
+            if (textPreview == null || textPreview.trim().length() == 0) {
+                textPreview = postUrl != null && postUrl.length() > 0 ? "Loading post text..." : null;
             }
             if (textPreview == null || textPreview.trim().length() == 0) {
                 Log.i(LOG_TAG, "no selected post text for card");
@@ -1789,11 +1813,30 @@ public final class LongPressImagePreviewPatch {
             activePreview = overlay;
             rememberPreviewFocus(root, rawX, rawY);
             overlay.requestFocus();
+            maybeUpgradeTextPreview(postUrl, textView, PREVIEW_GENERATION.get());
             return true;
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to show Reddit text card preview", throwable);
             return false;
         }
+    }
+
+    private static void maybeUpgradeTextPreview(String postUrl, View textView, int generation) {
+        if (postUrl == null || postUrl.length() == 0 || textView == null) {
+            return;
+        }
+        IMAGE_LOADER.execute(() -> {
+            String fetched = RedditComposeFocusBridge.fetchTextPreviewForPostUrl(postUrl);
+            if (fetched == null || fetched.trim().length() == 0) {
+                return;
+            }
+            MAIN_HANDLER.post(() -> {
+                if (activePreview == null || PREVIEW_GENERATION.get() != generation) {
+                    return;
+                }
+                RedditComposeFocusBridge.updateTextPreviewView(textView, fetched);
+            });
+        });
     }
 
     private static boolean handleWebPostModalKey(Activity activity, KeyEvent event) {
