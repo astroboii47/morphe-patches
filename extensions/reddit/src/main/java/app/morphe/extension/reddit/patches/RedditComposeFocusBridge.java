@@ -2277,14 +2277,6 @@ public final class RedditComposeFocusBridge {
         try {
             webView.evaluateJavascript(
                     "(function(){"
-                            + "document.documentElement.style.background='#111';"
-                            + "document.body.style.background='#111';"
-                            + "document.documentElement.style.colorScheme='dark';"
-                            + "var css='html,body{background:#111!important;color-scheme:dark!important;}"
-                            + "img,video,picture,source{filter:none!important;backdrop-filter:none!important;}';"
-                            + "var style=document.getElementById('morpheEmbedStyle');"
-                            + "if(!style){style=document.createElement('style');style.id='morpheEmbedStyle';document.head.appendChild(style);}"
-                            + "style.textContent=css;"
                             + "function collect(root,out){"
                             + "if(!root)return out;"
                             + "var nodes=[];try{nodes=[].slice.call(root.querySelectorAll('*'));}catch(e){}"
@@ -2299,7 +2291,6 @@ public final class RedditComposeFocusBridge {
                             + "if(t==='read more'||t.indexOf('read more')===0||t==='show more'||t.indexOf('show more')===0"
                             + "||t==='view'||t.indexOf('view ')===0||t==='view post'||t==='view content'||t==='continue'||t==='yes'"
                             + "||t.indexOf('mature')>=0||t.indexOf('nsfw')>=0){try{n.click();}catch(e){}}"
-                            + "try{if((n.style.filter||'').indexOf('blur')>=0)n.style.filter='none';if((n.style.backdropFilter||'').indexOf('blur')>=0)n.style.backdropFilter='none';}catch(e){}"
                             + "}"
                             + "}"
                             + "expand();setTimeout(expand,60);setTimeout(expand,150);setTimeout(expand,350);setTimeout(expand,700);setTimeout(expand,1400);"
