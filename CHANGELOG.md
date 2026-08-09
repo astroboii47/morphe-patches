@@ -1,3 +1,8 @@
+## 1.36.0-dev.92 (2026-08-09)
+
+- Reddit: mark feed handoff complete when O/U return focus successfully restores the opened post, so the next K continues from that row instead of re-entering at the top.
+- Reddit: make M open the focused post through Reddit's selected-row action, matching O's native transition instead of using the slower deep-link route.
+
 ## 1.36.0-dev.91 (2026-08-09)
 
 - Reddit: restore O/U return focus against the current resumed Reddit activity after Back, so it can return to the opened feed post instead of the top of the list.

@@ -1596,7 +1596,9 @@ public final class LongPressImagePreviewPatch {
                 }
                 Activity targetActivity = currentActivity != null ? currentActivity : activity;
                 View root = targetActivity.getWindow().getDecorView();
-                RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY);
+                if (RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY)) {
+                    FEED_HANDOFF_DONE = true;
+                }
             }, delay);
         }
     }
@@ -1754,10 +1756,8 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
         if (point != null) {
-            String postUrl = RedditComposeFocusBridge.getFocusedPostEmbedUrl(root);
-            if (openNativePostDetail(activity, root, point[0], point[1], postUrl)) {
-                return true;
-            }
+            openFocusedNativePostDetail(activity, root, point[0], point[1]);
+            return true;
         }
 
         int[] location = new int[2];
@@ -1775,6 +1775,22 @@ public final class LongPressImagePreviewPatch {
         }
         openNativePostDetail(activity, root, rawX, rawY, postUrl);
         return true;
+    }
+
+    private static boolean openFocusedNativePostDetail(Activity activity, View root, int rawX, int rawY) {
+        try {
+            rememberNativePostReturn(root, rawX, rawY);
+            nativePostHeldOpen = true;
+            nativePostOpenedAt = SystemClock.uptimeMillis();
+            hidePreview();
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+            Log.i(LOG_TAG, "opened native reddit post via focused row");
+            return true;
+        } catch (Throwable throwable) {
+            nativePostHeldOpen = false;
+            Logger.printException(() -> "Failed to open focused Reddit post detail", throwable);
+            return false;
+        }
     }
 
     private static boolean openNativePostDetail(Activity activity, View root, int rawX, int rawY, String postUrl) {
