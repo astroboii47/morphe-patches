@@ -950,7 +950,6 @@ public final class RedditComposeFocusBridge {
             if (body != null && body.trim().length() > 0) {
                 record.body = body.trim();
             }
-            storePostBodyForUrl(postUrl, record, body);
             storePreviewRecord(record);
             Log.w(TAG, "previewMedia keyOrTitle=" + keyOrTitle + " media=" + summarizeUrl(record.mediaUrl) + " body=" + (record.body == null ? 0 : record.body.length()));
         } catch (Throwable throwable) {

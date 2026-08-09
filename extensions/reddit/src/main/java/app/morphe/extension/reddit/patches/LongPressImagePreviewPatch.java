@@ -1843,11 +1843,12 @@ public final class LongPressImagePreviewPatch {
             if (fetched == null || fetched.trim().length() == 0) {
                 return;
             }
+            String finalFetched = fetched;
             MAIN_HANDLER.post(() -> {
                 if (activePreview == null || PREVIEW_GENERATION.get() != generation) {
                     return;
                 }
-                RedditComposeFocusBridge.updateTextPreviewView(textView, fetched);
+                RedditComposeFocusBridge.updateTextPreviewView(textView, finalFetched);
             });
         });
     }
