@@ -1610,9 +1610,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         int keyCode = event.getKeyCode();
-        if (keyCode == KeyEvent.KEYCODE_M
-                && event.getAction() == KeyEvent.ACTION_UP
-                && nativePostHeldOpen) {
+        if (event.getAction() == KeyEvent.ACTION_UP && nativePostHeldOpen) {
             closeNativePostDetail(activity);
             return true;
         }
@@ -1984,9 +1982,13 @@ public final class LongPressImagePreviewPatch {
             View modalView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
             modalView.setFocusable(false);
             modalView.setFocusableInTouchMode(false);
+            int modalHeight = Math.min(
+                    root.getHeight() - (verticalPadding * 2),
+                    Math.max(dp(root, 480), (root.getHeight() * 2) / 3)
+            );
             overlay.addView(modalView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    modalHeight,
                     Gravity.CENTER
             ));
             decor.addView(overlay, new FrameLayout.LayoutParams(

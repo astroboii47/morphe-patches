@@ -1,3 +1,8 @@
+## 1.36.0-dev.84 (2026-08-09)
+
+- Reddit: make G web previews shorter so short embeds do not leave a large blank area underneath.
+- Reddit: broaden M native close handling so any key release closes the held native post view.
+
 ## 1.36.0-dev.83 (2026-08-09)
 
 - Reddit: attach preview key handling to new Reddit activities so M can close the native post view on release.

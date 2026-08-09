@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-09T07:35:00",
-  "description": "## 1.36.0-dev.83 (2026-08-09)\n\n- Reddit: attach preview key handling to new Reddit activities so M can close the native post view on release.\n- Reddit: restore G read-more expansion through Reddit embed shadow roots without Morphe text zoom/style injection.\n- Reddit: preserve P/T preview title and metadata when cached body text updates arrive.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.83/patches-1.36.0-dev.83.mpp",
+  "created_at": "2026-08-09T08:20:00",
+  "description": "## 1.36.0-dev.84 (2026-08-09)\n\n- Reddit: make G web previews shorter so short embeds do not leave a large blank area underneath.\n- Reddit: broaden M native close handling so any key release closes the held native post view.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.84/patches-1.36.0-dev.84.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.83"
+  "version": "1.36.0-dev.84"
 }
