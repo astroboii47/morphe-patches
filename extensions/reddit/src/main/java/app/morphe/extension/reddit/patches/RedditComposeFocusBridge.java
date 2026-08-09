@@ -203,6 +203,27 @@ public final class RedditComposeFocusBridge {
         }
     }
 
+    public static boolean sendSystemBackKey() {
+        try {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Thread.sleep(80L);
+                        new Instrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+                        Log.w(TAG, "sendSystemBackKey");
+                    } catch (Throwable throwable) {
+                        Log.w(TAG, "sendSystemBackKey failed", throwable);
+                    }
+                }
+            }, "MorpheRedditBackKey").start();
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "sendSystemBackKey failed", throwable);
+            return false;
+        }
+    }
+
     public static boolean wakeFeedAndMoveFocus(final View root, final int direction) {
         if (root == null) {
             return false;
@@ -2240,6 +2261,10 @@ public final class RedditComposeFocusBridge {
     }
 
     public static View createPostEmbedView(Context context, String url) {
+        return createPostEmbedView(context, url, 0, 0);
+    }
+
+    public static View createPostEmbedView(Context context, String url, int minHeightPx, int maxHeightPx) {
         FrameLayout frame = new FrameLayout(context);
         frame.setBackgroundColor(0xff000000);
         WebView webView = new WebView(context);
@@ -2267,12 +2292,14 @@ public final class RedditComposeFocusBridge {
             public void onPageCommitVisible(WebView view, String loadedUrl) {
                 super.onPageCommitVisible(view, loadedUrl);
                 clickRedditEmbedReadMore(view);
+                resizePostEmbed(frame, view, minHeightPx, maxHeightPx);
             }
 
             @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
                 clickRedditEmbedReadMore(view);
+                resizePostEmbed(frame, view, minHeightPx, maxHeightPx);
             }
         });
         String embedUrl = redditPostEmbedUrl(url);
@@ -2280,11 +2307,67 @@ public final class RedditComposeFocusBridge {
         webView.loadUrl(embedUrl != null ? embedUrl : url);
         webView.postDelayed(() -> clickRedditEmbedReadMore(webView), 80L);
         webView.postDelayed(() -> clickRedditEmbedReadMore(webView), 220L);
+        webView.postDelayed(() -> resizePostEmbed(frame, webView, minHeightPx, maxHeightPx), 120L);
+        webView.postDelayed(() -> resizePostEmbed(frame, webView, minHeightPx, maxHeightPx), 360L);
+        webView.postDelayed(() -> resizePostEmbed(frame, webView, minHeightPx, maxHeightPx), 900L);
+        webView.postDelayed(() -> resizePostEmbed(frame, webView, minHeightPx, maxHeightPx), 1700L);
         frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return frame;
+    }
+
+    private static void resizePostEmbed(FrameLayout frame, WebView webView, int minHeightPx, int maxHeightPx) {
+        if (frame == null || webView == null || maxHeightPx <= 0) {
+            return;
+        }
+        String script = "(function(){"
+                + "var b=document.body,d=document.documentElement;"
+                + "var h=Math.max("
+                + "b?b.scrollHeight:0,b?b.offsetHeight:0,b?b.clientHeight:0,"
+                + "d?d.scrollHeight:0,d?d.offsetHeight:0,d?d.clientHeight:0"
+                + ");"
+                + "return String(h);"
+                + "})()";
+        try {
+            webView.evaluateJavascript(script, value -> {
+                int cssHeight = parseJsInt(value);
+                int measuredHeight = cssHeight > 0
+                        ? Math.round(cssHeight * webView.getScale())
+                        : Math.round(webView.getContentHeight() * webView.getScale());
+                if (measuredHeight <= 0) {
+                    return;
+                }
+                int padding = Math.round(24.0f * frame.getResources().getDisplayMetrics().density);
+                int targetHeight = Math.max(minHeightPx, Math.min(maxHeightPx, measuredHeight + padding));
+                ViewGroup.LayoutParams params = frame.getLayoutParams();
+                if (params == null || params.height == targetHeight) {
+                    return;
+                }
+                params.height = targetHeight;
+                frame.setLayoutParams(params);
+                frame.requestLayout();
+                Log.w(TAG, "postEmbed resized height=" + targetHeight + " measured=" + measuredHeight);
+            });
+        } catch (Throwable throwable) {
+            Log.w(TAG, "resizePostEmbed failed", throwable);
+        }
+    }
+
+    private static int parseJsInt(String value) {
+        if (value == null) {
+            return 0;
+        }
+        try {
+            String cleaned = value.replace("\"", "").trim();
+            if (cleaned.length() == 0 || cleaned.equals("null")) {
+                return 0;
+            }
+            return (int) Float.parseFloat(cleaned);
+        } catch (Throwable ignored) {
+            return 0;
+        }
     }
 
     private static void clickRedditEmbedReadMore(WebView webView) {

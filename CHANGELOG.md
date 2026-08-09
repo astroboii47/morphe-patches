@@ -1,3 +1,8 @@
+## 1.36.0-dev.85 (2026-08-09)
+
+- Reddit: make G web previews resize to the loaded embed content instead of using one fixed height for every post.
+- Reddit: make M native close send a real Back key after release, matching the hardware release logs.
+
 ## 1.36.0-dev.84 (2026-08-09)
 
 - Reddit: make G web previews shorter so short embeds do not leave a large blank area underneath.

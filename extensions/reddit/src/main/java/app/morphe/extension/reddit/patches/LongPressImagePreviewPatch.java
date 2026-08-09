@@ -1772,11 +1772,13 @@ public final class LongPressImagePreviewPatch {
         View returnRoot = nativePostReturnRoot;
         int returnX = nativePostReturnX;
         int returnY = nativePostReturnY;
+        Log.i(LOG_TAG, "closing native reddit post");
         try {
             activity.onBackPressed();
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
         }
+        RedditComposeFocusBridge.sendSystemBackKey();
         restorePostFocusDelayed(returnRoot, returnX, returnY, 260L);
         restorePostFocusDelayed(returnRoot, returnX, returnY, 620L);
         restorePostFocusDelayed(returnRoot, returnX, returnY, 980L);
@@ -1979,16 +1981,19 @@ public final class LongPressImagePreviewPatch {
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-            View modalView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
+            int minModalHeight = Math.max(dp(root, 360), root.getHeight() / 3);
+            int maxModalHeight = root.getHeight() - (verticalPadding * 2);
+            View modalView = RedditComposeFocusBridge.createPostEmbedView(
+                    activity,
+                    postUrl,
+                    minModalHeight,
+                    maxModalHeight
+            );
             modalView.setFocusable(false);
             modalView.setFocusableInTouchMode(false);
-            int modalHeight = Math.min(
-                    root.getHeight() - (verticalPadding * 2),
-                    Math.max(dp(root, 480), (root.getHeight() * 2) / 3)
-            );
             overlay.addView(modalView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    modalHeight,
+                    minModalHeight,
                     Gravity.CENTER
             ));
             decor.addView(overlay, new FrameLayout.LayoutParams(
