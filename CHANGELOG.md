@@ -1,3 +1,9 @@
+## 1.36.0-dev.89 (2026-08-09)
+
+- Reddit: remember the selected feed post before opening with O, then restore that row when U returns.
+- Reddit: make U prefer Reddit's top close/up button before falling back to Android Back.
+- Reddit: clear Reddit Compose focus before opening native M previews to reduce the held-screen focus overlay.
+
 ## 1.36.0-dev.88 (2026-08-09)
 
 - Reddit: stop native M return from restoring the old feed row multiple times after release.

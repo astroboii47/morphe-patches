@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-09T10:05:00",
-  "description": "## 1.36.0-dev.88 (2026-08-09)\n\n- Reddit: stop native M return from restoring the old feed row multiple times after release.\n- Reddit: clear current feed focus before opening native M previews to reduce the full-screen focus highlight.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.88/patches-1.36.0-dev.88.mpp",
+  "description": "## 1.36.0-dev.89 (2026-08-09)\n\n- Reddit: remember the selected feed post before opening with O, then restore that row when U returns.\n- Reddit: make U prefer Reddit's top close/up button before falling back to Android Back.\n- Reddit: clear Reddit Compose focus before opening native M previews to reduce the held-screen focus overlay.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.89/patches-1.36.0-dev.89.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.88"
+  "version": "1.36.0-dev.89"
 }

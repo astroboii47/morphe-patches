@@ -1644,6 +1644,9 @@ public final class LongPressImagePreviewPatch {
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_RIGHT;
                 break;
             case KeyEvent.KEYCODE_O:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    rememberFocusedPostReturn(activity.getWindow().getDecorView());
+                }
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_CENTER;
                 break;
             case KeyEvent.KEYCODE_U:
@@ -1652,7 +1655,9 @@ public final class LongPressImagePreviewPatch {
                     View returnRoot = nativePostReturnRoot;
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
-                    activity.onBackPressed();
+                    if (!RedditComposeFocusBridge.clickPostCloseButton(activity.getWindow().getDecorView())) {
+                        activity.onBackPressed();
+                    }
                     restorePostFocusDelayed(returnRoot, returnX, returnY, 220L);
                 }
                 return true;
@@ -1758,6 +1763,7 @@ public final class LongPressImagePreviewPatch {
             nativePostHeldOpen = true;
             nativePostOpenedAt = SystemClock.uptimeMillis();
             RedditComposeFocusBridge.clearCurrentFocus(root);
+            RedditComposeFocusBridge.clearComposeFocus(root);
             hidePreview();
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
@@ -1774,6 +1780,13 @@ public final class LongPressImagePreviewPatch {
         nativePostReturnRoot = root;
         nativePostReturnX = rawX;
         nativePostReturnY = rawY;
+    }
+
+    private static void rememberFocusedPostReturn(View root) {
+        int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+        if (point != null) {
+            rememberNativePostReturn(root, point[0], point[1]);
+        }
     }
 
     private static void closeNativePostDetail(Activity activity) {
