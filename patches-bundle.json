@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-09T03:51:20",
-  "description": "Keep Reddit preview overlays in-app, improve video sizing, and make preview dismissal more reliable.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.71/patches-1.36.0-dev.71.mpp",
+  "created_at": "2026-08-09T04:28:02",
+  "description": "Restore Reddit feed focus after previews and make M use the focused row with dark text preview fallback.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.72/patches-1.36.0-dev.72.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.71"
+  "version": "1.36.0-dev.72"
 }
