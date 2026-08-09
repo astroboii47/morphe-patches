@@ -1339,7 +1339,12 @@ public final class RedditComposeFocusBridge {
         try {
             Object media = invokeNoArg(link, "getMedia");
             Object redditVideo = invokeNoArg(media, "getRedditVideo");
-            String direct = firstPlayableVideoString(
+            String direct = bestPlaybackMp4Url(invokeNoArg(redditVideo, "getPlaybackMp4s"));
+            if (direct != null && direct.length() > 0) {
+                Log.w(TAG, "linkVideoUrl playback " + summarizeUrl(direct));
+                return direct;
+            }
+            direct = firstPlayableVideoString(
                     invokeNoArg(redditVideo, "getPackagedMp4Url"),
                     invokeNoArg(redditVideo, "getFallbackUrl"),
                     invokeNoArg(redditVideo, "getFallbackURL"),
@@ -1347,11 +1352,6 @@ public final class RedditComposeFocusBridge {
             );
             if (direct != null && direct.length() > 0) {
                 Log.w(TAG, "linkVideoUrl direct " + summarizeUrl(direct));
-                return direct;
-            }
-            direct = bestPlaybackMp4Url(invokeNoArg(redditVideo, "getPlaybackMp4s"));
-            if (direct != null && direct.length() > 0) {
-                Log.w(TAG, "linkVideoUrl playback " + summarizeUrl(direct));
                 return direct;
             }
             String recursive = findVideoUrl(link, 0, new IdentityHashMap<Object, Boolean>());

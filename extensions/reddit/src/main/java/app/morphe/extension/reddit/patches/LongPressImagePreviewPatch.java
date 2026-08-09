@@ -1674,12 +1674,7 @@ public final class LongPressImagePreviewPatch {
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-            String textPreview = focusedOnly
-                    ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
-                    : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
-            View modalView = RedditComposeFocusBridge.isTextBodyPreview(textPreview)
-                    ? RedditComposeFocusBridge.createTextPreviewView(activity, textPreview)
-                    : RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
+            View modalView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
             attachPreviewDismissHandlers(modalView);
             overlay.addView(modalView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
