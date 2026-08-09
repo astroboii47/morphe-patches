@@ -89,6 +89,7 @@ public final class LongPressImagePreviewPatch {
     private static long nativePostOpenedAt;
     private static Activity currentActivity;
     private static int postFocusRestoreGeneration;
+    private static boolean touchNativePostHeld;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -498,9 +499,22 @@ public final class LongPressImagePreviewPatch {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                if (touchNativePostHeld && nativePostHeldOpen) {
+                    touchNativePostHeld = false;
+                    synchronized (TOUCH_STATES) {
+                        TOUCH_STATES.remove(activity);
+                    }
+                    closeNativePostDetail(activity);
+                    return true;
+                }
                 TouchState endState;
                 synchronized (TOUCH_STATES) {
                     endState = TOUCH_STATES.remove(activity);
+                }
+                if (endState != null && endState.nativePostShown) {
+                    touchNativePostHeld = false;
+                    closeNativePostDetail(activity);
+                    return true;
                 }
                 if (hadPreview) {
                     hidePreview();
@@ -530,11 +544,28 @@ public final class LongPressImagePreviewPatch {
         }
 
         View root = activity.getWindow().getDecorView();
-        showPreview(activity, root, Math.round(state.rawX), Math.round(state.rawY));
+        int rawX = Math.round(state.rawX);
+        int rawY = Math.round(state.rawY);
+        if (!hasDirectMediaPreviewAtPoint(root, rawX, rawY)) {
+            int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+            if (postPoint != null && openNativePostDetailForTouch(activity, root, postPoint[0], postPoint[1])) {
+                state.nativePostShown = true;
+                touchNativePostHeld = true;
+                cancelUnderlyingLongPress(root, rawX, rawY);
+                return;
+            }
+        }
+
+        showPreview(activity, root, rawX, rawY);
         if (activePreview != null) {
             state.previewShown = true;
-            cancelUnderlyingLongPress(root, Math.round(state.rawX), Math.round(state.rawY));
+            cancelUnderlyingLongPress(root, rawX, rawY);
         }
+    }
+
+    private static boolean hasDirectMediaPreviewAtPoint(View root, int rawX, int rawY) {
+        String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
+        return linkId != null;
     }
 
     private static void cancelUnderlyingLongPress(View root, int rawX, int rawY) {
@@ -1645,7 +1676,7 @@ public final class LongPressImagePreviewPatch {
                 if (nativePostHeldOpen) {
                     if (event.getAction() == KeyEvent.ACTION_UP) {
                         long heldMillis = SystemClock.uptimeMillis() - nativePostOpenedAt;
-                        if (heldMillis >= 220L) {
+                        if (heldMillis >= 120L) {
                             closeNativePostDetail(activity);
                         } else {
                             Log.i(LOG_TAG, "ignored early native reddit post release held=" + heldMillis);
@@ -1793,6 +1824,27 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
+    private static boolean openNativePostDetailForTouch(Activity activity, View root, int rawX, int rawY) {
+        try {
+            rememberNativePostReturn(root, rawX, rawY);
+            nativePostHeldOpen = true;
+            nativePostOpenedAt = SystemClock.uptimeMillis();
+            hidePreview();
+            if (!RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY)) {
+                nativePostHeldOpen = false;
+                return false;
+            }
+            FEED_HANDOFF_DONE = true;
+            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+            Log.i(LOG_TAG, "opened native reddit post via touch row");
+            return true;
+        } catch (Throwable throwable) {
+            nativePostHeldOpen = false;
+            Logger.printException(() -> "Failed to open touched Reddit post detail", throwable);
+            return false;
+        }
+    }
+
     private static boolean openNativePostDetail(Activity activity, View root, int rawX, int rawY, String postUrl) {
         if (postUrl == null || postUrl.length() == 0) {
             return false;
@@ -1828,11 +1880,13 @@ public final class LongPressImagePreviewPatch {
 
     private static void closeNativePostDetail(Activity activity) {
         nativePostHeldOpen = false;
+        touchNativePostHeld = false;
         int returnX = nativePostReturnX;
         int returnY = nativePostReturnY;
         Log.i(LOG_TAG, "closing native reddit post");
         try {
-            activity.onBackPressed();
+            Activity targetActivity = currentActivity != null ? currentActivity : activity;
+            targetActivity.onBackPressed();
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
         }
@@ -2503,6 +2557,7 @@ public final class LongPressImagePreviewPatch {
         float rawY;
         boolean movedTooFar;
         boolean previewShown;
+        boolean nativePostShown;
 
         TouchState(float rawX, float rawY, int touchSlop) {
             this.startRawX = rawX;

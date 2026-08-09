@@ -1,3 +1,9 @@
+## 1.36.0-dev.93 (2026-08-10)
+
+- Reddit: make finger long-press on a non-media area of a feed post open the native post view until finger release.
+- Reddit: keep finger long-press on direct media using the existing image/video preview behavior.
+- Reddit: make M close use the current resumed Reddit activity and shorten the early-release guard for a snappier close.
+
 ## 1.36.0-dev.92 (2026-08-09)
 
 - Reddit: mark feed handoff complete when O/U return focus successfully restores the opened post, so the next K continues from that row instead of re-entering at the top.
