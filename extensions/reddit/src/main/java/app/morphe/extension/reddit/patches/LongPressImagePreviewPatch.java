@@ -34,6 +34,7 @@ import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
+import android.webkit.WebView;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -514,15 +515,7 @@ public final class LongPressImagePreviewPatch {
             ViewGroup decor = (ViewGroup) decorView;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackgroundColor(Color.argb(220, 0, 0, 0));
-            overlay.setClickable(true);
-            overlay.setFocusable(false);
-            overlay.setOnTouchListener((view, touchEvent) -> {
-                if (touchEvent.getActionMasked() == MotionEvent.ACTION_UP
-                        || touchEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                    hidePreview();
-                }
-                return true;
-            });
+            configurePreviewOverlay(overlay);
 
             int padding = dp(root, 16);
             overlay.setPadding(padding, padding, padding, padding);
@@ -552,7 +545,9 @@ public final class LongPressImagePreviewPatch {
                 }
                 if (RedditComposeFocusBridge.isTextBodyPreview(textPreview)) {
                     Log.i(LOG_TAG, "showing text preview");
-                    overlay.addView(RedditComposeFocusBridge.createTextPreviewView(activity, textPreview), new FrameLayout.LayoutParams(
+                    View textView = RedditComposeFocusBridge.createTextPreviewView(activity, textPreview);
+                    attachPreviewDismissHandlers(textView);
+                    overlay.addView(textView, new FrameLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             Gravity.CENTER
@@ -562,6 +557,7 @@ public final class LongPressImagePreviewPatch {
                             ViewGroup.LayoutParams.MATCH_PARENT
                     ));
                     activePreview = overlay;
+                    overlay.requestFocus();
                     return;
                 }
                 Log.i(LOG_TAG, "no real media url for preview");
@@ -571,7 +567,9 @@ public final class LongPressImagePreviewPatch {
             Log.i(LOG_TAG, "showing image preview");
             if (RedditComposeFocusBridge.isVideoPreviewUrl(mediaUrl)) {
                 Log.i(LOG_TAG, "showing video preview");
-                overlay.addView(RedditComposeFocusBridge.createVideoPreviewView(activity, mediaUrl), new FrameLayout.LayoutParams(
+                View videoView = RedditComposeFocusBridge.createVideoPreviewView(activity, mediaUrl);
+                attachPreviewDismissHandlers(videoView);
+                overlay.addView(videoView, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         Gravity.CENTER
@@ -581,6 +579,7 @@ public final class LongPressImagePreviewPatch {
                         ViewGroup.LayoutParams.MATCH_PARENT
                 ));
                 activePreview = overlay;
+                overlay.requestFocus();
                 return;
             }
 
@@ -588,6 +587,7 @@ public final class LongPressImagePreviewPatch {
             preview.setBackgroundColor(Color.TRANSPARENT);
             preview.setAdjustViewBounds(true);
             preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            attachPreviewDismissHandlers(preview);
             overlay.addView(preview, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -599,10 +599,39 @@ public final class LongPressImagePreviewPatch {
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
             activePreview = overlay;
+            overlay.requestFocus();
             loadPreviewImage(mediaUrl, preview, PREVIEW_GENERATION.incrementAndGet());
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to show Reddit image preview", ex);
         }
+    }
+
+    private static void configurePreviewOverlay(FrameLayout overlay) {
+        overlay.setClickable(true);
+        overlay.setFocusable(true);
+        overlay.setFocusableInTouchMode(true);
+        attachPreviewDismissHandlers(overlay);
+    }
+
+    private static void attachPreviewDismissHandlers(View view) {
+        view.setOnTouchListener((target, touchEvent) -> {
+            if (touchEvent.getActionMasked() == MotionEvent.ACTION_UP
+                    || touchEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                hidePreview();
+            }
+            return true;
+        });
+        view.setOnKeyListener((target, keyCode, keyEvent) -> {
+            if (keyEvent.getAction() == KeyEvent.ACTION_UP
+                    && (keyCode == KeyEvent.KEYCODE_P
+                    || keyCode == KeyEvent.KEYCODE_M
+                    || keyCode == KeyEvent.KEYCODE_BACK
+                    || keyCode == KeyEvent.KEYCODE_ESCAPE)) {
+                hidePreview();
+                return true;
+            }
+            return false;
+        });
     }
 
     private static void loadPreviewImage(String mediaUrl, ImageView preview, int generation) {
@@ -1435,6 +1464,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         activePreview = null;
+        destroyWebViews(preview);
         ViewParent parent = preview.getParent();
         if (parent instanceof ViewGroup) {
             ((ViewGroup) parent).removeView(preview);
@@ -1443,6 +1473,26 @@ public final class LongPressImagePreviewPatch {
 
     private static void hidePreview(Activity activity) {
         hidePreview();
+    }
+
+    private static void destroyWebViews(View view) {
+        if (view instanceof WebView) {
+            WebView webView = (WebView) view;
+            try {
+                webView.stopLoading();
+                webView.loadUrl("about:blank");
+                webView.destroy();
+            } catch (Throwable ignored) {
+            }
+            return;
+        }
+        if (!(view instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            destroyWebViews(group.getChildAt(i));
+        }
     }
 
     private static int clamp(int value, int min, int max) {
@@ -1593,20 +1643,14 @@ public final class LongPressImagePreviewPatch {
             ViewGroup decor = (ViewGroup) decorView;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackgroundColor(Color.argb(230, 0, 0, 0));
-            overlay.setClickable(true);
-            overlay.setFocusable(false);
-            overlay.setOnTouchListener((view, touchEvent) -> {
-                if (touchEvent.getActionMasked() == MotionEvent.ACTION_UP
-                        || touchEvent.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                    hidePreview();
-                }
-                return true;
-            });
+            configurePreviewOverlay(overlay);
 
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-            overlay.addView(RedditComposeFocusBridge.createPostEmbedView(activity, postUrl), new FrameLayout.LayoutParams(
+            View embedView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
+            attachPreviewDismissHandlers(embedView);
+            overlay.addView(embedView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER
@@ -1616,6 +1660,7 @@ public final class LongPressImagePreviewPatch {
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
             activePreview = overlay;
+            overlay.requestFocus();
             return true;
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to show Reddit post modal", ex);

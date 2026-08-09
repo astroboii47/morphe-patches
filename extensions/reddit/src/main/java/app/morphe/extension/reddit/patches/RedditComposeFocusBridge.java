@@ -20,7 +20,9 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.webkit.WebSettings;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.graphics.Rect;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Constructor;
@@ -1904,6 +1906,8 @@ public final class RedditComposeFocusBridge {
     public static WebView createMediaWebView(Context context, String url) {
         WebView webView = new WebView(context);
         webView.setBackgroundColor(0);
+        webView.setFocusable(false);
+        webView.setFocusableInTouchMode(false);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
@@ -1917,7 +1921,9 @@ public final class RedditComposeFocusBridge {
                 : "<img src=\"" + escaped + "\" />";
         String html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
                 + "<style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;}"
-                + "body{display:flex;align-items:center;justify-content:center;}img,video{max-width:100%;max-height:100%;object-fit:contain;}"
+                + "body{display:flex;align-items:center;justify-content:center;}"
+                + "img{max-width:100%;max-height:100%;object-fit:contain;}"
+                + "video{width:100%;height:100%;object-fit:contain;display:block;}"
                 + "#hud{position:fixed;left:18px;right:18px;bottom:18px;display:flex;align-items:center;gap:10px;"
                 + "padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.62);color:white;font:14px sans-serif;}"
                 + "#track{height:4px;flex:1;background:rgba(255,255,255,.28);border-radius:3px;overflow:hidden;}"
@@ -1948,12 +1954,25 @@ public final class RedditComposeFocusBridge {
         frame.setBackgroundColor(0xff000000);
         WebView webView = new WebView(context);
         webView.setBackgroundColor(0xff111111);
+        webView.setFocusable(false);
+        webView.setFocusableInTouchMode(false);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setLoadsImagesAutomatically(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String nextUrl) {
+                return false;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return false;
+            }
+        });
         String embedUrl = redditPostEmbedUrl(url);
         Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
         webView.loadUrl(embedUrl != null ? embedUrl : url);
