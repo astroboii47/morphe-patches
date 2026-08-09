@@ -7,12 +7,14 @@
 package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -77,6 +79,9 @@ public final class LongPressImagePreviewPatch {
     private static View activePreviewRoot;
     private static int activePreviewX = Integer.MIN_VALUE;
     private static int activePreviewY = Integer.MIN_VALUE;
+    private static View nativePostReturnRoot;
+    private static int nativePostReturnX = Integer.MIN_VALUE;
+    private static int nativePostReturnY = Integer.MIN_VALUE;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -1495,10 +1500,14 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void restorePostFocus(View root, int rawX, int rawY) {
+        restorePostFocusDelayed(root, rawX, rawY, 32L);
+    }
+
+    private static void restorePostFocusDelayed(View root, int rawX, int rawY, long delayMillis) {
         if (root == null || rawX == Integer.MIN_VALUE || rawY == Integer.MIN_VALUE) {
             return;
         }
-        MAIN_HANDLER.postDelayed(() -> RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY), 32L);
+        MAIN_HANDLER.postDelayed(() -> RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY), delayMillis);
     }
 
     private static void destroyWebViews(View view) {
@@ -1561,7 +1570,12 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_U:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     FEED_HANDOFF_DONE = false;
+                    View returnRoot = nativePostReturnRoot;
+                    int returnX = nativePostReturnX;
+                    int returnY = nativePostReturnY;
                     activity.onBackPressed();
+                    restorePostFocusDelayed(returnRoot, returnX, returnY, 260L);
+                    restorePostFocusDelayed(returnRoot, returnX, returnY, 620L);
                 }
                 return true;
             case KeyEvent.KEYCODE_N:
@@ -1627,20 +1641,48 @@ public final class LongPressImagePreviewPatch {
 
         View root = activity.getWindow().getDecorView();
         int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
-        if (point != null && showPostEmbedPreview(activity, root, point[0], point[1], true)) {
-            return true;
+        if (point != null) {
+            String focusedPostUrl = RedditComposeFocusBridge.getFocusedPostEmbedUrl(root);
+            if (openNativePostDetail(activity, root, point[0], point[1], focusedPostUrl)) {
+                return true;
+            }
+            if (showPostEmbedPreview(activity, root, point[0], point[1], true)) {
+                return true;
+            }
         }
 
         int[] location = new int[2];
         root.getLocationOnScreen(location);
-        showPostEmbedPreview(
-                activity,
-                root,
-                location[0] + ((root.getWidth() * 3) / 4),
-                updatePreviewTargetY(root, 0),
-                false
-        );
+        int rawX = location[0] + ((root.getWidth() * 3) / 4);
+        int rawY = updatePreviewTargetY(root, 0);
+        String postUrl = RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
+        if (!openNativePostDetail(activity, root, rawX, rawY, postUrl)) {
+            showPostEmbedPreview(activity, root, rawX, rawY, false);
+        }
         return true;
+    }
+
+    private static boolean openNativePostDetail(Activity activity, View root, int rawX, int rawY, String postUrl) {
+        if (postUrl == null || postUrl.length() == 0) {
+            return false;
+        }
+        try {
+            rememberNativePostReturn(root, rawX, rawY);
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
+            intent.setPackage(activity.getPackageName());
+            activity.startActivity(intent);
+            Log.i(LOG_TAG, "opened native reddit post " + postUrl);
+            return true;
+        } catch (Throwable throwable) {
+            Logger.printException(() -> "Failed to open native Reddit post detail", throwable);
+            return false;
+        }
+    }
+
+    private static void rememberNativePostReturn(View root, int rawX, int rawY) {
+        nativePostReturnRoot = root;
+        nativePostReturnX = rawX;
+        nativePostReturnY = rawY;
     }
 
     private static boolean showPostEmbedPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {

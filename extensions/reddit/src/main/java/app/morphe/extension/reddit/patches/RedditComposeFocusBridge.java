@@ -2005,6 +2005,12 @@ public final class RedditComposeFocusBridge {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return false;
             }
+
+            @Override
+            public void onPageFinished(WebView view, String loadedUrl) {
+                super.onPageFinished(view, loadedUrl);
+                expandRedditEmbed(view);
+            }
         });
         String embedUrl = redditPostEmbedUrl(url);
         Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
@@ -2014,6 +2020,34 @@ public final class RedditComposeFocusBridge {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return frame;
+    }
+
+    private static void expandRedditEmbed(WebView webView) {
+        try {
+            webView.evaluateJavascript(
+                    "(function(){"
+                            + "document.documentElement.style.background='#111';"
+                            + "document.body.style.background='#111';"
+                            + "document.documentElement.style.colorScheme='dark';"
+                            + "var css='html,body{background:#111!important;color-scheme:dark!important;}"
+                            + "*{max-height:none!important;}';"
+                            + "var style=document.getElementById('morpheEmbedStyle');"
+                            + "if(!style){style=document.createElement('style');style.id='morpheEmbedStyle';document.head.appendChild(style);}"
+                            + "style.textContent=css;"
+                            + "function expand(){"
+                            + "var nodes=[].slice.call(document.querySelectorAll('button,a'));"
+                            + "for(var i=0;i<nodes.length;i++){"
+                            + "var t=(nodes[i].innerText||nodes[i].textContent||'').trim().toLowerCase();"
+                            + "if(t==='read more'||t.indexOf('read more')===0||t==='show more'||t.indexOf('show more')===0){try{nodes[i].click();}catch(e){}}"
+                            + "}"
+                            + "}"
+                            + "expand();setTimeout(expand,250);setTimeout(expand,800);"
+                            + "})()",
+                    null
+            );
+        } catch (Throwable throwable) {
+            Log.w(TAG, "expandRedditEmbed failed", throwable);
+        }
     }
 
     public static View createTextPreviewView(Context context, String text) {
