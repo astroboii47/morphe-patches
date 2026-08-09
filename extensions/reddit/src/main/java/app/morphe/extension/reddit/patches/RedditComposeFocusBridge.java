@@ -342,6 +342,34 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    public static boolean focusPostUnitAt(View root, int rawX, int rawY) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate == null) {
+                    continue;
+                }
+                Object postId = findPostUnitIdAt(compose.getClass().getClassLoader(), provider, delegate, rawX, rawY);
+                if (!(postId instanceof Integer)) {
+                    continue;
+                }
+                boolean focused = provider.performAction(((Integer) postId).intValue(), AccessibilityNodeInfo.ACTION_FOCUS, null);
+                Log.w(TAG, "focusPostUnitAt id=" + postId + " focused=" + focused);
+                return focused;
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusPostUnitAt failed", throwable);
+        }
+        return false;
+    }
+
     public static boolean clickNextCommentButton(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -507,6 +535,13 @@ public final class RedditComposeFocusBridge {
 
     public static String getFocusedPostEmbedUrl(View root) {
         try {
+            String rowText = getFocusedPostTextPreview(root);
+            PreviewRecord record = previewRecordForRowText(rowText);
+            if (record != null && record.postUrl != null && record.postUrl.length() > 0) {
+                Log.w(TAG, "focusedPostEmbedUrl row title=\"" + record.title + "\"");
+                return record.postUrl;
+            }
+
             Object focusedModel = findFocusedPostUnitModel(root);
             String focusedId = modelKindWithId(focusedModel);
             if (focusedId != null && focusedId.length() > 0) {
@@ -521,8 +556,6 @@ public final class RedditComposeFocusBridge {
             if (directUrl != null && directUrl.length() > 0) {
                 return directUrl;
             }
-            String rowText = getFocusedPostTextPreview(root);
-            PreviewRecord record = previewRecordForRowText(rowText);
             return record != null ? record.postUrl : null;
         } catch (Throwable throwable) {
             Log.w(TAG, "focusedPostEmbedUrl failed", throwable);
@@ -1288,9 +1321,9 @@ public final class RedditComposeFocusBridge {
                 .replace("http://new.reddit.com/", "https://www.redditmedia.com/")
                 .replace("http://www.reddit.com/", "https://www.redditmedia.com/");
         if (embed.indexOf('?') >= 0) {
-            return embed + "&ref_source=embed&ref=share&embed=true";
+            return embed + "&ref_source=embed&ref=share&embed=true&theme=dark";
         }
-        return embed + "?ref_source=embed&ref=share&embed=true";
+        return embed + "?ref_source=embed&ref=share&embed=true&theme=dark";
     }
 
     private static boolean isRedditPostUrl(String url) {
@@ -2274,6 +2307,56 @@ public final class RedditComposeFocusBridge {
             }
         }
         return best;
+    }
+
+    private static Object findPostUnitIdAt(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate, int rawX, int rawY) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return null;
+        }
+
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return null;
+        }
+
+        Class<?> semanticsKeys = loader.loadClass("androidx.compose.ui.semantics.d");
+        Object testTagKey = readStaticField(semanticsKeys, "A");
+        Integer bestId = null;
+        int bestHeight = Integer.MAX_VALUE;
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object config = readField(node, "d");
+            Object tag = getSemanticsValue(config, testTagKey);
+            if (!"post_unit".equals(String.valueOf(tag))) {
+                continue;
+            }
+            Object id = readField(node, "f");
+            if (!(id instanceof Integer)) {
+                continue;
+            }
+            Rect bounds = getProviderBounds(provider, ((Integer) id).intValue());
+            if (bounds == null || !bounds.contains(rawX, rawY)) {
+                continue;
+            }
+            if (bounds.height() > 0 && bounds.height() < bestHeight) {
+                bestId = (Integer) id;
+                bestHeight = bounds.height();
+            }
+        }
+        return bestId;
     }
 
     private static String findFocusedPostUnitText(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {

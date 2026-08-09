@@ -74,6 +74,9 @@ public final class LongPressImagePreviewPatch {
     private static boolean FEED_HANDOFF_DONE;
     private static int LAST_PREVIEW_Y;
     private static boolean DISPATCHING_PREVIEW_CANCEL;
+    private static View activePreviewRoot;
+    private static int activePreviewX = Integer.MIN_VALUE;
+    private static int activePreviewY = Integer.MIN_VALUE;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -557,6 +560,7 @@ public final class LongPressImagePreviewPatch {
                             ViewGroup.LayoutParams.MATCH_PARENT
                     ));
                     activePreview = overlay;
+                    rememberPreviewFocus(root, rawX, rawY);
                     overlay.requestFocus();
                     return;
                 }
@@ -579,6 +583,7 @@ public final class LongPressImagePreviewPatch {
                         ViewGroup.LayoutParams.MATCH_PARENT
                 ));
                 activePreview = overlay;
+                rememberPreviewFocus(root, rawX, rawY);
                 overlay.requestFocus();
                 return;
             }
@@ -599,11 +604,18 @@ public final class LongPressImagePreviewPatch {
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
             activePreview = overlay;
+            rememberPreviewFocus(root, rawX, rawY);
             overlay.requestFocus();
             loadPreviewImage(mediaUrl, preview, PREVIEW_GENERATION.incrementAndGet());
         } catch (Throwable ex) {
             Logger.printException(() -> "Failed to show Reddit image preview", ex);
         }
+    }
+
+    private static void rememberPreviewFocus(View root, int rawX, int rawY) {
+        activePreviewRoot = root;
+        activePreviewX = rawX;
+        activePreviewY = rawY;
     }
 
     private static void configurePreviewOverlay(FrameLayout overlay) {
@@ -1464,15 +1476,29 @@ public final class LongPressImagePreviewPatch {
         }
 
         activePreview = null;
+        View restoreRoot = activePreviewRoot;
+        int restoreX = activePreviewX;
+        int restoreY = activePreviewY;
+        activePreviewRoot = null;
+        activePreviewX = Integer.MIN_VALUE;
+        activePreviewY = Integer.MIN_VALUE;
         destroyWebViews(preview);
         ViewParent parent = preview.getParent();
         if (parent instanceof ViewGroup) {
             ((ViewGroup) parent).removeView(preview);
         }
+        restorePostFocus(restoreRoot, restoreX, restoreY);
     }
 
     private static void hidePreview(Activity activity) {
         hidePreview();
+    }
+
+    private static void restorePostFocus(View root, int rawX, int rawY) {
+        if (root == null || rawX == Integer.MIN_VALUE || rawY == Integer.MIN_VALUE) {
+            return;
+        }
+        MAIN_HANDLER.postDelayed(() -> RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY), 32L);
     }
 
     private static void destroyWebViews(View view) {
@@ -1648,9 +1674,14 @@ public final class LongPressImagePreviewPatch {
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-            View embedView = RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
-            attachPreviewDismissHandlers(embedView);
-            overlay.addView(embedView, new FrameLayout.LayoutParams(
+            String textPreview = focusedOnly
+                    ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
+                    : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+            View modalView = RedditComposeFocusBridge.isTextBodyPreview(textPreview)
+                    ? RedditComposeFocusBridge.createTextPreviewView(activity, textPreview)
+                    : RedditComposeFocusBridge.createPostEmbedView(activity, postUrl);
+            attachPreviewDismissHandlers(modalView);
+            overlay.addView(modalView, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER
@@ -1660,6 +1691,7 @@ public final class LongPressImagePreviewPatch {
                     ViewGroup.LayoutParams.MATCH_PARENT
             ));
             activePreview = overlay;
+            rememberPreviewFocus(root, rawX, rawY);
             overlay.requestFocus();
             return true;
         } catch (Throwable ex) {
