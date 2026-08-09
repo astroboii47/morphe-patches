@@ -1,3 +1,9 @@
+## 1.36.0-dev.90 (2026-08-09)
+
+- Reddit: revert the dev89 U close-button targeting that could jump into a subreddit instead of returning to the feed.
+- Reddit: keep U using normal Back, then restore focus to the feed post that O opened.
+- Reddit: move native M focus clearing until after the post opens to reduce the held-screen focus highlight without changing the return path.
+
 ## 1.36.0-dev.89 (2026-08-09)
 
 - Reddit: remember the selected feed post before opening with O, then restore that row when U returns.
