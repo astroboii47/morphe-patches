@@ -7,6 +7,7 @@
 package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
+import android.app.Application;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -17,6 +18,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Log;
 import android.view.ActionMode;
@@ -74,6 +76,7 @@ public final class LongPressImagePreviewPatch {
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
     private static boolean REDISPATCHING_FEED_KEY;
     private static boolean FEED_HANDOFF_DONE;
+    private static boolean LIFECYCLE_CALLBACKS_REGISTERED;
     private static int LAST_PREVIEW_Y;
     private static boolean DISPATCHING_PREVIEW_CANCEL;
     private static View activePreviewRoot;
@@ -119,6 +122,7 @@ public final class LongPressImagePreviewPatch {
             }
 
             ensureWindowCallback(activity);
+            ensureLifecycleCallbacks(activity);
             activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
@@ -400,6 +404,53 @@ public final class LongPressImagePreviewPatch {
         }
 
         window.setCallback(new PreviewWindowCallback(activity, callback));
+    }
+
+    private static void ensureLifecycleCallbacks(Activity activity) {
+        if (LIFECYCLE_CALLBACKS_REGISTERED) {
+            return;
+        }
+        try {
+            Application application = activity.getApplication();
+            if (application == null) {
+                return;
+            }
+            LIFECYCLE_CALLBACKS_REGISTERED = true;
+            application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
+                @Override
+                public void onActivityCreated(Activity createdActivity, Bundle savedInstanceState) {
+                    attach(createdActivity);
+                }
+
+                @Override
+                public void onActivityStarted(Activity startedActivity) {
+                    attach(startedActivity);
+                }
+
+                @Override
+                public void onActivityResumed(Activity resumedActivity) {
+                    attach(resumedActivity);
+                }
+
+                @Override
+                public void onActivityPaused(Activity pausedActivity) {
+                }
+
+                @Override
+                public void onActivityStopped(Activity stoppedActivity) {
+                }
+
+                @Override
+                public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
+                }
+
+                @Override
+                public void onActivityDestroyed(Activity destroyedActivity) {
+                }
+            });
+        } catch (Throwable throwable) {
+            Logger.printException(() -> "Failed to register Reddit preview activity lifecycle", throwable);
+        }
     }
 
     private static boolean handleTouchEvent(Activity activity, MotionEvent event) {
@@ -1559,6 +1610,12 @@ public final class LongPressImagePreviewPatch {
         }
 
         int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_M
+                && event.getAction() == KeyEvent.ACTION_UP
+                && nativePostHeldOpen) {
+            closeNativePostDetail(activity);
+            return true;
+        }
         int mappedKeyCode = keyCode;
         int direction = View.FOCUS_DOWN;
         switch (keyCode) {

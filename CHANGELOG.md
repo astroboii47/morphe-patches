@@ -1,3 +1,9 @@
+## 1.36.0-dev.83 (2026-08-09)
+
+- Reddit: attach preview key handling to new Reddit activities so M can close the native post view on release.
+- Reddit: restore G read-more expansion through Reddit embed shadow roots without Morphe text zoom/style injection.
+- Reddit: preserve P/T preview title and metadata when cached body text updates arrive.
+
 ## 1.36.0-dev.82 (2026-08-09)
 
 - Reddit: restore M to the native in-app post view instead of the web embed.

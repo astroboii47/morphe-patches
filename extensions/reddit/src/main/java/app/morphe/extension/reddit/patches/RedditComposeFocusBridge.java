@@ -1120,15 +1120,16 @@ public final class RedditComposeFocusBridge {
             title = titleFromRowText(rowText);
         }
         String meta = metadataFromRowText(rowText);
-        StringBuilder builder = new StringBuilder();
-        if (title != null && title.trim().length() > 0 && !samePreviewText(title, trimmedBody)) {
-            builder.append(title.trim()).append(TEXT_PREVIEW_SEPARATOR);
+        boolean hasTitle = title != null && title.trim().length() > 0 && !samePreviewText(title, trimmedBody);
+        boolean hasMeta = meta != null && meta.length() > 0;
+        if (hasTitle || hasMeta) {
+            return (hasTitle ? title.trim() : "")
+                    + TEXT_PREVIEW_SEPARATOR
+                    + (hasMeta ? meta : "")
+                    + TEXT_PREVIEW_SEPARATOR
+                    + trimmedBody;
         }
-        if (meta != null && meta.length() > 0) {
-            builder.append(meta).append(TEXT_PREVIEW_SEPARATOR);
-        }
-        builder.append(trimmedBody);
-        return builder.toString().trim();
+        return trimmedBody;
     }
 
     private static String buildRowFallbackPreview(PreviewRecord record, String rowText) {
@@ -2277,6 +2278,8 @@ public final class RedditComposeFocusBridge {
         String embedUrl = redditPostEmbedUrl(url);
         Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
         webView.loadUrl(embedUrl != null ? embedUrl : url);
+        webView.postDelayed(() -> clickRedditEmbedReadMore(webView), 80L);
+        webView.postDelayed(() -> clickRedditEmbedReadMore(webView), 220L);
         frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2289,22 +2292,31 @@ public final class RedditComposeFocusBridge {
             return;
         }
         String script = "(function(){"
+                + "function collect(root,out){"
+                + "if(!root)return out;"
+                + "var nodes=[];try{nodes=[].slice.call(root.querySelectorAll('*'));}catch(e){}"
+                + "for(var i=0;i<nodes.length;i++){out.push(nodes[i]);if(nodes[i].shadowRoot)collect(nodes[i].shadowRoot,out);}"
+                + "return out;"
+                + "}"
                 + "function clickReadMore(){"
-                + "var all=document.querySelectorAll('button,a,span,div');"
+                + "var all=collect(document,[]);"
                 + "for(var i=0;i<all.length;i++){"
                 + "var el=all[i];"
-                + "var text=(el.innerText||el.textContent||el.getAttribute('aria-label')||'').trim().toLowerCase();"
-                + "if(text==='read more'||text.indexOf('read more')===0){"
+                + "var text=((el.innerText||el.textContent||'')+' '+(el.getAttribute('aria-label')||'')+' '+(el.getAttribute('title')||'')).trim().toLowerCase();"
+                + "if(text==='read more'||text.indexOf('read more')===0||text==='show more'||text.indexOf('show more')===0"
+                + "||text==='view'||text.indexOf('view ')===0||text==='view post'||text==='view content'||text==='continue'||text==='yes'"
+                + "||text.indexOf('mature')>=0||text.indexOf('nsfw')>=0){"
                 + "var target=el.closest('button,a')||el;"
                 + "target.click();"
-                + "return true;"
                 + "}"
                 + "}"
-                + "return false;"
                 + "}"
                 + "clickReadMore();"
-                + "setTimeout(clickReadMore,250);"
-                + "setTimeout(clickReadMore,750);"
+                + "setTimeout(clickReadMore,60);"
+                + "setTimeout(clickReadMore,150);"
+                + "setTimeout(clickReadMore,350);"
+                + "setTimeout(clickReadMore,700);"
+                + "setTimeout(clickReadMore,1400);"
                 + "})();";
         try {
             webView.evaluateJavascript(script, null);
@@ -2319,6 +2331,7 @@ public final class RedditComposeFocusBridge {
         scrollView.setBackgroundColor(0xff111111);
         TextView textView = new TextView(context);
         textView.setText(styledPreviewText(text));
+        textView.setTag(text);
         textView.setTextColor(0xffffffff);
         textView.setTextSize(18.0f);
         textView.setLineSpacing(0.0f, 1.12f);
@@ -2336,7 +2349,9 @@ public final class RedditComposeFocusBridge {
     public static void updateTextPreviewView(View preview, String text) {
         TextView textView = findPreviewTextView(preview);
         if (textView != null) {
-            textView.setText(styledPreviewText(text));
+            String merged = mergePreviewUpdate(textView.getTag(), text);
+            textView.setText(styledPreviewText(merged));
+            textView.setTag(merged);
         }
         ScrollView scrollView = findPreviewScrollView(preview);
         if (scrollView != null) {
@@ -2389,6 +2404,7 @@ public final class RedditComposeFocusBridge {
         scrollView.setBackgroundColor(0xff181818);
         TextView textView = new TextView(context);
         textView.setText(styledPreviewText(text));
+        textView.setTag(text);
         textView.setTextColor(0xffffffff);
         textView.setTextSize(17.0f);
         textView.setLineSpacing(0.0f, 1.08f);
@@ -2443,6 +2459,34 @@ public final class RedditComposeFocusBridge {
             appendMarkdownText(builder, normalizePreviewBody(body));
         }
         return builder.length() > 0 ? builder : value;
+    }
+
+    private static String mergePreviewUpdate(Object existingTag, String updatedText) {
+        String updated = updatedText == null ? "" : updatedText.trim();
+        if (updated.length() == 0) {
+            return updated;
+        }
+        String existing = existingTag instanceof String ? ((String) existingTag).trim() : "";
+        if (existing.length() == 0) {
+            return updated;
+        }
+        String[] existingParts = existing.split(TEXT_PREVIEW_SEPARATOR, -1);
+        String[] updatedParts = updated.split(TEXT_PREVIEW_SEPARATOR, -1);
+        if (updatedParts.length >= 3) {
+            String title = updatedParts[0].trim().length() > 0 ? updatedParts[0].trim()
+                    : existingParts.length > 0 ? existingParts[0].trim() : "";
+            String meta = updatedParts[1].trim().length() > 0 ? updatedParts[1].trim()
+                    : existingParts.length > 1 ? existingParts[1].trim() : "";
+            String body = updatedParts[2].trim();
+            return title + TEXT_PREVIEW_SEPARATOR + meta + TEXT_PREVIEW_SEPARATOR + body;
+        }
+        String title = existingParts.length > 0 ? existingParts[0].trim() : "";
+        String meta = existingParts.length > 1 ? existingParts[1].trim() : "";
+        String body = updatedParts.length == 1 ? updatedParts[0].trim() : updatedParts[updatedParts.length - 1].trim();
+        if (body.length() == 0) {
+            return existing;
+        }
+        return title + TEXT_PREVIEW_SEPARATOR + meta + TEXT_PREVIEW_SEPARATOR + body;
     }
 
     private static String normalizePreviewBody(String body) {
