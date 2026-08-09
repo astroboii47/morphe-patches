@@ -1,3 +1,7 @@
+## 1.36.0-dev.87 (2026-08-09)
+
+- Reddit: ignore the early synthetic M release that fires immediately after opening the native post view, so the real key release can close it.
+
 ## 1.36.0-dev.86 (2026-08-09)
 
 - Reddit: make G web preview height track the loaded embed content without self-growing on short posts.

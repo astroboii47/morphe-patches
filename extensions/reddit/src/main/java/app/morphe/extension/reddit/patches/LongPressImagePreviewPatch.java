@@ -86,6 +86,7 @@ public final class LongPressImagePreviewPatch {
     private static int nativePostReturnX = Integer.MIN_VALUE;
     private static int nativePostReturnY = Integer.MIN_VALUE;
     private static boolean nativePostHeldOpen;
+    private static long nativePostOpenedAt;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -1616,7 +1617,12 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_M:
                 if (nativePostHeldOpen) {
                     if (event.getAction() == KeyEvent.ACTION_UP) {
-                        closeNativePostDetail(activity);
+                        long heldMillis = SystemClock.uptimeMillis() - nativePostOpenedAt;
+                        if (heldMillis >= 220L) {
+                            closeNativePostDetail(activity);
+                        } else {
+                            Log.i(LOG_TAG, "ignored early native reddit post release held=" + heldMillis);
+                        }
                     }
                     return true;
                 }
@@ -1751,6 +1757,7 @@ public final class LongPressImagePreviewPatch {
         try {
             rememberNativePostReturn(root, rawX, rawY);
             nativePostHeldOpen = true;
+            nativePostOpenedAt = SystemClock.uptimeMillis();
             hidePreview();
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
