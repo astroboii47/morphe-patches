@@ -1,3 +1,7 @@
+## 1.36.0-dev.94 (2026-08-10)
+
+- Reddit: fix finger long-press on feed images/videos being stolen by the post hold action by detecting the actual media surface bounds before opening the native post.
+
 ## 1.36.0-dev.93 (2026-08-10)
 
 - Reddit: make finger long-press on a non-media area of a feed post open the native post view until finger release.

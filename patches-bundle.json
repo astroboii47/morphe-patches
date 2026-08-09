@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-09T10:05:00",
-  "description": "## 1.36.0-dev.93 (2026-08-10)\n\n- Reddit: make finger long-press on a non-media area of a feed post open the native post view until finger release.\n- Reddit: keep finger long-press on direct media using the existing image/video preview behavior.\n- Reddit: make M close use the current resumed Reddit activity and shorten the early-release guard for a snappier close.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.93/patches-1.36.0-dev.93.mpp",
+  "description": "## 1.36.0-dev.94 (2026-08-10)\n\n- Reddit: fix finger long-press on feed images/videos being stolen by the post hold action by detecting the actual media surface bounds before opening the native post.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.94/patches-1.36.0-dev.94.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.93"
+  "version": "1.36.0-dev.94"
 }

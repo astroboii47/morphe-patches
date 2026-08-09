@@ -565,7 +565,12 @@ public final class LongPressImagePreviewPatch {
 
     private static boolean hasDirectMediaPreviewAtPoint(View root, int rawX, int rawY) {
         String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
-        return linkId != null;
+        if (linkId != null) {
+            return true;
+        }
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        return findCompactMediaBounds(root, rawX - location[0], rawY - location[1]) != null;
     }
 
     private static void cancelUnderlyingLongPress(View root, int rawX, int rawY) {
