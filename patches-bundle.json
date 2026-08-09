@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-09T06:25:00",
-  "description": "## 1.36.0-dev.79 (2026-08-09)\n\n- Reddit: attach preview keyboard handling to all resumed Reddit activities so M can close native post opens on key release.\n- Reddit: keep G as Reddit's own web embed and remove Morphe CSS/text-zoom injection while still clicking read-more/view controls earlier.\n- Reddit: keep the direct MP4/WebM-only video preview behavior from dev78.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.79/patches-1.36.0-dev.79.mpp",
+  "created_at": "2026-08-09T06:35:00",
+  "description": "## 1.36.0-dev.80 (2026-08-09)\n\n- Reddit: make M use the holdable in-app web modal instead of launching native post activities, so release can close reliably.\n- Reddit: make G a pure Reddit web embed again with no Morphe CSS/text-zoom/read-more script injection.\n- Reddit: improve P/T text-body updates by polling Reddit's in-app model cache and storing cached bodies by post URL.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.80/patches-1.36.0-dev.80.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.79"
+  "version": "1.36.0-dev.80"
 }

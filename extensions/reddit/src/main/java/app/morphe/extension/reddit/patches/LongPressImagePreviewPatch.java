@@ -7,7 +7,6 @@
 package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
-import android.app.Application;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -16,7 +15,6 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -76,7 +74,6 @@ public final class LongPressImagePreviewPatch {
     private static final AtomicInteger PREVIEW_GENERATION = new AtomicInteger();
     private static boolean REDISPATCHING_FEED_KEY;
     private static boolean FEED_HANDOFF_DONE;
-    private static boolean LIFECYCLE_CALLBACKS_REGISTERED;
     private static int LAST_PREVIEW_Y;
     private static boolean DISPATCHING_PREVIEW_CANCEL;
     private static View activePreviewRoot;
@@ -122,7 +119,6 @@ public final class LongPressImagePreviewPatch {
             }
 
             ensureWindowCallback(activity);
-            ensureLifecycleCallbacks(activity);
             activity.getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() ->
                     ensureWindowCallback(activity)
             );
@@ -404,53 +400,6 @@ public final class LongPressImagePreviewPatch {
         }
 
         window.setCallback(new PreviewWindowCallback(activity, callback));
-    }
-
-    private static void ensureLifecycleCallbacks(Activity activity) {
-        if (LIFECYCLE_CALLBACKS_REGISTERED) {
-            return;
-        }
-        try {
-            Application application = activity.getApplication();
-            if (application == null) {
-                return;
-            }
-            LIFECYCLE_CALLBACKS_REGISTERED = true;
-            application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
-                @Override
-                public void onActivityCreated(Activity createdActivity, Bundle savedInstanceState) {
-                    attach(createdActivity);
-                }
-
-                @Override
-                public void onActivityStarted(Activity startedActivity) {
-                    attach(startedActivity);
-                }
-
-                @Override
-                public void onActivityResumed(Activity resumedActivity) {
-                    attach(resumedActivity);
-                }
-
-                @Override
-                public void onActivityPaused(Activity pausedActivity) {
-                }
-
-                @Override
-                public void onActivityStopped(Activity stoppedActivity) {
-                }
-
-                @Override
-                public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
-                }
-
-                @Override
-                public void onActivityDestroyed(Activity destroyedActivity) {
-                }
-            });
-        } catch (Throwable throwable) {
-            Logger.printException(() -> "Failed to register Reddit preview activity lifecycle", throwable);
-        }
     }
 
     private static boolean handleTouchEvent(Activity activity, MotionEvent event) {
@@ -1715,10 +1664,6 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
         if (point != null) {
-            String focusedPostUrl = RedditComposeFocusBridge.getFocusedPostEmbedUrl(root);
-            if (openNativePostDetail(activity, root, point[0], point[1], focusedPostUrl)) {
-                return true;
-            }
             if (showPostEmbedPreview(activity, root, point[0], point[1], true)) {
                 return true;
             }
@@ -1728,10 +1673,7 @@ public final class LongPressImagePreviewPatch {
         root.getLocationOnScreen(location);
         int rawX = location[0] + ((root.getWidth() * 3) / 4);
         int rawY = updatePreviewTargetY(root, 0);
-        String postUrl = RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
-        if (!openNativePostDetail(activity, root, rawX, rawY, postUrl)) {
-            showPostEmbedPreview(activity, root, rawX, rawY, false);
-        }
+        showPostEmbedPreview(activity, root, rawX, rawY, false);
         return true;
     }
 
@@ -1878,9 +1820,26 @@ public final class LongPressImagePreviewPatch {
             return;
         }
         IMAGE_LOADER.execute(() -> {
-            String fetched = forceFresh
-                    ? RedditComposeFocusBridge.fetchFreshTextPreviewForPostUrl(postUrl)
-                    : RedditComposeFocusBridge.fetchTextPreviewForPostUrl(postUrl);
+            String fetched = null;
+            for (int attempt = 0; attempt < 18; attempt++) {
+                fetched = RedditComposeFocusBridge.getCachedTextPreviewForPostUrl(postUrl);
+                if (fetched != null && fetched.trim().length() > 0) {
+                    break;
+                }
+                if (attempt == 0) {
+                    fetched = forceFresh
+                            ? RedditComposeFocusBridge.fetchFreshTextPreviewForPostUrl(postUrl)
+                            : RedditComposeFocusBridge.fetchTextPreviewForPostUrl(postUrl);
+                    if (fetched != null && fetched.trim().length() > 0) {
+                        break;
+                    }
+                }
+                try {
+                    Thread.sleep(150L);
+                } catch (InterruptedException ignored) {
+                    break;
+                }
+            }
             if (fetched == null || fetched.trim().length() == 0) {
                 return;
             }

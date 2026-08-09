@@ -614,6 +614,24 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    private static void storePostBodyForUrl(String postUrl, PreviewRecord record, String body) {
+        String normalized = normalizeRedditPostUrl(postUrl);
+        if (normalized == null || normalized.length() == 0 || body == null || body.trim().length() == 0) {
+            return;
+        }
+        synchronized (POST_BODIES_BY_URL) {
+            trimCache(POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL - 100);
+            POST_BODIES_BY_URL.put(normalized, body.trim());
+        }
+        if (record != null) {
+            record.postUrl = normalized;
+            if (record.body == null || record.body.trim().length() == 0) {
+                record.body = body.trim();
+            }
+            storePreviewRecord(record);
+        }
+    }
+
     public static String fetchTextPreviewForPostUrl(String postUrl) {
         try {
             String normalized = normalizeRedditPostUrl(postUrl);
@@ -641,10 +659,7 @@ public final class RedditComposeFocusBridge {
             record.postUrl = normalized;
             record.body = body.trim();
             storePreviewRecord(record);
-            synchronized (POST_BODIES_BY_URL) {
-                trimCache(POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL - 100);
-                POST_BODIES_BY_URL.put(normalized, record.body);
-            }
+            storePostBodyForUrl(normalized, record, record.body);
             storePostBody(title, record.key, record.body);
             Log.w(TAG, "fetchedTextForUrl title=\"" + title + "\" length=" + record.body.length());
             return buildTextPreviewText(record, null, record.body);
@@ -677,10 +692,7 @@ public final class RedditComposeFocusBridge {
             record.postUrl = normalized;
             record.body = body.trim();
             storePreviewRecord(record);
-            synchronized (POST_BODIES_BY_URL) {
-                trimCache(POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL, MAX_POST_BODIES_BY_URL - 100);
-                POST_BODIES_BY_URL.put(normalized, record.body);
-            }
+            storePostBodyForUrl(normalized, record, record.body);
             storePostBody(title, record.key, record.body);
             Log.w(TAG, "fetchedFreshTextForUrl title=\"" + title + "\" length=" + record.body.length());
             return buildTextPreviewText(record, null, record.body);
@@ -938,6 +950,7 @@ public final class RedditComposeFocusBridge {
             if (body != null && body.trim().length() > 0) {
                 record.body = body.trim();
             }
+            storePostBodyForUrl(postUrl, record, body);
             storePreviewRecord(record);
             Log.w(TAG, "previewMedia keyOrTitle=" + keyOrTitle + " media=" + summarizeUrl(record.mediaUrl) + " body=" + (record.body == null ? 0 : record.body.length()));
         } catch (Throwable throwable) {
@@ -1454,6 +1467,7 @@ public final class RedditComposeFocusBridge {
             if (postUrl != null && postUrl.length() > 0) {
                 record.postUrl = postUrl;
             }
+            storePostBodyForUrl(postUrl, record, body);
             if (video != null && video.length() > 0) {
                 record.mediaUrl = video;
             } else if (isUsablePreviewMedia(image) && shouldReplaceMedia(record.mediaUrl, image)) {
@@ -2252,54 +2266,21 @@ public final class RedditComposeFocusBridge {
             @Override
             public void onPageCommitVisible(WebView view, String loadedUrl) {
                 super.onPageCommitVisible(view, loadedUrl);
-                expandRedditEmbed(view);
             }
 
             @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
-                expandRedditEmbed(view);
             }
         });
         String embedUrl = redditPostEmbedUrl(url);
         Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
         webView.loadUrl(embedUrl != null ? embedUrl : url);
-        webView.postDelayed(() -> expandRedditEmbed(webView), 80L);
-        webView.postDelayed(() -> expandRedditEmbed(webView), 220L);
         frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return frame;
-    }
-
-    private static void expandRedditEmbed(WebView webView) {
-        try {
-            webView.evaluateJavascript(
-                    "(function(){"
-                            + "function collect(root,out){"
-                            + "if(!root)return out;"
-                            + "var nodes=[];try{nodes=[].slice.call(root.querySelectorAll('*'));}catch(e){}"
-                            + "for(var i=0;i<nodes.length;i++){out.push(nodes[i]);if(nodes[i].shadowRoot)collect(nodes[i].shadowRoot,out);}"
-                            + "return out;"
-                            + "}"
-                            + "function expand(){"
-                            + "var nodes=collect(document,[]);"
-                            + "for(var i=0;i<nodes.length;i++){"
-                            + "var n=nodes[i];"
-                            + "var t=((n.innerText||n.textContent||'')+' '+(n.getAttribute('aria-label')||'')+' '+(n.getAttribute('title')||'')).trim().toLowerCase();"
-                            + "if(t==='read more'||t.indexOf('read more')===0||t==='show more'||t.indexOf('show more')===0"
-                            + "||t==='view'||t.indexOf('view ')===0||t==='view post'||t==='view content'||t==='continue'||t==='yes'"
-                            + "||t.indexOf('mature')>=0||t.indexOf('nsfw')>=0){try{n.click();}catch(e){}}"
-                            + "}"
-                            + "}"
-                            + "expand();setTimeout(expand,60);setTimeout(expand,150);setTimeout(expand,350);setTimeout(expand,700);setTimeout(expand,1400);"
-                            + "})()",
-                    null
-            );
-        } catch (Throwable throwable) {
-            Log.w(TAG, "expandRedditEmbed failed", throwable);
-        }
     }
 
     public static View createTextPreviewView(Context context, String text) {
