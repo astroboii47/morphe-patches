@@ -1,3 +1,8 @@
+## 1.36.0-dev.95 (2026-08-10)
+
+- Reddit: make touch long-press choose media preview only when the finger is on the media surface; post body long-press opens the native post.
+- Reddit: open touch-held posts by clicking the touched row directly instead of focusing it first, and avoid keyboard focus restore after touch close.
+
 ## 1.36.0-dev.94 (2026-08-10)
 
 - Reddit: fix finger long-press on feed images/videos being stolen by the post hold action by detecting the actual media surface bounds before opening the native post.

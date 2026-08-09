@@ -384,6 +384,34 @@ public final class RedditComposeFocusBridge {
         return false;
     }
 
+    public static boolean clickPostUnitAt(View root, int rawX, int rawY) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate == null) {
+                    continue;
+                }
+                Object postId = findPostUnitIdAt(compose.getClass().getClassLoader(), provider, delegate, rawX, rawY);
+                if (!(postId instanceof Integer)) {
+                    continue;
+                }
+                boolean clicked = provider.performAction(((Integer) postId).intValue(), AccessibilityNodeInfo.ACTION_CLICK, null);
+                Log.w(TAG, "clickPostUnitAt id=" + postId + " clicked=" + clicked);
+                return clicked;
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "clickPostUnitAt failed", throwable);
+        }
+        return false;
+    }
+
     public static boolean clickNextCommentButton(View root) {
         return clickCommentJumpButton(root, "next comment", "nextComment");
     }

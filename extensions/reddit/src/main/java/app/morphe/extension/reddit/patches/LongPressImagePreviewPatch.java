@@ -504,7 +504,7 @@ public final class LongPressImagePreviewPatch {
                     synchronized (TOUCH_STATES) {
                         TOUCH_STATES.remove(activity);
                     }
-                    closeNativePostDetail(activity);
+                    closeNativePostDetail(activity, false);
                     return true;
                 }
                 TouchState endState;
@@ -513,7 +513,7 @@ public final class LongPressImagePreviewPatch {
                 }
                 if (endState != null && endState.nativePostShown) {
                     touchNativePostHeld = false;
-                    closeNativePostDetail(activity);
+                    closeNativePostDetail(activity, false);
                     return true;
                 }
                 if (hadPreview) {
@@ -546,14 +546,18 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         int rawX = Math.round(state.rawX);
         int rawY = Math.round(state.rawY);
-        if (!hasDirectMediaPreviewAtPoint(root, rawX, rawY)) {
-            int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
-            if (postPoint != null && openNativePostDetailForTouch(activity, root, postPoint[0], postPoint[1])) {
-                state.nativePostShown = true;
-                touchNativePostHeld = true;
-                cancelUnderlyingLongPress(root, rawX, rawY);
-                return;
-            }
+        if (hasLikelyMediaSurfaceAtPoint(root, rawX, rawY) && showMediaPreviewOnly(activity, root, rawX, rawY)) {
+            state.previewShown = true;
+            cancelUnderlyingLongPress(root, rawX, rawY);
+            return;
+        }
+
+        int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+        if (postPoint != null && openNativePostDetailForTouch(activity, root, postPoint[0], postPoint[1])) {
+            state.nativePostShown = true;
+            touchNativePostHeld = true;
+            cancelUnderlyingLongPress(root, rawX, rawY);
+            return;
         }
 
         showPreview(activity, root, rawX, rawY);
@@ -563,14 +567,22 @@ public final class LongPressImagePreviewPatch {
         }
     }
 
-    private static boolean hasDirectMediaPreviewAtPoint(View root, int rawX, int rawY) {
+    private static boolean hasLikelyMediaSurfaceAtPoint(View root, int rawX, int rawY) {
         String linkId = findMediaLinkIdAtPoint(root, rawX, rawY);
         if (linkId != null) {
             return true;
         }
         int[] location = new int[2];
         root.getLocationOnScreen(location);
-        return findCompactMediaBounds(root, rawX - location[0], rawY - location[1]) != null;
+        if (findCompactMediaBounds(root, rawX - location[0], rawY - location[1]) != null) {
+            return true;
+        }
+        int localX = rawX - location[0];
+        if (localX > root.getWidth() * 0.50f) {
+            String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
+            return modelMediaUrl != null && modelMediaUrl.length() > 0;
+        }
+        return false;
     }
 
     private static void cancelUnderlyingLongPress(View root, int rawX, int rawY) {
@@ -605,6 +617,74 @@ public final class LongPressImagePreviewPatch {
 
     private static void showFocusedPreview(Activity activity, View root, int rawX, int rawY) {
         showPreview(activity, root, rawX, rawY, true);
+    }
+
+    private static boolean showMediaPreviewOnly(Activity activity, View root, int rawX, int rawY) {
+        try {
+            hidePreview();
+
+            View decorView = activity.getWindow().getDecorView();
+            if (!(decorView instanceof ViewGroup)) {
+                return false;
+            }
+
+            String mediaUrl = getMediaUrlAtPoint(root, rawX, rawY);
+            if (mediaUrl == null) {
+                int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+                if (postPoint != null) {
+                    rawX = postPoint[0];
+                    rawY = postPoint[1];
+                }
+
+                String modelMediaUrl = RedditComposeFocusBridge.getPostModelMediaPreviewAt(root, rawX, rawY);
+                mediaUrl = modelMediaUrl != null ? modelMediaUrl : getMediaUrlAtPoint(root, rawX, rawY);
+            }
+            if (mediaUrl == null) {
+                return false;
+            }
+
+            ViewGroup decor = (ViewGroup) decorView;
+            FrameLayout overlay = new FrameLayout(activity);
+            overlay.setBackgroundColor(Color.argb(220, 0, 0, 0));
+            configurePreviewOverlay(overlay);
+
+            int padding = dp(root, 16);
+            overlay.setPadding(padding, padding, padding, padding);
+
+            if (RedditComposeFocusBridge.isVideoPreviewUrl(mediaUrl)) {
+                View videoView = RedditComposeFocusBridge.createVideoPreviewView(activity, mediaUrl);
+                attachPreviewDismissHandlers(videoView);
+                overlay.addView(videoView, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
+                ));
+            } else {
+                ImageView preview = new ImageView(activity);
+                preview.setBackgroundColor(Color.TRANSPARENT);
+                preview.setAdjustViewBounds(true);
+                preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                attachPreviewDismissHandlers(preview);
+                overlay.addView(preview, new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER
+                ));
+                loadPreviewImage(mediaUrl, preview, PREVIEW_GENERATION.incrementAndGet());
+            }
+
+            decor.addView(overlay, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            activePreview = overlay;
+            rememberPreviewFocus(root, rawX, rawY);
+            overlay.requestFocus();
+            return true;
+        } catch (Throwable ex) {
+            Logger.printException(() -> "Failed to show Reddit media preview", ex);
+            return false;
+        }
     }
 
     private static void showPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {
@@ -1835,12 +1915,10 @@ public final class LongPressImagePreviewPatch {
             nativePostHeldOpen = true;
             nativePostOpenedAt = SystemClock.uptimeMillis();
             hidePreview();
-            if (!RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY)) {
+            if (!RedditComposeFocusBridge.clickPostUnitAt(root, rawX, rawY)) {
                 nativePostHeldOpen = false;
                 return false;
             }
-            FEED_HANDOFF_DONE = true;
-            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
             Log.i(LOG_TAG, "opened native reddit post via touch row");
             return true;
         } catch (Throwable throwable) {
@@ -1884,6 +1962,10 @@ public final class LongPressImagePreviewPatch {
     }
 
     private static void closeNativePostDetail(Activity activity) {
+        closeNativePostDetail(activity, true);
+    }
+
+    private static void closeNativePostDetail(Activity activity, boolean restoreFocus) {
         nativePostHeldOpen = false;
         touchNativePostHeld = false;
         int returnX = nativePostReturnX;
@@ -1895,7 +1977,9 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
         }
-        restorePostFocusWindow(activity, returnX, returnY);
+        if (restoreFocus) {
+            restorePostFocusWindow(activity, returnX, returnY);
+        }
     }
 
     private static boolean handleTextCardPreviewKey(Activity activity, KeyEvent event) {
