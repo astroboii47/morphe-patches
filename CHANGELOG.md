@@ -1,3 +1,9 @@
+## 1.36.0-dev.91 (2026-08-09)
+
+- Reddit: restore O/U return focus against the current resumed Reddit activity after Back, so it can return to the opened feed post instead of the top of the list.
+- Reddit: retry that return focus briefly, but cancel pending retries as soon as feed navigation resumes to avoid fighting K/I movement.
+- Reddit: remove the native M focus-clearing calls that could leave a full-screen focus highlight while holding M.
+
 ## 1.36.0-dev.90 (2026-08-09)
 
 - Reddit: revert the dev89 U close-button targeting that could jump into a subreddit instead of returning to the feed.

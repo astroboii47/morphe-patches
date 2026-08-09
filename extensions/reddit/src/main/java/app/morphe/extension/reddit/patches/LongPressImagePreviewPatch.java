@@ -87,6 +87,8 @@ public final class LongPressImagePreviewPatch {
     private static int nativePostReturnY = Integer.MIN_VALUE;
     private static boolean nativePostHeldOpen;
     private static long nativePostOpenedAt;
+    private static Activity currentActivity;
+    private static int postFocusRestoreGeneration;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -115,6 +117,7 @@ public final class LongPressImagePreviewPatch {
         }
 
         try {
+            currentActivity = activity;
             synchronized (ATTACHED_ACTIVITIES) {
                 if (ATTACHED_ACTIVITIES.contains(activity)) {
                     return;
@@ -430,6 +433,7 @@ public final class LongPressImagePreviewPatch {
 
                 @Override
                 public void onActivityResumed(Activity resumedActivity) {
+                    currentActivity = resumedActivity;
                     attach(resumedActivity);
                 }
 
@@ -447,6 +451,9 @@ public final class LongPressImagePreviewPatch {
 
                 @Override
                 public void onActivityDestroyed(Activity destroyedActivity) {
+                    if (currentActivity == destroyedActivity) {
+                        currentActivity = null;
+                    }
                 }
             });
         } catch (Throwable throwable) {
@@ -1576,6 +1583,24 @@ public final class LongPressImagePreviewPatch {
         MAIN_HANDLER.postDelayed(() -> RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY), delayMillis);
     }
 
+    private static void restorePostFocusWindow(Activity activity, int rawX, int rawY) {
+        if (activity == null || rawX == Integer.MIN_VALUE || rawY == Integer.MIN_VALUE) {
+            return;
+        }
+        final int generation = ++postFocusRestoreGeneration;
+        long[] delays = new long[]{220L, 420L, 720L, 1040L};
+        for (long delay : delays) {
+            MAIN_HANDLER.postDelayed(() -> {
+                if (generation != postFocusRestoreGeneration) {
+                    return;
+                }
+                Activity targetActivity = currentActivity != null ? currentActivity : activity;
+                View root = targetActivity.getWindow().getDecorView();
+                RedditComposeFocusBridge.focusPostUnitAt(root, rawX, rawY);
+            }, delay);
+        }
+    }
+
     private static void destroyWebViews(View view) {
         if (view instanceof WebView) {
             WebView webView = (WebView) view;
@@ -1652,11 +1677,10 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_U:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     FEED_HANDOFF_DONE = false;
-                    View returnRoot = nativePostReturnRoot;
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
                     activity.onBackPressed();
-                    restorePostFocusDelayed(returnRoot, returnX, returnY, 220L);
+                    restorePostFocusWindow(activity, returnX, returnY);
                 }
                 return true;
             case KeyEvent.KEYCODE_N:
@@ -1678,6 +1702,7 @@ public final class LongPressImagePreviewPatch {
             return true;
         }
 
+        postFocusRestoreGeneration++;
         View root = activity.getWindow().getDecorView();
         updatePreviewTargetY(root, mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1
                 : mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP ? -1 : 0);
@@ -1760,18 +1785,10 @@ public final class LongPressImagePreviewPatch {
             rememberNativePostReturn(root, rawX, rawY);
             nativePostHeldOpen = true;
             nativePostOpenedAt = SystemClock.uptimeMillis();
-            RedditComposeFocusBridge.clearCurrentFocus(root);
             hidePreview();
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
             activity.startActivity(intent);
-            root.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    RedditComposeFocusBridge.clearCurrentFocus(root);
-                    RedditComposeFocusBridge.clearComposeFocus(root);
-                }
-            }, 120L);
             Log.i(LOG_TAG, "opened native reddit post " + postUrl);
             return true;
         } catch (Throwable throwable) {
@@ -1795,7 +1812,6 @@ public final class LongPressImagePreviewPatch {
 
     private static void closeNativePostDetail(Activity activity) {
         nativePostHeldOpen = false;
-        View returnRoot = nativePostReturnRoot;
         int returnX = nativePostReturnX;
         int returnY = nativePostReturnY;
         Log.i(LOG_TAG, "closing native reddit post");
@@ -1804,7 +1820,7 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
         }
-        restorePostFocusDelayed(returnRoot, returnX, returnY, 220L);
+        restorePostFocusWindow(activity, returnX, returnY);
     }
 
     private static boolean handleTextCardPreviewKey(Activity activity, KeyEvent event) {
