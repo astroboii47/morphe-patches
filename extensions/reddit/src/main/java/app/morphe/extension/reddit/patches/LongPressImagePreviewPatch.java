@@ -1653,8 +1653,7 @@ public final class LongPressImagePreviewPatch {
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
                     activity.onBackPressed();
-                    restorePostFocusDelayed(returnRoot, returnX, returnY, 260L);
-                    restorePostFocusDelayed(returnRoot, returnX, returnY, 620L);
+                    restorePostFocusDelayed(returnRoot, returnX, returnY, 220L);
                 }
                 return true;
             case KeyEvent.KEYCODE_N:
@@ -1758,6 +1757,7 @@ public final class LongPressImagePreviewPatch {
             rememberNativePostReturn(root, rawX, rawY);
             nativePostHeldOpen = true;
             nativePostOpenedAt = SystemClock.uptimeMillis();
+            RedditComposeFocusBridge.clearCurrentFocus(root);
             hidePreview();
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
@@ -1787,10 +1787,7 @@ public final class LongPressImagePreviewPatch {
         } catch (Throwable throwable) {
             Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
         }
-        RedditComposeFocusBridge.sendSystemBackKey();
-        restorePostFocusDelayed(returnRoot, returnX, returnY, 260L);
-        restorePostFocusDelayed(returnRoot, returnX, returnY, 620L);
-        restorePostFocusDelayed(returnRoot, returnX, returnY, 980L);
+        restorePostFocusDelayed(returnRoot, returnX, returnY, 220L);
     }
 
     private static boolean handleTextCardPreviewKey(Activity activity, KeyEvent event) {

@@ -1,3 +1,8 @@
+## 1.36.0-dev.88 (2026-08-09)
+
+- Reddit: stop native M return from restoring the old feed row multiple times after release.
+- Reddit: clear current feed focus before opening native M previews to reduce the full-screen focus highlight.
+
 ## 1.36.0-dev.87 (2026-08-09)
 
 - Reddit: ignore the early synthetic M release that fires immediately after opening the native post view, so the real key release can close it.
