@@ -1387,7 +1387,7 @@ public final class RedditComposeFocusBridge {
 
     public static String preferVideoUrl(Object model, String fallback) {
         try {
-            String video = findVideoUrl(model, 0, new IdentityHashMap<Object, Boolean>());
+            String video = findBestVideoUrl(model);
             if (video != null && video.length() > 0) {
                 Log.w(TAG, "preferredVideoUrl " + summarizeUrl(video));
                 return video;
@@ -1915,7 +1915,7 @@ public final class RedditComposeFocusBridge {
                 if (!isDirectPlayableVideoUrl(url)) {
                     continue;
                 }
-                int score = 0;
+                int score = videoPreviewScore(url);
                 Object height = invokeNoArg(permutation, "getHeight");
                 if (height instanceof Number) {
                     score += ((Number) height).intValue() * 10;
@@ -1934,6 +1934,16 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "bestPlaybackMp4 failed", throwable);
             return null;
         }
+    }
+
+    private static String findBestVideoUrl(Object value) throws Exception {
+        String[] best = new String[] {null};
+        int[] bestScore = new int[] {Integer.MIN_VALUE};
+        collectVideoUrls(value, 0, new IdentityHashMap<Object, Boolean>(), best, bestScore);
+        if (best[0] != null) {
+            Log.w(TAG, "bestVideoUrl score=" + bestScore[0] + " " + summarizeUrl(best[0]));
+        }
+        return best[0];
     }
 
     public static WebView createMediaWebView(Context context, String url) {
@@ -2785,6 +2795,59 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    private static void collectVideoUrls(Object value, int depth, IdentityHashMap<Object, Boolean> seen, String[] best, int[] bestScore) throws Exception {
+        if (value == null || depth > 7) {
+            return;
+        }
+        if (value instanceof CharSequence) {
+            collectVideoUrlsFromText(value.toString(), best, bestScore);
+            return;
+        }
+        Class<?> type = value.getClass();
+        if (type.isPrimitive() || value instanceof Number || value instanceof Boolean || value instanceof Enum) {
+            return;
+        }
+        if (seen.containsKey(value)) {
+            return;
+        }
+        seen.put(value, Boolean.TRUE);
+
+        if (value instanceof Iterable) {
+            for (Object item : (Iterable<?>) value) {
+                collectVideoUrls(item, depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+        if (value instanceof Map) {
+            for (Object item : ((Map<?, ?>) value).values()) {
+                collectVideoUrls(item, depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+        if (type.isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                collectVideoUrls(java.lang.reflect.Array.get(value, i), depth + 1, seen, best, bestScore);
+            }
+            return;
+        }
+
+        collectVideoUrlsFromText(value.toString(), best, bestScore);
+
+        Class<?> current = type;
+        while (current != null && current != Object.class) {
+            Field[] fields = current.getDeclaredFields();
+            for (Field field : fields) {
+                try {
+                    field.setAccessible(true);
+                    collectVideoUrls(field.get(value), depth + 1, seen, best, bestScore);
+                } catch (Throwable ignored) {
+                }
+            }
+            current = current.getSuperclass();
+        }
+    }
+
     private static String findBestImageUrl(Object value) throws Exception {
         String[] best = new String[] {null};
         int[] bestScore = new int[] {Integer.MIN_VALUE};
@@ -3030,6 +3093,73 @@ public final class RedditComposeFocusBridge {
             }
         }
         return null;
+    }
+
+    private static void collectVideoUrlsFromText(String text, String[] best, int[] bestScore) {
+        if (text == null) {
+            return;
+        }
+        String[] markers = new String[] {"https://", "http://"};
+        for (String marker : markers) {
+            int start = text.indexOf(marker);
+            while (start >= 0) {
+                int end = start;
+                while (end < text.length()) {
+                    char ch = text.charAt(end);
+                    if (Character.isWhitespace(ch) || ch == ',' || ch == ')' || ch == ']' || ch == '"') {
+                        break;
+                    }
+                    end++;
+                }
+                String url = cleanMediaUrl(text.substring(start, end));
+                if (isDirectPlayableVideoUrl(url)) {
+                    int score = videoPreviewScore(url);
+                    if (score > bestScore[0]) {
+                        best[0] = url;
+                        bestScore[0] = score;
+                    }
+                }
+                start = text.indexOf(marker, end);
+            }
+        }
+    }
+
+    private static int videoPreviewScore(String url) {
+        if (url == null) {
+            return Integer.MIN_VALUE;
+        }
+        String lower = url.toLowerCase(Locale.US);
+        int score = 0;
+        if (lower.contains("v.redd.it")) {
+            score += 1000;
+        }
+        if (lower.contains(".mp4")) {
+            score += 500;
+        }
+        if (lower.contains(".m3u8") || lower.contains("hlsplaylist")) {
+            score += 250;
+        }
+        if (lower.contains("dashplaylist")) {
+            score += 100;
+        }
+        if (lower.contains("scrub") || lower.contains("preview") || lower.contains("thumbnail")) {
+            score -= 700;
+        }
+        Matcher height = Pattern.compile("(?i)(?:dash_|height=|h=)(\\d{3,4})").matcher(lower);
+        while (height.find()) {
+            try {
+                score += Integer.parseInt(height.group(1)) * 10;
+            } catch (Throwable ignored) {
+            }
+        }
+        Matcher bitrate = Pattern.compile("(?i)(?:bitrate|br|bps)[=_-]?(\\d{4,8})").matcher(lower);
+        while (bitrate.find()) {
+            try {
+                score += Integer.parseInt(bitrate.group(1)) / 1000;
+            } catch (Throwable ignored) {
+            }
+        }
+        return score + Math.min(url.length(), 500);
     }
 
     private static String extractImageUrlFromText(String text) {

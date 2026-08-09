@@ -82,6 +82,7 @@ public final class LongPressImagePreviewPatch {
     private static View nativePostReturnRoot;
     private static int nativePostReturnX = Integer.MIN_VALUE;
     private static int nativePostReturnY = Integer.MIN_VALUE;
+    private static boolean nativePostHeldOpen;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -642,6 +643,8 @@ public final class LongPressImagePreviewPatch {
             if (keyEvent.getAction() == KeyEvent.ACTION_UP
                     && (keyCode == KeyEvent.KEYCODE_P
                     || keyCode == KeyEvent.KEYCODE_M
+                    || keyCode == KeyEvent.KEYCODE_G
+                    || keyCode == KeyEvent.KEYCODE_T
                     || keyCode == KeyEvent.KEYCODE_BACK
                     || keyCode == KeyEvent.KEYCODE_ESCAPE)) {
                 hidePreview();
@@ -1587,6 +1590,10 @@ public final class LongPressImagePreviewPatch {
                 return handlePreviewKey(activity, event);
             case KeyEvent.KEYCODE_M:
                 return handlePostModalKey(activity, event);
+            case KeyEvent.KEYCODE_G:
+                return handleWebPostModalKey(activity, event);
+            case KeyEvent.KEYCODE_T:
+                return handleTextCardPreviewKey(activity, event);
             default:
                 return false;
         }
@@ -1632,7 +1639,11 @@ public final class LongPressImagePreviewPatch {
     private static boolean handlePostModalKey(Activity activity, KeyEvent event) {
         int action = event.getAction();
         if (action == KeyEvent.ACTION_UP) {
-            hidePreview(activity);
+            if (nativePostHeldOpen) {
+                closeNativePostDetail(activity);
+            } else {
+                hidePreview(activity);
+            }
             return true;
         }
         if (action != KeyEvent.ACTION_DOWN || activePreview != null) {
@@ -1668,6 +1679,7 @@ public final class LongPressImagePreviewPatch {
         }
         try {
             rememberNativePostReturn(root, rawX, rawY);
+            nativePostHeldOpen = true;
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(postUrl));
             intent.setPackage(activity.getPackageName());
             activity.startActivity(intent);
@@ -1683,6 +1695,133 @@ public final class LongPressImagePreviewPatch {
         nativePostReturnRoot = root;
         nativePostReturnX = rawX;
         nativePostReturnY = rawY;
+    }
+
+    private static void closeNativePostDetail(Activity activity) {
+        nativePostHeldOpen = false;
+        View returnRoot = nativePostReturnRoot;
+        int returnX = nativePostReturnX;
+        int returnY = nativePostReturnY;
+        try {
+            activity.onBackPressed();
+        } catch (Throwable throwable) {
+            Logger.printException(() -> "Failed to close native Reddit post detail", throwable);
+        }
+        restorePostFocusDelayed(returnRoot, returnX, returnY, 260L);
+        restorePostFocusDelayed(returnRoot, returnX, returnY, 620L);
+        restorePostFocusDelayed(returnRoot, returnX, returnY, 980L);
+    }
+
+    private static boolean handleTextCardPreviewKey(Activity activity, KeyEvent event) {
+        int action = event.getAction();
+        if (action == KeyEvent.ACTION_UP) {
+            hidePreview(activity);
+            return true;
+        }
+        if (action != KeyEvent.ACTION_DOWN || activePreview != null) {
+            return true;
+        }
+
+        View root = activity.getWindow().getDecorView();
+        int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+        if (point != null && showTextCardPreview(activity, root, point[0], point[1], true)) {
+            return true;
+        }
+
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        showTextCardPreview(
+                activity,
+                root,
+                location[0] + ((root.getWidth() * 3) / 4),
+                updatePreviewTargetY(root, 0),
+                false
+        );
+        return true;
+    }
+
+    private static boolean showTextCardPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {
+        try {
+            hidePreview();
+
+            View decorView = activity.getWindow().getDecorView();
+            if (!(decorView instanceof ViewGroup)) {
+                return false;
+            }
+
+            String textPreview = focusedOnly
+                    ? RedditComposeFocusBridge.getFocusedPostModelTextPreview(root)
+                    : RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+            if (focusedOnly && textPreview == null) {
+                textPreview = RedditComposeFocusBridge.getPostModelTextPreviewAt(root, rawX, rawY);
+            }
+            if (textPreview == null) {
+                textPreview = RedditComposeFocusBridge.getPostTextPreviewAt(root, rawX, rawY);
+            }
+            if (textPreview == null || textPreview.trim().length() == 0) {
+                textPreview = RedditComposeFocusBridge.getFocusedPostTextPreview(root);
+            }
+            if (textPreview == null || textPreview.trim().length() == 0) {
+                Log.i(LOG_TAG, "no selected post text for card");
+                return false;
+            }
+
+            ViewGroup decor = (ViewGroup) decorView;
+            FrameLayout overlay = new FrameLayout(activity);
+            overlay.setBackgroundColor(Color.argb(230, 0, 0, 0));
+            configurePreviewOverlay(overlay);
+
+            int horizontalPadding = Math.max(dp(root, 12), root.getWidth() / 30);
+            int verticalPadding = Math.max(dp(root, 12), root.getHeight() / 30);
+            overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
+
+            View textView = RedditComposeFocusBridge.createTextPreviewView(activity, textPreview);
+            attachPreviewDismissHandlers(textView);
+            overlay.addView(textView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    Gravity.CENTER
+            ));
+            decor.addView(overlay, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            activePreview = overlay;
+            rememberPreviewFocus(root, rawX, rawY);
+            overlay.requestFocus();
+            return true;
+        } catch (Throwable throwable) {
+            Logger.printException(() -> "Failed to show Reddit text card preview", throwable);
+            return false;
+        }
+    }
+
+    private static boolean handleWebPostModalKey(Activity activity, KeyEvent event) {
+        int action = event.getAction();
+        if (action == KeyEvent.ACTION_UP) {
+            hidePreview(activity);
+            return true;
+        }
+        if (action != KeyEvent.ACTION_DOWN || activePreview != null) {
+            return true;
+        }
+
+        View root = activity.getWindow().getDecorView();
+        int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
+        if (point != null && showPostEmbedPreview(activity, root, point[0], point[1], true)) {
+            return true;
+        }
+
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        showPostEmbedPreview(
+                activity,
+                root,
+                location[0] + ((root.getWidth() * 3) / 4),
+                updatePreviewTargetY(root, 0),
+                false
+        );
+        return true;
     }
 
     private static boolean showPostEmbedPreview(Activity activity, View root, int rawX, int rawY, boolean focusedOnly) {
