@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-09T02:43:41",
-  "description": "Fix Reddit post-open verifier crash and use redditmedia embed URLs for the M post modal.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.70/patches-1.36.0-dev.70.mpp",
+  "created_at": "2026-08-09T03:51:20",
+  "description": "Keep Reddit preview overlays in-app, improve video sizing, and make preview dismissal more reliable.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.71/patches-1.36.0-dev.71.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.70"
+  "version": "1.36.0-dev.71"
 }

@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manual edits can break releases and third party tools that use this file.",
-  "version": "1.36.0-dev.70",
+  "version": "1.36.0-dev.71",
   "patches": [
     {
       "name": "Add to queue",
