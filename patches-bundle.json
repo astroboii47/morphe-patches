@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-08T20:15:00",
-  "description": "Reddit v29 preview update with M post modal, full post Link cache hook, and stricter media icon filtering",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.69/patches-1.36.0-dev.69.mpp",
+  "created_at": "2026-08-09T02:43:41",
+  "description": "Fix Reddit post-open verifier crash and use redditmedia embed URLs for the M post modal.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.70/patches-1.36.0-dev.70.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.69"
+  "version": "1.36.0-dev.70"
 }
