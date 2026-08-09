@@ -436,14 +436,3 @@ internal object LinkJsonAdapterFromJsonFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC),
     parameters = listOf("Lcom/squareup/moshi/d;")
 )
-
-internal object FetchCommentLinkUseCaseExecuteFingerprint : Fingerprint(
-    definingClass = "Lcom/reddit/comments/usecases/b;",
-    name = "a",
-    returnType = "Ljava/lang/Object;",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
-    parameters = listOf(
-        "Lxb9;",
-        "Lkotlin/coroutines/jvm/internal/ContinuationImpl;"
-    )
-)

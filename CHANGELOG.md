@@ -1,3 +1,9 @@
+## 1.36.0-dev.86 (2026-08-09)
+
+- Reddit: make G web preview height track the loaded embed content without self-growing on short posts.
+- Reddit: keep M native-post hold mode from reopening/stealing repeat key events before release.
+- Reddit: remove the unused comments-usecase fingerprint tied to the old verifier crash path.
+
 ## 1.36.0-dev.85 (2026-08-09)
 
 - Reddit: make G web previews resize to the loaded embed content instead of using one fixed height for every post.

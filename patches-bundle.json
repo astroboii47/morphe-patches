@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-09T10:05:00",
-  "description": "## 1.36.0-dev.85 (2026-08-09)\n\n- Reddit: make G web previews resize to the loaded embed content instead of using one fixed height for every post.\n- Reddit: make M native close send a real Back key after release, matching the hardware release logs.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.85/patches-1.36.0-dev.85.mpp",
+  "description": "## 1.36.0-dev.86 (2026-08-09)\n\n- Reddit: make G web preview height track the loaded embed content without self-growing on short posts.\n- Reddit: keep M native-post hold mode from reopening/stealing repeat key events before release.\n- Reddit: remove the unused comments-usecase fingerprint tied to the old verifier crash path.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.86/patches-1.36.0-dev.86.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.85"
+  "version": "1.36.0-dev.86"
 }

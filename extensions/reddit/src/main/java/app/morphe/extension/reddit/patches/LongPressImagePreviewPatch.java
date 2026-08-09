@@ -1610,13 +1610,17 @@ public final class LongPressImagePreviewPatch {
         }
 
         int keyCode = event.getKeyCode();
-        if (event.getAction() == KeyEvent.ACTION_UP && nativePostHeldOpen) {
-            closeNativePostDetail(activity);
-            return true;
-        }
         int mappedKeyCode = keyCode;
         int direction = View.FOCUS_DOWN;
         switch (keyCode) {
+            case KeyEvent.KEYCODE_M:
+                if (nativePostHeldOpen) {
+                    if (event.getAction() == KeyEvent.ACTION_UP) {
+                        closeNativePostDetail(activity);
+                    }
+                    return true;
+                }
+                return handlePostModalKey(activity, event);
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_I:
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_UP;
@@ -1654,8 +1658,6 @@ public final class LongPressImagePreviewPatch {
                 return true;
             case KeyEvent.KEYCODE_P:
                 return handlePreviewKey(activity, event);
-            case KeyEvent.KEYCODE_M:
-                return handlePostModalKey(activity, event);
             case KeyEvent.KEYCODE_G:
                 return handleWebPostModalKey(activity, event);
             case KeyEvent.KEYCODE_T:
@@ -1981,7 +1983,7 @@ public final class LongPressImagePreviewPatch {
             int horizontalPadding = Math.max(dp(root, 10), root.getWidth() / 28);
             int verticalPadding = Math.max(dp(root, 10), root.getHeight() / 24);
             overlay.setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding);
-            int minModalHeight = Math.max(dp(root, 360), root.getHeight() / 3);
+            int minModalHeight = Math.max(dp(root, 220), root.getHeight() / 4);
             int maxModalHeight = root.getHeight() - (verticalPadding * 2);
             View modalView = RedditComposeFocusBridge.createPostEmbedView(
                     activity,

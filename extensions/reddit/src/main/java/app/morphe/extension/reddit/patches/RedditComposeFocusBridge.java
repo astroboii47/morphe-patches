@@ -2323,11 +2323,19 @@ public final class RedditComposeFocusBridge {
             return;
         }
         String script = "(function(){"
-                + "var b=document.body,d=document.documentElement;"
-                + "var h=Math.max("
-                + "b?b.scrollHeight:0,b?b.offsetHeight:0,b?b.clientHeight:0,"
-                + "d?d.scrollHeight:0,d?d.offsetHeight:0,d?d.clientHeight:0"
-                + ");"
+                + "var h=0,nodes=[];"
+                + "try{nodes=[].slice.call(document.body?document.body.querySelectorAll('*'):[]);}catch(e){}"
+                + "for(var i=0;i<nodes.length;i++){"
+                + "var n=nodes[i],tag=(n.tagName||'').toLowerCase();"
+                + "if(tag==='script'||tag==='style'||tag==='html'||tag==='body')continue;"
+                + "var r;try{r=n.getBoundingClientRect();}catch(e){continue;}"
+                + "if(!r||r.width<2||r.height<2)continue;"
+                + "if(r.height>window.innerHeight*0.92&&r.top<=2)continue;"
+                + "var text=(n.innerText||n.textContent||'').trim();"
+                + "if(!text&&tag!=='img'&&tag!=='video'&&tag!=='button'&&tag!=='a'&&tag!=='svg')continue;"
+                + "h=Math.max(h,r.bottom);"
+                + "}"
+                + "if(h<=0&&document.body)h=document.body.scrollHeight||0;"
                 + "return String(h);"
                 + "})()";
         try {
@@ -2339,7 +2347,7 @@ public final class RedditComposeFocusBridge {
                 if (measuredHeight <= 0) {
                     return;
                 }
-                int padding = Math.round(24.0f * frame.getResources().getDisplayMetrics().density);
+                int padding = Math.round(12.0f * frame.getResources().getDisplayMetrics().density);
                 int targetHeight = Math.max(minHeightPx, Math.min(maxHeightPx, measuredHeight + padding));
                 ViewGroup.LayoutParams params = frame.getLayoutParams();
                 if (params == null || params.height == targetHeight) {
