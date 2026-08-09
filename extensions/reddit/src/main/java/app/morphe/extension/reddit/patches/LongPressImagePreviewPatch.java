@@ -1664,7 +1664,8 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         int[] point = RedditComposeFocusBridge.getFocusedPostPreviewPoint(root);
         if (point != null) {
-            if (showPostEmbedPreview(activity, root, point[0], point[1], true)) {
+            String postUrl = RedditComposeFocusBridge.getFocusedPostEmbedUrl(root);
+            if (openNativePostDetail(activity, root, point[0], point[1], postUrl)) {
                 return true;
             }
         }
@@ -1673,7 +1674,16 @@ public final class LongPressImagePreviewPatch {
         root.getLocationOnScreen(location);
         int rawX = location[0] + ((root.getWidth() * 3) / 4);
         int rawY = updatePreviewTargetY(root, 0);
-        showPostEmbedPreview(activity, root, rawX, rawY, false);
+        String postUrl = RedditComposeFocusBridge.getPostEmbedUrlAt(root, rawX, rawY);
+        if (postUrl == null || postUrl.length() == 0) {
+            int[] postPoint = RedditComposeFocusBridge.getPostPreviewPointAt(root, rawX, rawY);
+            if (postPoint != null) {
+                postUrl = RedditComposeFocusBridge.getPostEmbedUrlAt(root, postPoint[0], postPoint[1]);
+                rawX = postPoint[0];
+                rawY = postPoint[1];
+            }
+        }
+        openNativePostDetail(activity, root, rawX, rawY, postUrl);
         return true;
     }
 

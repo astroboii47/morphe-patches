@@ -1,3 +1,9 @@
+## 1.36.0-dev.82 (2026-08-09)
+
+- Reddit: restore M to the native in-app post view instead of the web embed.
+- Reddit: close the native M post view on key release with the existing Back/return-focus path.
+- Reddit: restore G read-more expansion without Morphe CSS or text zoom injection.
+
 ## 1.36.0-dev.81 (2026-08-09)
 
 ## 1.0.0 (2026-08-08)

@@ -2265,11 +2265,13 @@ public final class RedditComposeFocusBridge {
             @Override
             public void onPageCommitVisible(WebView view, String loadedUrl) {
                 super.onPageCommitVisible(view, loadedUrl);
+                clickRedditEmbedReadMore(view);
             }
 
             @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
+                clickRedditEmbedReadMore(view);
             }
         });
         String embedUrl = redditPostEmbedUrl(url);
@@ -2280,6 +2282,35 @@ public final class RedditComposeFocusBridge {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
         return frame;
+    }
+
+    private static void clickRedditEmbedReadMore(WebView webView) {
+        if (webView == null) {
+            return;
+        }
+        String script = "(function(){"
+                + "function clickReadMore(){"
+                + "var all=document.querySelectorAll('button,a,span,div');"
+                + "for(var i=0;i<all.length;i++){"
+                + "var el=all[i];"
+                + "var text=(el.innerText||el.textContent||el.getAttribute('aria-label')||'').trim().toLowerCase();"
+                + "if(text==='read more'||text.indexOf('read more')===0){"
+                + "var target=el.closest('button,a')||el;"
+                + "target.click();"
+                + "return true;"
+                + "}"
+                + "}"
+                + "return false;"
+                + "}"
+                + "clickReadMore();"
+                + "setTimeout(clickReadMore,250);"
+                + "setTimeout(clickReadMore,750);"
+                + "})();";
+        try {
+            webView.evaluateJavascript(script, null);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "failed to click reddit embed read more", throwable);
+        }
     }
 
     public static View createTextPreviewView(Context context, String text) {
