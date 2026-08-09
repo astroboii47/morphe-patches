@@ -1269,6 +1269,28 @@ public final class RedditComposeFocusBridge {
         return isRedditPostUrl(url) ? url : null;
     }
 
+    private static String redditPostEmbedUrl(String postUrl) {
+        String normalized = normalizeRedditPostUrl(postUrl);
+        if (normalized == null || normalized.length() == 0) {
+            return null;
+        }
+        String lower = normalized.toLowerCase(Locale.US);
+        if (lower.contains("redd.it/") && !lower.contains("/comments/")) {
+            return normalized;
+        }
+        String embed = normalized
+                .replace("https://old.reddit.com/", "https://www.redditmedia.com/")
+                .replace("https://new.reddit.com/", "https://www.redditmedia.com/")
+                .replace("https://www.reddit.com/", "https://www.redditmedia.com/")
+                .replace("http://old.reddit.com/", "https://www.redditmedia.com/")
+                .replace("http://new.reddit.com/", "https://www.redditmedia.com/")
+                .replace("http://www.reddit.com/", "https://www.redditmedia.com/");
+        if (embed.indexOf('?') >= 0) {
+            return embed + "&ref_source=embed&ref=share&embed=true";
+        }
+        return embed + "?ref_source=embed&ref=share&embed=true";
+    }
+
     private static boolean isRedditPostUrl(String url) {
         if (url == null) {
             return false;
@@ -1932,7 +1954,9 @@ public final class RedditComposeFocusBridge {
         settings.setLoadsImagesAutomatically(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        webView.loadUrl(url);
+        String embedUrl = redditPostEmbedUrl(url);
+        Log.w(TAG, "postEmbed load " + summarizeUrl(embedUrl));
+        webView.loadUrl(embedUrl != null ? embedUrl : url);
         frame.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT

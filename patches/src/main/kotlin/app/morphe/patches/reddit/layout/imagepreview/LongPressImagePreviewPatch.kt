@@ -240,35 +240,6 @@ val longPressImagePreviewPatch = bytecodePatch(
             }
         }
 
-        runCatching {
-            FetchCommentLinkUseCaseExecuteFingerprint.method.apply {
-                val linkCast = implementation!!.instructions.mapIndexedNotNull { index, instruction ->
-                    if (
-                        instruction.opcode == Opcode.CHECK_CAST &&
-                        instruction is ReferenceInstruction &&
-                        instruction is OneRegisterInstruction &&
-                        instruction.reference.toString() == "Lcom/reddit/domain/model/Link;"
-                    ) {
-                        index to instruction.registerA
-                    } else {
-                        null
-                    }
-                }.firstOrNull()
-                check(linkCast != null) {
-                    "Could not find FetchCommentLinkUseCase full Link cast"
-                }
-
-                val (index, register) = linkCast
-                addInstructions(
-                    index + 1,
-                    """
-                        move-object/from16 v0, v$register
-                        invoke-static { v0 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->cacheLinkModel(Ljava/lang/Object;)V
-                    """
-                )
-            }
-        }
-
         AppCompatDispatchKeyEventFingerprint.method.addInstructionsWithLabels(
             0,
             """
