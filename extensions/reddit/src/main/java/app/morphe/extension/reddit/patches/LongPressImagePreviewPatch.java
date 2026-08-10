@@ -502,10 +502,15 @@ public final class LongPressImagePreviewPatch {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
-                activity.getWindow().getDecorView().postDelayed(
-                        RedditComposeFocusBridge::clearCommentSelectionIfDetached,
-                        120L
-                );
+                View touchRoot = activity.getWindow().getDecorView();
+                touchRoot.postDelayed(() -> {
+                    if (RedditComposeFocusBridge.isPostDetailScreen(touchRoot)) {
+                        RedditComposeFocusBridge.clearCommentSelectionIfDetached();
+                    } else {
+                        keyboardPostDetailOpen = false;
+                        RedditComposeFocusBridge.hideCommentFocusIndicator();
+                    }
+                }, 120L);
                 if (touchNativePostHeld && nativePostHeldOpen) {
                     touchNativePostHeld = false;
                     synchronized (TOUCH_STATES) {

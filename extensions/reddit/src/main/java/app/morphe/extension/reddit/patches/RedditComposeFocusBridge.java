@@ -530,15 +530,16 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean hasSelectedComment() {
-        return selectedCommentCompose.get() != null
-                && selectedCommentVirtualId != Integer.MIN_VALUE
+        return selectedCommentVirtualId != Integer.MIN_VALUE
                 && !selectedCommentBounds.isEmpty();
     }
 
     public static void clearCommentSelectionIfDetached() {
         View compose = selectedCommentCompose.get();
         if (compose == null || !compose.isAttachedToWindow() || !compose.isShown()) {
-            hideCommentFocusIndicator();
+            removeCommentFocusIndicatorView();
+            selectedCommentCompose.clear();
+            selectedCommentRetainedAfterToggle = false;
         }
     }
 
@@ -759,7 +760,7 @@ public final class RedditComposeFocusBridge {
                     continue;
                 }
                 Rect bounds = commentDisplayBounds(info);
-                if (bounds.isEmpty()) {
+                if (bounds.isEmpty() || bounds.height() < 40) {
                     continue;
                 }
                 int deltaY = bounds.centerY() - currentBounds.centerY();
@@ -852,7 +853,7 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     Rect bounds = commentDisplayBounds(info);
-                    if (bounds.isEmpty()) {
+                    if (bounds.isEmpty() || bounds.height() < 40) {
                         continue;
                     }
                     int deltaY = bounds.centerY() - selectedCommentBounds.centerY();
