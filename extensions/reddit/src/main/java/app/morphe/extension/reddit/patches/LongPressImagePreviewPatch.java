@@ -1875,7 +1875,6 @@ public final class LongPressImagePreviewPatch {
                 RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
                 redispatchFeedKey(activity, detailKeyCode);
             }
-            RedditComposeFocusBridge.suspendCommentFocusIndicator();
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {

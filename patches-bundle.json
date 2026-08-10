@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.118 (2026-08-11)\n\n- Reddit: recognize every native comment toggle label, including Show more and Show less, so keyboard navigation does not skip those comments.\n- Reddit: pair each native collapse/expand target with its full comment container for accurate highlighting and movement.\n- Reddit: retain native Compose scrolling, collapse/expand behavior, and oversized preview crash protection.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.118/patches-1.36.0-dev.118.mpp",
+  "description": "## 1.36.0-dev.119 (2026-08-11)\n\n- Reddit: keep the selected-comment highlight visible while native Compose scrolling and delayed re-selection run.\n- Reddit: prevent rapid keyboard navigation from cancelling a pending selection and leaving the comment highlight hidden.\n- Reddit: retain expanded native comment-action recognition and full-container targeting from dev118.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.119/patches-1.36.0-dev.119.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.118"
+  "version": "1.36.0-dev.119"
 }
