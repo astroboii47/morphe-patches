@@ -90,6 +90,7 @@ public final class LongPressImagePreviewPatch {
     private static long nativePostOpenedAt;
     private static Activity currentActivity;
     private static int postFocusRestoreGeneration;
+    private static int commentNavigationGeneration;
     private static boolean touchNativePostHeld;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
@@ -1837,12 +1838,16 @@ public final class LongPressImagePreviewPatch {
         if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
                 && (keyboardPostDetailOpen || RedditComposeFocusBridge.isPostDetailScreen(root))) {
             final int detailKeyCode = mappedKeyCode;
+            final int navigationGeneration = ++commentNavigationGeneration;
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
             redispatchFeedKey(activity, detailKeyCode);
             RedditComposeFocusBridge.updateCommentFocusIndicator(root);
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
+                    if (navigationGeneration != commentNavigationGeneration) {
+                        return;
+                    }
                     if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
                         redispatchFeedKey(activity, detailKeyCode);
                     }

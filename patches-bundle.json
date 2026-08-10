@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.110 (2026-08-10)\n\n- Reddit: keep Reddit's native comment focus chain instead of automatically skipping three-dot controls.\n- Reddit: bind the comment tint and O action to the exact same Compose comment target.\n- Reddit: update the tint immediately after native keyboard navigation.\n- Reddit: preserve the replacement comment target after Collapse or Expand changes its Compose node ID.\n- Reddit: leave P preview behavior unchanged.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.110/patches-1.36.0-dev.110.mpp",
+  "description": "## 1.36.0-dev.111 (2026-08-10)\n\n- Reddit: resolve comment focus only from Android's active Compose host, avoiding stale targets from older post layers.\n- Reddit: refresh the live comment target when O is pressed so the tint and collapsed comment stay aligned.\n- Reddit: discard delayed indicator updates from older rapid keyboard presses.\n- Reddit: stop treating words such as profile or options inside post and comment content as navigation chrome.\n- Reddit: leave P preview behavior unchanged.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.111/patches-1.36.0-dev.111.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.110"
+  "version": "1.36.0-dev.111"
 }

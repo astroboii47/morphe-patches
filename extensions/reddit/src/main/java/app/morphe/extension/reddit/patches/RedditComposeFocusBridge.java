@@ -526,7 +526,7 @@ public final class RedditComposeFocusBridge {
     private static CommentFocusTarget findFocusedCommentTarget(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
-            collectComposeViews(root, composeViews);
+            collectActiveComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 AccessibilityNodeProvider provider = composeViews.get(i).getAccessibilityNodeProvider();
                 if (provider == null) {
@@ -585,6 +585,12 @@ public final class RedditComposeFocusBridge {
 
     public static boolean clickFocusedCommentContainer(View root) {
         try {
+            CommentFocusTarget liveTarget = findFocusedCommentTarget(root);
+            if (liveTarget != null) {
+                selectedCommentCompose = new WeakReference<View>(liveTarget.compose);
+                selectedCommentVirtualId = liveTarget.virtualId;
+                showCommentFocusIndicator(root, liveTarget.bounds);
+            }
             View selectedCompose = selectedCommentCompose.get();
             if (selectedCompose != null && selectedCommentVirtualId != Integer.MIN_VALUE) {
                 AccessibilityNodeProvider selectedProvider = selectedCompose.getAccessibilityNodeProvider();
@@ -614,7 +620,7 @@ public final class RedditComposeFocusBridge {
                 }
             }
             ArrayList<View> composeViews = new ArrayList<View>();
-            collectComposeViews(root, composeViews);
+            collectActiveComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View compose = composeViews.get(i);
                 AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
@@ -677,7 +683,7 @@ public final class RedditComposeFocusBridge {
     private static int getFocusedCommentRelation(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
-            collectComposeViews(root, composeViews);
+            collectActiveComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 AccessibilityNodeProvider provider = composeViews.get(i).getAccessibilityNodeProvider();
                 if (provider == null) {
@@ -4939,7 +4945,7 @@ public final class RedditComposeFocusBridge {
     private static String getFocusedComposeNodeText(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
-            collectComposeViews(root, composeViews);
+            collectActiveComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View compose = composeViews.get(i);
                 AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
@@ -5016,17 +5022,13 @@ public final class RedditComposeFocusBridge {
                 || lower.equals("close")
                 || lower.equals("back")
                 || lower.equals("navigate up")
-                || lower.contains("close")
-                || lower.contains("back")
-                || lower.contains("menu")
                 || lower.equals("more")
-                || lower.contains("more options")
-                || lower.contains("more actions")
-                || lower.contains("overflow")
-                || lower.contains("options")
-                || lower.contains("home")
-                || lower.contains("search")
-                || lower.contains("profile");
+                || lower.equals("more options")
+                || lower.equals("more actions")
+                || lower.equals("overflow menu")
+                || lower.equals("home")
+                || lower.equals("search")
+                || lower.equals("profile");
     }
 
     private static String readableViewText(View view) {
@@ -5324,5 +5326,19 @@ public final class RedditComposeFocusBridge {
         for (int i = 0; i < group.getChildCount(); i++) {
             collectComposeViews(group.getChildAt(i), out);
         }
+    }
+
+    private static void collectActiveComposeViews(View root, List<View> out) {
+        View focused = root == null ? null : root.findFocus();
+        View current = focused;
+        while (current != null) {
+            if ("androidx.compose.ui.platform.c".equals(current.getClass().getName())) {
+                out.add(current);
+                return;
+            }
+            Object parent = current.getParent();
+            current = parent instanceof View ? (View) parent : null;
+        }
+        collectComposeViews(root, out);
     }
 }
