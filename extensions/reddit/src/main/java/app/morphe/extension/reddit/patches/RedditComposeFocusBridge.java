@@ -416,6 +416,66 @@ public final class RedditComposeFocusBridge {
         return clickCommentJumpButton(root, "next comment", "nextComment");
     }
 
+    public static boolean isPostDetailScreen(View root) {
+        return hasCommentJumpButton(root);
+    }
+
+    public static boolean preparePostDetailCommentNavigation(View root) {
+        try {
+            String focusedComposeText = getFocusedComposeNodeText(root);
+            if (focusedComposeText.length() > 0 && looksLikePostChromeFocus(focusedComposeText)) {
+                clearComposeFocus(root);
+                Log.w(TAG, "postDetailCommentNav cleared compose chrome focus text=\"" + summarizeText(focusedComposeText) + "\"");
+                return true;
+            }
+
+            View focused = root == null ? null : root.findFocus();
+            String focusedViewText = focused == null ? "" : readableViewText(focused);
+            if (focused == null || (focusedViewText.length() > 0 && looksLikePostChromeFocus(focusedViewText))) {
+                clearCurrentFocus(root);
+                Log.w(TAG, "postDetailCommentNav cleared view chrome focus text=\"" + summarizeText(focusedViewText) + "\"");
+                return true;
+            }
+
+            Log.w(TAG, "postDetailCommentNav kept focus text=\"" + summarizeText(focusedComposeText.length() > 0 ? focusedComposeText : focusedViewText) + "\"");
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "postDetailCommentNav failed", throwable);
+            return false;
+        }
+    }
+
+    private static boolean hasCommentJumpButton(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate != null && hasComposeNodeMatching(compose.getClass().getClassLoader(), provider, delegate, "next comment")) {
+                    Log.w(TAG, "postDetail detected next comment index=" + i);
+                    return true;
+                }
+            }
+
+            AccessibilityNodeInfo info = root == null ? null : root.createAccessibilityNodeInfo();
+            if (info == null) {
+                return false;
+            }
+            sealNode(info);
+            boolean found = hasMatchingNode(info, "next comment");
+            Log.w(TAG, "postDetail root next comment=" + found);
+            return found;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "postDetail detection failed", throwable);
+            return false;
+        }
+    }
+
     private static boolean clickCommentJumpButton(View root, String label, String logPrefix) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -4058,6 +4118,33 @@ public final class RedditComposeFocusBridge {
         return false;
     }
 
+    private static boolean hasMatchingNode(AccessibilityNodeInfo node, String needle) {
+        if (node == null) {
+            return false;
+        }
+        String text = readableText(node).toLowerCase(Locale.US);
+        if (text.contains(needle)) {
+            return true;
+        }
+
+        int count = node.getChildCount();
+        for (int i = 0; i < count; i++) {
+            AccessibilityNodeInfo child = null;
+            try {
+                child = node.getChild(i);
+            } catch (Throwable ignored) {
+            }
+            if (child == null) {
+                continue;
+            }
+            sealNode(child);
+            if (hasMatchingNode(child, needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean clickComposeNodeMatching(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate, String needle) throws Exception {
         Object accessibilityDelegate = readField(delegate, "i");
         if (accessibilityDelegate == null) {
@@ -4104,6 +4191,149 @@ public final class RedditComposeFocusBridge {
             }
         }
         return false;
+    }
+
+    private static boolean hasComposeNodeMatching(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate, String needle) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return false;
+        }
+
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return false;
+        }
+
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object id = readField(node, "f");
+            if (!(id instanceof Integer)) {
+                continue;
+            }
+            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(((Integer) id).intValue());
+            if (info == null) {
+                continue;
+            }
+            sealNode(info);
+            String text = readableText(info).toLowerCase(Locale.US);
+            if (text.contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String getFocusedComposeNodeText(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate == null) {
+                    continue;
+                }
+                String text = getFocusedComposeNodeText(compose.getClass().getClassLoader(), provider, delegate);
+                if (text.length() > 0) {
+                    return text;
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focused compose text failed", throwable);
+        }
+        return "";
+    }
+
+    private static String getFocusedComposeNodeText(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return "";
+        }
+
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return "";
+        }
+
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object id = readField(node, "f");
+            if (!(id instanceof Integer)) {
+                continue;
+            }
+            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(((Integer) id).intValue());
+            if (info == null) {
+                continue;
+            }
+            sealNode(info);
+            if (info.isFocused()) {
+                return readableText(info);
+            }
+        }
+        return "";
+    }
+
+    private static boolean looksLikePostChromeFocus(String text) {
+        String lower = normalizeWhitespace(text).toLowerCase(Locale.US);
+        return lower.length() == 0
+                || lower.equals("close")
+                || lower.equals("back")
+                || lower.equals("navigate up")
+                || lower.contains("close")
+                || lower.contains("back")
+                || lower.contains("menu")
+                || lower.contains("home")
+                || lower.contains("search")
+                || lower.contains("profile");
+    }
+
+    private static String readableViewText(View view) {
+        if (view == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        CharSequence description = view.getContentDescription();
+        if (description != null) {
+            builder.append(description);
+        }
+        if (view instanceof TextView) {
+            CharSequence text = ((TextView) view).getText();
+            if (text != null) {
+                if (builder.length() > 0) {
+                    builder.append('\n');
+                }
+                builder.append(text);
+            }
+        }
+        return builder.toString().trim();
     }
 
     private static String readableText(AccessibilityNodeInfo info) {

@@ -1,3 +1,7 @@
+## 1.36.0-dev.96 (2026-08-10)
+
+- Reddit: make K/Down inside post detail move through comment content instead of getting trapped on the close button.
+
 ## 1.36.0-dev.95 (2026-08-10)
 
 - Reddit: make touch long-press choose media preview only when the finger is on the media surface; post body long-press opens the native post.
