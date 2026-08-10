@@ -720,8 +720,13 @@ public final class RedditComposeFocusBridge {
                 if (provider == null) {
                     continue;
                 }
+                boolean establishedFocus = false;
                 if (compose == selectedCompose && previousId != Integer.MIN_VALUE) {
-                    provider.performAction(previousId, AccessibilityNodeInfo.ACTION_FOCUS, null);
+                    establishedFocus = provider.performAction(
+                            previousId,
+                            AccessibilityNodeInfo.ACTION_FOCUS,
+                            null
+                    );
                 }
                 Method getFocusOwner = compose.getClass().getMethod("getFocusOwner");
                 Object owner = getFocusOwner.invoke(compose);
@@ -731,7 +736,20 @@ public final class RedditComposeFocusBridge {
                 Method nativeMove = owner.getClass().getDeclaredMethod("j", int.class, boolean.class);
                 nativeMove.setAccessible(true);
                 for (int step = 0; step < 16; step++) {
-                    if (!Boolean.TRUE.equals(nativeMove.invoke(owner, composeDirection, Boolean.TRUE))) {
+                    boolean moved;
+                    if (step == 0 && !establishedFocus && !selectedCommentBounds.isEmpty()) {
+                        moved = focusFromCommentBoundsNatively(
+                                compose,
+                                owner,
+                                composeDirection,
+                                selectedCommentBounds
+                        );
+                    } else {
+                        moved = Boolean.TRUE.equals(
+                                nativeMove.invoke(owner, composeDirection, Boolean.TRUE)
+                        );
+                    }
+                    if (!moved) {
                         break;
                     }
                     CommentFocusTarget target = findFocusedCommentTarget(root);
@@ -755,6 +773,71 @@ public final class RedditComposeFocusBridge {
             return false;
         } catch (Throwable throwable) {
             Log.w(TAG, "selectedComment native move failed", throwable);
+            return false;
+        }
+    }
+
+    private static boolean focusFromCommentBoundsNatively(
+            View compose,
+            Object owner,
+            final int direction,
+            Rect screenBounds
+    ) {
+        try {
+            ClassLoader loader = compose.getClass().getClassLoader();
+            Class<?> rectClass = loader.loadClass("h650");
+            Constructor<?> rectConstructor = rectClass.getDeclaredConstructor(
+                    float.class,
+                    float.class,
+                    float.class,
+                    float.class
+            );
+            rectConstructor.setAccessible(true);
+            int[] composeLocation = new int[2];
+            compose.getLocationOnScreen(composeLocation);
+            float left = screenBounds.left - composeLocation[0];
+            float top = screenBounds.top - composeLocation[1];
+            float right = screenBounds.right - composeLocation[0];
+            float bottom = screenBounds.bottom - composeLocation[1];
+            Object sourceRect = rectConstructor.newInstance(left, top, right, bottom);
+
+            Class<?> functionClass = loader.loadClass("kotlin.jvm.functions.Function1");
+            Object requestFocusCallback = Proxy.newProxyInstance(
+                    functionClass.getClassLoader(),
+                    new Class<?>[]{functionClass},
+                    new InvocationHandler() {
+                        @Override
+                        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                            if (!"invoke".equals(method.getName())
+                                    || args == null
+                                    || args.length == 0
+                                    || args[0] == null) {
+                                return Boolean.FALSE;
+                            }
+                            Method requestFocus = args[0].getClass().getDeclaredMethod("z1", int.class);
+                            requestFocus.setAccessible(true);
+                            return Boolean.valueOf(Boolean.TRUE.equals(
+                                    requestFocus.invoke(args[0], direction)
+                            ));
+                        }
+                    }
+            );
+            Method focusSearch = owner.getClass().getDeclaredMethod(
+                    "h",
+                    int.class,
+                    rectClass,
+                    functionClass
+            );
+            focusSearch.setAccessible(true);
+            boolean moved = Boolean.TRUE.equals(
+                    focusSearch.invoke(owner, direction, sourceRect, requestFocusCallback)
+            );
+            Log.w(TAG, "comment native focus entry direction=" + direction
+                    + " moved=" + moved
+                    + " bounds=" + screenBounds);
+            return moved;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "comment native focus entry failed", throwable);
             return false;
         }
     }

@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.126 (2026-08-11)\n\n- Reddit: move between comments through Compose's native directional focus traversal instead of sorting comments by virtual IDs or coordinates.\n- Reddit: treat controls within one comment as a single logical stop while preserving Reddit's native focus behavior.\n- Reddit: retain dev125's navigation-anchor preservation and use visible bounds only to recover after Compose recycles a scrolled page.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.126/patches-1.36.0-dev.126.mpp",
+  "description": "## 1.36.0-dev.127 (2026-08-11)\n\n- Reddit: enter native Compose focus search from the selected comment's bounds when its semantics container is not keyboard-focusable.\n- Reddit: prevent every comment keypress from falling through to page scrolling when native focus has no current child.\n- Reddit: retain native directional traversal and resolve its focused child back to the owning comment.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.127/patches-1.36.0-dev.127.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.126"
+  "version": "1.36.0-dev.127"
 }
