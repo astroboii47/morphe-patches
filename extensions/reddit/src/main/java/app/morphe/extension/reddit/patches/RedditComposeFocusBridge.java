@@ -64,6 +64,7 @@ public final class RedditComposeFocusBridge {
     private static WeakReference<View> commentFocusIndicator = new WeakReference<View>(null);
     private static WeakReference<View> selectedCommentCompose = new WeakReference<View>(null);
     private static int selectedCommentVirtualId = Integer.MIN_VALUE;
+    private static final Rect selectedCommentBounds = new Rect();
     private static boolean selectedCommentRetainedAfterToggle;
 
     private RedditComposeFocusBridge() {}
@@ -478,6 +479,7 @@ public final class RedditComposeFocusBridge {
         }
         selectedCommentCompose = new WeakReference<View>(target.compose);
         selectedCommentVirtualId = target.virtualId;
+        selectedCommentBounds.set(target.bounds);
         selectedCommentRetainedAfterToggle = false;
         showCommentFocusIndicator(root, target.bounds);
     }
@@ -519,6 +521,7 @@ public final class RedditComposeFocusBridge {
         removeCommentFocusIndicatorView();
         selectedCommentCompose.clear();
         selectedCommentVirtualId = Integer.MIN_VALUE;
+        selectedCommentBounds.setEmpty();
         selectedCommentRetainedAfterToggle = false;
     }
 
@@ -627,6 +630,7 @@ public final class RedditComposeFocusBridge {
                 if (liveTarget != null) {
                     selectedCommentCompose = new WeakReference<View>(liveTarget.compose);
                     selectedCommentVirtualId = liveTarget.virtualId;
+                    selectedCommentBounds.set(liveTarget.bounds);
                     showCommentFocusIndicator(root, liveTarget.bounds);
                 }
             }
@@ -762,6 +766,7 @@ public final class RedditComposeFocusBridge {
             clearComposeFocus(compose);
             selectedCommentCompose = new WeakReference<View>(compose);
             selectedCommentVirtualId = bestId;
+            selectedCommentBounds.set(bestBounds);
             selectedCommentRetainedAfterToggle = false;
             showCommentFocusIndicator(root, bestBounds);
             Log.w(TAG, "selectedComment moved direction=" + direction
@@ -813,10 +818,6 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
-                    if (candidateCompose == selectedCommentCompose.get()
-                            && id == selectedCommentVirtualId) {
-                        continue;
-                    }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
                     if (info == null) {
                         continue;
@@ -828,6 +829,12 @@ public final class RedditComposeFocusBridge {
                     Rect bounds = new Rect();
                     info.getBoundsInScreen(bounds);
                     if (bounds.isEmpty() || bounds.bottom <= visibleTop || bounds.top >= visibleBottom) {
+                        continue;
+                    }
+                    if (id == selectedCommentVirtualId
+                            && !selectedCommentBounds.isEmpty()
+                            && Math.abs(bounds.centerX() - selectedCommentBounds.centerX()) <= 24
+                            && Math.abs(bounds.centerY() - selectedCommentBounds.centerY()) <= 24) {
                         continue;
                     }
                     if (bestBounds == null
@@ -849,6 +856,7 @@ public final class RedditComposeFocusBridge {
             clearComposeFocus(bestCompose);
             selectedCommentCompose = new WeakReference<View>(bestCompose);
             selectedCommentVirtualId = bestId;
+            selectedCommentBounds.set(bestBounds);
             selectedCommentRetainedAfterToggle = false;
             showCommentFocusIndicator(root, bestBounds);
             Log.w(TAG, "selectedComment entered boundary direction=" + direction
@@ -1120,6 +1128,7 @@ public final class RedditComposeFocusBridge {
         }
         selectedCommentCompose = new WeakReference<View>(compose);
         selectedCommentVirtualId = bestId;
+        selectedCommentBounds.set(replacementBounds);
         selectedCommentRetainedAfterToggle = true;
         clearComposeFocus(compose);
         showCommentFocusIndicator(compose.getRootView(), replacementBounds);
