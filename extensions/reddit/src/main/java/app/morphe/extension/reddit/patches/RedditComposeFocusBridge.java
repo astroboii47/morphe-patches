@@ -529,6 +529,12 @@ public final class RedditComposeFocusBridge {
         removeCommentFocusIndicatorView();
     }
 
+    public static boolean hasSelectedComment() {
+        return selectedCommentCompose.get() != null
+                && selectedCommentVirtualId != Integer.MIN_VALUE
+                && !selectedCommentBounds.isEmpty();
+    }
+
     public static void clearCommentSelectionIfDetached() {
         View compose = selectedCommentCompose.get();
         if (compose == null || !compose.isAttachedToWindow() || !compose.isShown()) {
@@ -740,6 +746,10 @@ public final class RedditComposeFocusBridge {
                 if (id == selectedCommentVirtualId) {
                     continue;
                 }
+                if ((direction > 0 && id <= selectedCommentVirtualId)
+                        || (direction < 0 && id >= selectedCommentVirtualId)) {
+                    continue;
+                }
                 AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
                 if (info == null) {
                     continue;
@@ -828,6 +838,12 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
+                    View selectedComposeView = selectedCommentCompose.get();
+                    if (candidateCompose == selectedComposeView
+                            && ((direction > 0 && id <= selectedCommentVirtualId)
+                            || (direction < 0 && id >= selectedCommentVirtualId))) {
+                        continue;
+                    }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
                     if (info == null) {
                         continue;
@@ -916,6 +932,12 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
+                    View selectedComposeView = selectedCommentCompose.get();
+                    if (candidateCompose == selectedComposeView
+                            && ((direction > 0 && id <= selectedCommentVirtualId)
+                            || (direction < 0 && id >= selectedCommentVirtualId))) {
+                        continue;
+                    }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
                     if (info == null) {
                         continue;
@@ -925,7 +947,10 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     Rect bounds = commentDisplayBounds(info);
-                    if (bounds.isEmpty() || bounds.bottom <= visibleTop || bounds.top >= visibleBottom) {
+                    if (bounds.isEmpty()
+                            || bounds.height() < 40
+                            || bounds.bottom <= visibleTop
+                            || bounds.top >= visibleBottom) {
                         continue;
                     }
                     if (id == selectedCommentVirtualId

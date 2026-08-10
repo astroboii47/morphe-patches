@@ -1886,8 +1886,10 @@ public final class LongPressImagePreviewPatch {
                 RedditComposeFocusBridge.suspendCommentFocusIndicator();
             }
             if (!nativeCommentScroll) {
-                RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
-                redispatchFeedKey(activity, detailKeyCode);
+                if (!RedditComposeFocusBridge.hasSelectedComment()) {
+                    RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
+                    redispatchFeedKey(activity, detailKeyCode);
+                }
             }
             root.postDelayed(new Runnable() {
                 @Override
