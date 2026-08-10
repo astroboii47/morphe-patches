@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.122 (2026-08-11)\n\n- Reddit: enforce native comment-tree order so K cannot jump backward to an older child comment and I cannot jump forward.\n- Reddit: reject clipped off-screen comment fragments as navigation targets.\n- Reddit: once comment navigation starts, keep failed boundary presses out of Reddit's unrelated focus controls.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.122/patches-1.36.0-dev.122.mpp",
+  "description": "## 1.36.0-dev.123 (2026-08-11)\n\n- Reddit: apply ordered comment IDs across every Compose host, eliminating remaining cross-host backward jumps while moving down.\n- Reddit: choose the nearest comment-tree neighbor before considering screen distance, including after native scrolling and at boundaries.\n- Reddit: retain clipped-target rejection and isolated comment focus behavior from dev122.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.123/patches-1.36.0-dev.123.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.122"
+  "version": "1.36.0-dev.123"
 }

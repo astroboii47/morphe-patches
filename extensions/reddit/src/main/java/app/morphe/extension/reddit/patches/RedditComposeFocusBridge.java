@@ -766,7 +766,8 @@ public final class RedditComposeFocusBridge {
                 if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
                     continue;
                 }
-                long score = Math.abs((long) deltaY) * 10000L
+                long score = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
+                        + Math.abs((long) deltaY) * 1000L
                         + Math.abs((long) bounds.left - currentBounds.left);
                 if (score < bestScore) {
                     bestScore = score;
@@ -838,10 +839,8 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
-                    View selectedComposeView = selectedCommentCompose.get();
-                    if (candidateCompose == selectedComposeView
-                            && ((direction > 0 && id <= selectedCommentVirtualId)
-                            || (direction < 0 && id >= selectedCommentVirtualId))) {
+                    if ((direction > 0 && id <= selectedCommentVirtualId)
+                            || (direction < 0 && id >= selectedCommentVirtualId)) {
                         continue;
                     }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
@@ -860,7 +859,8 @@ public final class RedditComposeFocusBridge {
                     if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
                         continue;
                     }
-                    long score = Math.abs((long) deltaY) * 10000L
+                    long score = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
+                            + Math.abs((long) deltaY) * 1000L
                             + Math.abs((long) bounds.left - selectedCommentBounds.left);
                     if (score < bestScore) {
                         bestScore = score;
@@ -906,6 +906,7 @@ public final class RedditComposeFocusBridge {
             View bestCompose = null;
             int bestId = Integer.MIN_VALUE;
             Rect bestBounds = null;
+            long bestOrderScore = Long.MAX_VALUE;
 
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View candidateCompose = composeViews.get(i);
@@ -932,10 +933,8 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
-                    View selectedComposeView = selectedCommentCompose.get();
-                    if (candidateCompose == selectedComposeView
-                            && ((direction > 0 && id <= selectedCommentVirtualId)
-                            || (direction < 0 && id >= selectedCommentVirtualId))) {
+                    if ((direction > 0 && id <= selectedCommentVirtualId)
+                            || (direction < 0 && id >= selectedCommentVirtualId)) {
                         continue;
                     }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
@@ -959,12 +958,20 @@ public final class RedditComposeFocusBridge {
                             && Math.abs(bounds.centerY() - selectedCommentBounds.centerY()) <= 24) {
                         continue;
                     }
-                    if (bestBounds == null
-                            || (direction > 0 && bounds.top < bestBounds.top)
-                            || (direction < 0 && bounds.bottom > bestBounds.bottom)) {
+                    long orderScore;
+                    if (selectedCommentVirtualId != Integer.MIN_VALUE) {
+                        orderScore = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
+                                + (direction > 0 ? bounds.top : visibleBottom - bounds.bottom);
+                    } else {
+                        orderScore = direction > 0
+                                ? bounds.top - visibleTop
+                                : visibleBottom - bounds.bottom;
+                    }
+                    if (bestBounds == null || orderScore < bestOrderScore) {
                         bestCompose = candidateCompose;
                         bestId = id;
                         bestBounds = new Rect(bounds);
+                        bestOrderScore = orderScore;
                     }
                 }
             }
