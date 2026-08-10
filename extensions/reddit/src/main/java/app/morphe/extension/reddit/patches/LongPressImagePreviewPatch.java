@@ -1789,9 +1789,7 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_O:
                 if (RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        if (!RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView())) {
-                            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
-                        }
+                        RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
                     }
                     return true;
                 }
@@ -1830,15 +1828,15 @@ public final class LongPressImagePreviewPatch {
 
         postFocusRestoreGeneration++;
         View root = activity.getWindow().getDecorView();
-        if (mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN
+        if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
                 && RedditComposeFocusBridge.isPostDetailScreen(root)) {
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
-            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+            redispatchFeedKey(activity, mappedKeyCode);
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
-                        redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_DOWN);
+                        redispatchFeedKey(activity, mappedKeyCode);
                     }
                 }
             }, 40L);

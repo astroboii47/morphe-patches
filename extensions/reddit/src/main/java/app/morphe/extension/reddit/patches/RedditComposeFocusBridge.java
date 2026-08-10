@@ -4186,6 +4186,7 @@ public final class RedditComposeFocusBridge {
             if (node == null) {
                 continue;
             }
+            Object config = readField(node, "d");
             Object idObject = readField(node, "f");
             if (!(idObject instanceof Integer)) {
                 continue;
@@ -4204,6 +4205,9 @@ public final class RedditComposeFocusBridge {
             String text = readableTreeText(provider, info, 0);
             if (text.length() == 0) {
                 text = readableText(info);
+            }
+            if (text.length() == 0) {
+                text = readableSemanticsText(loader, config);
             }
             if (info.isFocused()) {
                 focusedId = Integer.valueOf(id);
@@ -4353,6 +4357,7 @@ public final class RedditComposeFocusBridge {
             if (node == null) {
                 continue;
             }
+            Object config = readField(node, "d");
             Object id = readField(node, "f");
             if (!(id instanceof Integer)) {
                 continue;
@@ -4478,7 +4483,14 @@ public final class RedditComposeFocusBridge {
             }
             sealNode(info);
             if (info.isFocused()) {
-                return readableText(info);
+                String text = readableText(info);
+                if (text.length() == 0) {
+                    text = readableTreeText(provider, info, 0);
+                }
+                if (text.length() == 0) {
+                    text = readableSemanticsText(loader, config);
+                }
+                return text;
             }
         }
         return "";

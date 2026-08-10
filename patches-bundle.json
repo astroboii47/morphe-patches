@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-09T10:05:00",
-  "description": "## 1.36.0-dev.98 (2026-08-10)\n\n- Reddit: make O inside post detail click the focused comment container instead of author/profile/menu child nodes.\n- Reddit: narrow comment navigation chrome skipping so real comment text is less likely to be treated as a menu item.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.98/patches-1.36.0-dev.98.mpp",
+  "description": "## 1.36.0-dev.99 (2026-08-10)\n\n- Reddit: read Compose semantics text when finding the focused comment so O can target comments more reliably.\n- Reddit: prevent O in post detail from falling back to profile/menu activation when no comment container is found.\n- Reddit: apply post-detail focus cleanup to I/Up as well as K/Down after comment interactions.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.99/patches-1.36.0-dev.99.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.98"
+  "version": "1.36.0-dev.99"
 }

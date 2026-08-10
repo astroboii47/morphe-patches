@@ -1,3 +1,9 @@
+## 1.36.0-dev.99 (2026-08-10)
+
+- Reddit: read Compose semantics text when finding the focused comment so O can target comments more reliably.
+- Reddit: prevent O in post detail from falling back to profile/menu activation when no comment container is found.
+- Reddit: apply post-detail focus cleanup to I/Up as well as K/Down after comment interactions.
+
 ## 1.36.0-dev.98 (2026-08-10)
 
 - Reddit: make O inside post detail click the focused comment container instead of author/profile/menu child nodes.
