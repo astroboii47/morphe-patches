@@ -5806,12 +5806,20 @@ public final class RedditComposeFocusBridge {
         View current = focused;
         while (current != null) {
             if ("androidx.compose.ui.platform.c".equals(current.getClass().getName())) {
-                out.add(current);
-                return;
+                if (!out.contains(current)) {
+                    out.add(current);
+                }
+                break;
             }
             Object parent = current.getParent();
             current = parent instanceof View ? (View) parent : null;
         }
-        collectComposeViews(root, out);
+        ArrayList<View> allComposeViews = new ArrayList<View>();
+        collectComposeViews(root, allComposeViews);
+        for (View compose : allComposeViews) {
+            if (!out.contains(compose)) {
+                out.add(compose);
+            }
+        }
     }
 }

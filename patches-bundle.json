@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.119 (2026-08-11)\n\n- Reddit: keep the selected-comment highlight visible while native Compose scrolling and delayed re-selection run.\n- Reddit: prevent rapid keyboard navigation from cancelling a pending selection and leaving the comment highlight hidden.\n- Reddit: retain expanded native comment-action recognition and full-container targeting from dev118.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.119/patches-1.36.0-dev.119.mpp",
+  "description": "## 1.36.0-dev.120 (2026-08-11)\n\n- Reddit: scan every visible Compose host during comment navigation instead of stopping at the currently focused post or media host.\n- Reddit: prevent navigation from looping between the same comments when the scrollable comment list lives in a separate Compose host.\n- Reddit: retain persistent comment highlighting and native comment actions from dev119.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.120/patches-1.36.0-dev.120.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.119"
+  "version": "1.36.0-dev.120"
 }
