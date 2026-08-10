@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.127 (2026-08-11)\n\n- Reddit: enter native Compose focus search from the selected comment's bounds when its semantics container is not keyboard-focusable.\n- Reddit: prevent every comment keypress from falling through to page scrolling when native focus has no current child.\n- Reddit: retain native directional traversal and resolve its focused child back to the owning comment.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.127/patches-1.36.0-dev.127.mpp",
+  "created_at": "2026-08-11T03:44:00",
+  "description": "## 1.36.0-dev.128 (2026-08-11)\n\n- Reddit: stop automatic Google credential preparation from interrupting normal username/password login on affected devices.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.128/patches-1.36.0-dev.128.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.127"
+  "version": "1.36.0-dev.128"
 }
