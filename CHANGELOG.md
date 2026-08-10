@@ -1,3 +1,5 @@
+## 1.0.0-dev.1 (2026-08-10)
+
 ## 1.36.0-dev.99 (2026-08-10)
 
 - Reddit: read Compose semantics text when finding the focused comment so O can target comments more reliably.
