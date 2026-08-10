@@ -813,6 +813,7 @@ public final class LongPressImagePreviewPatch {
         overlay.setClickable(true);
         overlay.setFocusable(true);
         overlay.setFocusableInTouchMode(true);
+        overlay.setDefaultFocusHighlightEnabled(false);
         attachPreviewDismissHandlers(overlay);
     }
 
@@ -826,17 +827,21 @@ public final class LongPressImagePreviewPatch {
         });
         view.setOnKeyListener((target, keyCode, keyEvent) -> {
             if (keyEvent.getAction() == KeyEvent.ACTION_UP
-                    && (keyCode == KeyEvent.KEYCODE_P
-                    || keyCode == KeyEvent.KEYCODE_M
-                    || keyCode == KeyEvent.KEYCODE_G
-                    || keyCode == KeyEvent.KEYCODE_T
-                    || keyCode == KeyEvent.KEYCODE_BACK
-                    || keyCode == KeyEvent.KEYCODE_ESCAPE)) {
+                    && isPreviewDismissKey(keyCode)) {
                 hidePreview();
                 return true;
             }
             return false;
         });
+    }
+
+    private static boolean isPreviewDismissKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_P
+                || keyCode == KeyEvent.KEYCODE_M
+                || keyCode == KeyEvent.KEYCODE_G
+                || keyCode == KeyEvent.KEYCODE_T
+                || keyCode == KeyEvent.KEYCODE_BACK
+                || keyCode == KeyEvent.KEYCODE_ESCAPE;
     }
 
     private static void loadPreviewImage(String mediaUrl, ImageView preview, int generation) {
@@ -1791,9 +1796,6 @@ public final class LongPressImagePreviewPatch {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
                         boolean clickedComment = RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
                         Log.w("MorpheRedditKeys", "postDetail O clickedComment=" + clickedComment);
-                        if (!clickedComment) {
-                            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
-                        }
                     }
                     return true;
                 }
@@ -2511,6 +2513,12 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
+            if (event.getAction() == KeyEvent.ACTION_UP
+                    && activePreview != null
+                    && isPreviewDismissKey(event.getKeyCode())) {
+                hidePreview(activity);
+                return true;
+            }
             if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }

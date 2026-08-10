@@ -431,7 +431,19 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean isPostDetailScreen(View root) {
-        return hasCommentJumpButton(root);
+        if (hasCommentJumpButton(root)) {
+            return true;
+        }
+        try {
+            String focusedComposeText = getFocusedComposeNodeText(root);
+            if (looksLikeCommentFocusText(focusedComposeText)) {
+                Log.w(TAG, "postDetail detected focused comment text=\"" + summarizeText(focusedComposeText) + "\"");
+                return true;
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "postDetail focused comment detection failed", throwable);
+        }
+        return false;
     }
 
     public static boolean preparePostDetailCommentNavigation(View root) {
@@ -4388,6 +4400,25 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("reply")
                 || lower.contains("award")
                 || normalized.length() >= 24;
+    }
+
+    private static boolean looksLikeCommentFocusText(String text) {
+        String lower = normalizeWhitespace(text).toLowerCase(Locale.US);
+        if (lower.length() == 0
+                || lower.equals("close")
+                || lower.equals("back")
+                || lower.equals("navigate up")
+                || lower.equals("more")
+                || lower.equals("more options")
+                || lower.equals("menu")
+                || lower.equals("home")
+                || lower.equals("search")
+                || lower.equals("profile")) {
+            return false;
+        }
+        return (lower.contains("comment by") && lower.contains("ago"))
+                || (lower.startsWith("level ") && lower.contains("comment"))
+                || (lower.contains("reply") && lower.contains("vote") && lower.contains("ago"));
     }
 
     private static boolean looksLikeAuthorOrProfileTarget(String text) {

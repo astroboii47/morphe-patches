@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.102 (2026-08-10)\n\n- Reddit: log and fall back when O cannot trigger the focused comment action in post detail.\n- Reddit: keep the dev101 comment focus/action handling.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.102/patches-1.36.0-dev.102.mpp",
+  "description": "## 1.36.0-dev.103 (2026-08-10)\n\n- Reddit: close P preview from the top-level key release path so it cannot stay stuck open.\n- Reddit: remove the O-key center fallback that disturbed focus when comment collapse was unavailable.\n- Reddit: detect post detail from focused comment semantics when the next-comment button is missing.\n- Reddit: disable default focus highlight on preview overlays.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.103/patches-1.36.0-dev.103.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.102"
+  "version": "1.36.0-dev.103"
 }
