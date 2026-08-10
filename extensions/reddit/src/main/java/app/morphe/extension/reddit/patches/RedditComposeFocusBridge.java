@@ -59,9 +59,6 @@ public final class RedditComposeFocusBridge {
     private static final int MAX_POST_BODIES_BY_URL = 500;
     private static final String TEXT_PREVIEW_SEPARATOR = "\n\u0001\n";
     private static final Pattern RICHTEXT_TEXT_PATTERN = Pattern.compile("\\\"t\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\\\\\"])*)\\\"");
-    private static int SELECTED_COMMENT_ID = Integer.MIN_VALUE;
-    private static int SELECTED_COMMENT_CENTER_Y = Integer.MIN_VALUE;
-    private static String SELECTED_COMMENT_TEXT = "";
 
     private RedditComposeFocusBridge() {}
 
@@ -84,29 +81,6 @@ public final class RedditComposeFocusBridge {
             this.bounds = new Rect(bounds);
             this.text = text;
             this.clickable = clickable;
-        }
-    }
-
-    private static final class CommentSelectionCandidate {
-        final AccessibilityNodeProvider provider;
-        final int id;
-        final Rect bounds;
-        final String text;
-        final boolean clickable;
-        final String actions;
-
-        CommentSelectionCandidate(AccessibilityNodeProvider provider, int id, Rect bounds, String text,
-                                  boolean clickable, String actions) {
-            this.provider = provider;
-            this.id = id;
-            this.bounds = new Rect(bounds);
-            this.text = text;
-            this.clickable = clickable;
-            this.actions = actions == null ? "" : actions;
-        }
-
-        int centerY() {
-            return bounds.centerY();
         }
     }
 
@@ -495,12 +469,8 @@ public final class RedditComposeFocusBridge {
                 if (provider == null) {
                     continue;
                 }
-                Object delegate = readField(provider, "a");
-                if (delegate == null) {
-                    continue;
-                }
-                if (clickFocusedCommentContainer(compose.getClass().getClassLoader(), provider, delegate)) {
-                    Log.w(TAG, "focusedCommentContainer clicked compose index=" + i);
+                if (performFocusedCommentToggle(provider)) {
+                    Log.w(TAG, "focusedCommentContainer toggled compose index=" + i);
                     return true;
                 }
             }
@@ -510,101 +480,36 @@ public final class RedditComposeFocusBridge {
         return false;
     }
 
-    public static boolean hasSelectedComment(View root) {
-        return SELECTED_COMMENT_ID != Integer.MIN_VALUE
-                && SELECTED_COMMENT_CENTER_Y != Integer.MIN_VALUE
-                && root != null;
-    }
-
-    public static void clearSelectedComment() {
-        SELECTED_COMMENT_ID = Integer.MIN_VALUE;
-        SELECTED_COMMENT_CENTER_Y = Integer.MIN_VALUE;
-        SELECTED_COMMENT_TEXT = "";
-    }
-
-    public static Rect moveSelectedComment(View root, int direction) {
-        try {
-            ArrayList<CommentSelectionCandidate> candidates = collectSelectableCommentRows(root);
-            if (candidates.isEmpty()) {
-                clearSelectedComment();
-                Log.w(TAG, "commentSelection no selectable rows");
-                return null;
+    private static boolean performFocusedCommentToggle(AccessibilityNodeProvider provider) {
+        int[] focusTypes = new int[]{
+                AccessibilityNodeInfo.FOCUS_INPUT,
+                AccessibilityNodeInfo.FOCUS_ACCESSIBILITY
+        };
+        for (int focusType : focusTypes) {
+            AccessibilityNodeInfo node;
+            try {
+                node = provider.findFocus(focusType);
+            } catch (Throwable ignored) {
+                node = null;
             }
-
-            sortCommentSelectionCandidates(candidates);
-            int currentY = SELECTED_COMMENT_CENTER_Y;
-            CommentSelectionCandidate selected = null;
-            if (currentY == Integer.MIN_VALUE) {
-                selected = direction < 0 ? candidates.get(candidates.size() - 1) : candidates.get(0);
-            } else if (direction < 0) {
-                for (int i = candidates.size() - 1; i >= 0; i--) {
-                    CommentSelectionCandidate candidate = candidates.get(i);
-                    if (candidate.centerY() < currentY - 8) {
-                        selected = candidate;
-                        break;
-                    }
-                }
-            } else {
-                for (int i = 0; i < candidates.size(); i++) {
-                    CommentSelectionCandidate candidate = candidates.get(i);
-                    if (candidate.centerY() > currentY + 8) {
-                        selected = candidate;
-                        break;
-                    }
-                }
-            }
-
-            if (selected == null) {
-                selected = direction < 0 ? candidates.get(0) : candidates.get(candidates.size() - 1);
-            }
-
-            SELECTED_COMMENT_ID = selected.id;
-            SELECTED_COMMENT_CENTER_Y = selected.centerY();
-            SELECTED_COMMENT_TEXT = selected.text;
-            Log.w(TAG, "commentSelection selected id=" + selected.id
-                    + " bounds=" + selected.bounds
-                    + " actions=\"" + selected.actions + "\""
-                    + " text=\"" + summarizeText(selected.text) + "\"");
-            return new Rect(selected.bounds);
-        } catch (Throwable throwable) {
-            clearSelectedComment();
-            Log.w(TAG, "commentSelection failed", throwable);
-            return null;
-        }
-    }
-
-    public static boolean clickSelectedComment(View root) {
-        try {
-            ArrayList<CommentSelectionCandidate> candidates = collectSelectableCommentRows(root);
-            if (candidates.isEmpty()) {
-                Log.w(TAG, "commentSelection click no rows");
-                return false;
-            }
-
-            CommentSelectionCandidate selected = findSelectedCommentCandidate(candidates);
-            if (selected == null) {
-                Log.w(TAG, "commentSelection click no selected row");
-                return false;
-            }
-
-            AccessibilityNodeInfo info = selected.provider.createAccessibilityNodeInfo(selected.id);
-            if (info != null) {
-                sealNode(info);
-                if (performCommentToggleAction(selected.provider, selected.id, info)) {
-                    Log.w(TAG, "commentSelection toggled id=" + selected.id
-                            + " text=\"" + summarizeText(selected.text) + "\"");
+            for (int depth = 0; node != null && depth < 10; depth++) {
+                sealNode(node);
+                if (performCommentToggleAction(node)) {
+                    Log.w(TAG, "focusedCommentToggle depth=" + depth
+                            + " text=\"" + summarizeText(readableText(node)) + "\"");
                     return true;
                 }
+                AccessibilityNodeInfo parent;
+                try {
+                    parent = node.getParent();
+                } catch (Throwable ignored) {
+                    parent = null;
+                }
+                node = parent;
             }
-
-            Log.w(TAG, "commentSelection has no collapse/expand action id=" + selected.id
-                    + " actions=\"" + selected.actions + "\""
-                    + " text=\"" + summarizeText(selected.text) + "\"");
-            return false;
-        } catch (Throwable throwable) {
-            Log.w(TAG, "commentSelection click failed", throwable);
-            return false;
         }
+        Log.w(TAG, "focusedCommentToggle no native collapse/expand action");
+        return false;
     }
 
     private static boolean hasCommentJumpButton(View root) {
@@ -4422,169 +4327,6 @@ public final class RedditComposeFocusBridge {
         return clicked;
     }
 
-    private static ArrayList<CommentSelectionCandidate> collectSelectableCommentRows(View root) throws Exception {
-        ArrayList<CommentSelectionCandidate> candidates = new ArrayList<CommentSelectionCandidate>();
-        if (root == null) {
-            return candidates;
-        }
-        ArrayList<View> composeViews = new ArrayList<View>();
-        collectComposeViews(root, composeViews);
-        for (int i = composeViews.size() - 1; i >= 0; i--) {
-            View compose = composeViews.get(i);
-            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
-            if (provider == null) {
-                continue;
-            }
-            Object delegate = readField(provider, "a");
-            if (delegate == null) {
-                continue;
-            }
-            collectSelectableCommentRows(compose.getClass().getClassLoader(), provider, delegate, candidates);
-        }
-        return candidates;
-    }
-
-    private static void collectSelectableCommentRows(ClassLoader loader, AccessibilityNodeProvider provider,
-                                                     Object delegate, ArrayList<CommentSelectionCandidate> out)
-            throws Exception {
-        Object accessibilityDelegate = readField(delegate, "i");
-        if (accessibilityDelegate == null) {
-            accessibilityDelegate = delegate;
-        }
-        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
-        semanticsMapMethod.setAccessible(true);
-        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
-        if (map == null) {
-            return;
-        }
-
-        Object[] values = (Object[]) readField(map, "c");
-        if (values == null) {
-            return;
-        }
-
-        for (Object wrapper : values) {
-            if (wrapper == null) {
-                continue;
-            }
-            Object node = readField(wrapper, "a");
-            if (node == null) {
-                continue;
-            }
-            Object config = readField(node, "d");
-            Object idObject = readField(node, "f");
-            if (!(idObject instanceof Integer)) {
-                continue;
-            }
-            int id = ((Integer) idObject).intValue();
-            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
-            if (info == null) {
-                continue;
-            }
-            sealNode(info);
-            Rect bounds = new Rect();
-            info.getBoundsInScreen(bounds);
-            if (bounds.isEmpty() || bounds.bottom <= 0 || bounds.right <= 0) {
-                continue;
-            }
-            String text = readableTreeText(provider, info, 0);
-            if (text.length() == 0) {
-                text = readableText(info);
-            }
-            if (text.length() == 0) {
-                text = readableSemanticsText(loader, config);
-            }
-            if (!looksLikeSelectableCommentRow(text, bounds)) {
-                continue;
-            }
-            String actions = describeActions(info);
-            if (!commentRowHasNativeAction(info, actions)) {
-                continue;
-            }
-            out.add(new CommentSelectionCandidate(provider, id, bounds, text, info.isClickable(), actions));
-        }
-    }
-
-    private static boolean commentRowHasNativeAction(AccessibilityNodeInfo info, String actions) {
-        if (info == null) {
-            return false;
-        }
-        if (info.isClickable()) {
-            return true;
-        }
-        try {
-            List<AccessibilityNodeInfo.AccessibilityAction> actionList = info.getActionList();
-            if (actionList != null) {
-                for (AccessibilityNodeInfo.AccessibilityAction action : actionList) {
-                    if (action == null) {
-                        continue;
-                    }
-                    if (action.getId() == AccessibilityNodeInfo.ACTION_CLICK) {
-                        return true;
-                    }
-                    CharSequence label = action.getLabel();
-                    String lower = label == null ? "" : label.toString().toLowerCase(Locale.US);
-                    if (lower.contains("collapse")
-                            || lower.contains("expand")
-                            || lower.contains("show less")
-                            || lower.contains("show more")) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        String lower = actions == null ? "" : actions.toLowerCase(Locale.US);
-        return lower.contains("16:")
-                || lower.contains("collapse")
-                || lower.contains("expand")
-                || lower.contains("show less")
-                || lower.contains("show more");
-    }
-
-    private static CommentSelectionCandidate findSelectedCommentCandidate(ArrayList<CommentSelectionCandidate> candidates) {
-        if (candidates == null || candidates.isEmpty()) {
-            return null;
-        }
-        CommentSelectionCandidate exact = null;
-        for (int i = 0; i < candidates.size(); i++) {
-            CommentSelectionCandidate candidate = candidates.get(i);
-            if (candidate.id == SELECTED_COMMENT_ID) {
-                exact = candidate;
-                break;
-            }
-        }
-        if (exact != null) {
-            return exact;
-        }
-        if (SELECTED_COMMENT_CENTER_Y == Integer.MIN_VALUE) {
-            return null;
-        }
-        CommentSelectionCandidate best = null;
-        int bestDistance = Integer.MAX_VALUE;
-        for (int i = 0; i < candidates.size(); i++) {
-            CommentSelectionCandidate candidate = candidates.get(i);
-            int distance = Math.abs(candidate.centerY() - SELECTED_COMMENT_CENTER_Y);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = candidate;
-            }
-        }
-        return bestDistance <= 96 ? best : null;
-    }
-
-    private static void sortCommentSelectionCandidates(ArrayList<CommentSelectionCandidate> candidates) {
-        for (int i = 1; i < candidates.size(); i++) {
-            CommentSelectionCandidate value = candidates.get(i);
-            int j = i - 1;
-            while (j >= 0 && candidates.get(j).bounds.top > value.bounds.top) {
-                candidates.set(j + 1, candidates.get(j));
-                j--;
-            }
-            candidates.set(j + 1, value);
-        }
-    }
-
     private static boolean performCommentToggleAction(AccessibilityNodeProvider provider, int id, AccessibilityNodeInfo info) {
         if (provider == null || info == null) {
             return false;
@@ -4616,6 +4358,40 @@ public final class RedditComposeFocusBridge {
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "commentToggleAction failed id=" + id, throwable);
+        }
+        return false;
+    }
+
+    private static boolean performCommentToggleAction(AccessibilityNodeInfo info) {
+        if (info == null) {
+            return false;
+        }
+        try {
+            List<AccessibilityNodeInfo.AccessibilityAction> actions = info.getActionList();
+            if (actions == null) {
+                return false;
+            }
+            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                if (action == null) {
+                    continue;
+                }
+                CharSequence label = action.getLabel();
+                String lower = label == null ? "" : label.toString().toLowerCase(Locale.US);
+                if (lower.contains("collapse")
+                        || lower.contains("expand")
+                        || lower.contains("show less")
+                        || lower.contains("show more")) {
+                    boolean performed = info.performAction(action.getId());
+                    Log.w(TAG, "focusedCommentToggleAction action=" + action.getId()
+                            + " label=\"" + lower + "\""
+                            + " performed=" + performed);
+                    if (performed) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedCommentToggleAction failed", throwable);
         }
         return false;
     }
@@ -4674,27 +4450,6 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("reply")
                 || lower.contains("award")
                 || normalized.length() >= 24;
-    }
-
-    private static boolean looksLikeSelectableCommentRow(String text, Rect bounds) {
-        String normalized = normalizeWhitespace(text);
-        if (normalized.length() == 0 || bounds == null || bounds.height() < 48 || bounds.width() < 240) {
-            return false;
-        }
-        String lower = normalized.toLowerCase(Locale.US);
-        if (looksLikePostChromeFocus(normalized)
-                || looksLikeAuthorOrProfileTarget(normalized)
-                || lower.contains("next comment")
-                || lower.contains("add a comment")
-                || lower.contains("view all comments")
-                || lower.startsWith("r/")
-                || lower.contains("posted by")) {
-            return false;
-        }
-        return (lower.contains("comment by") && lower.contains("ago"))
-                || (lower.startsWith("level ") && lower.contains(" comment "))
-                || (lower.contains("reply") && lower.contains("ago")
-                && (lower.contains("vote") || lower.contains("upvote") || lower.contains("downvote")));
     }
 
     private static boolean looksLikeAuthorOrProfileTarget(String text) {

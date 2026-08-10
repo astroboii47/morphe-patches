@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.105 (2026-08-10)\n\n- Reddit: isolate comment selection from Android focus so preview key release remains on the established pre-dev100 path.\n- Reddit: restore native comment-list entry when K or I is first pressed in post detail.\n- Reddit: make O invoke only the selected comment's native Collapse or Expand action.\n- Reddit: clear comment selection on post exit and use a subtler selection outline.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.105/patches-1.36.0-dev.105.mpp",
+  "description": "## 1.36.0-dev.106 (2026-08-10)\n\n- Reddit: remove the laggy custom Compose comment scanner and selection overlay.\n- Reddit: restore the stable native post-detail keyboard navigation used before dev100.\n- Reddit: make O walk the currently focused native Compose node and invoke only its labeled Collapse or Expand action.\n- Reddit: leave P and media preview handling unchanged from dev105.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.106/patches-1.36.0-dev.106.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.105"
+  "version": "1.36.0-dev.106"
 }
