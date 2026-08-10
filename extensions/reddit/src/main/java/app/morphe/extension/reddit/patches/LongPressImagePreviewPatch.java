@@ -477,6 +477,7 @@ public final class LongPressImagePreviewPatch {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 FEED_HANDOFF_DONE = false;
+                RedditComposeFocusBridge.suspendCommentFocusIndicator();
                 TouchState state = new TouchState(
                         event.getRawX(),
                         event.getRawY(),
@@ -501,6 +502,10 @@ public final class LongPressImagePreviewPatch {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                activity.getWindow().getDecorView().postDelayed(
+                        RedditComposeFocusBridge::clearCommentSelectionIfDetached,
+                        120L
+                );
                 if (touchNativePostHeld && nativePostHeldOpen) {
                     touchNativePostHeld = false;
                     synchronized (TOUCH_STATES) {
@@ -1837,6 +1842,12 @@ public final class LongPressImagePreviewPatch {
                     restorePostFocusWindow(activity, returnX, returnY);
                 }
                 return true;
+            case KeyEvent.KEYCODE_BACK:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    keyboardPostDetailOpen = false;
+                    RedditComposeFocusBridge.hideCommentFocusIndicator();
+                }
+                return false;
             case KeyEvent.KEYCODE_N:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
@@ -1871,6 +1882,9 @@ public final class LongPressImagePreviewPatch {
             final boolean nativeCommentScroll = RedditComposeFocusBridge.scrollPostDetailForComment(
                     root,
                     detailDirection);
+            if (nativeCommentScroll) {
+                RedditComposeFocusBridge.suspendCommentFocusIndicator();
+            }
             if (!nativeCommentScroll) {
                 RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
                 redispatchFeedKey(activity, detailKeyCode);

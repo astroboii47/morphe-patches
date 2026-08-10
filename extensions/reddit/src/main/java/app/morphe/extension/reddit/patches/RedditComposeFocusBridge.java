@@ -529,6 +529,13 @@ public final class RedditComposeFocusBridge {
         removeCommentFocusIndicatorView();
     }
 
+    public static void clearCommentSelectionIfDetached() {
+        View compose = selectedCommentCompose.get();
+        if (compose == null || !compose.isAttachedToWindow() || !compose.isShown()) {
+            hideCommentFocusIndicator();
+        }
+    }
+
     private static void removeCommentFocusIndicatorView() {
         View indicator = commentFocusIndicator.get();
         if (indicator != null && indicator.getParent() instanceof ViewGroup) {
@@ -779,6 +786,9 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean selectCommentAfterScroll(View root, int direction) {
+        if (moveSelectedComment(root, direction)) {
+            return true;
+        }
         return selectVisibleCommentBoundary(root, direction);
     }
 

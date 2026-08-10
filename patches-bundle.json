@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.120 (2026-08-11)\n\n- Reddit: scan every visible Compose host during comment navigation instead of stopping at the currently focused post or media host.\n- Reddit: prevent navigation from looping between the same comments when the scrollable comment list lives in a separate Compose host.\n- Reddit: retain persistent comment highlighting and native comment actions from dev119.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.120/patches-1.36.0-dev.120.mpp",
+  "description": "## 1.36.0-dev.121 (2026-08-11)\n\n- Reddit: continue from the previously selected native comment after scrolling instead of restarting at a boundary and looping through old comments.\n- Reddit: hide the visual comment highlight while keyboard or touch scrolling moves content, then redraw it only on a real comment.\n- Reddit: clear stale comment selection when leaving the post or when its Compose host detaches.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.121/patches-1.36.0-dev.121.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.120"
+  "version": "1.36.0-dev.121"
 }
