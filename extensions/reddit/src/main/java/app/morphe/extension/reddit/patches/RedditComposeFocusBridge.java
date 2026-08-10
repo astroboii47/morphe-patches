@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.Typeface;
+import android.graphics.Color;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -42,6 +43,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.lang.ref.WeakReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -59,6 +61,7 @@ public final class RedditComposeFocusBridge {
     private static final int MAX_POST_BODIES_BY_URL = 500;
     private static final String TEXT_PREVIEW_SEPARATOR = "\n\u0001\n";
     private static final Pattern RICHTEXT_TEXT_PATTERN = Pattern.compile("\\\"t\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\\\\\"])*)\\\"");
+    private static WeakReference<View> commentFocusIndicator = new WeakReference<View>(null);
 
     private RedditComposeFocusBridge() {}
 
@@ -468,6 +471,93 @@ public final class RedditComposeFocusBridge {
         }
     }
 
+    public static void updateCommentFocusIndicator(View root) {
+        Rect bounds = findFocusedCommentBounds(root);
+        if (bounds == null || bounds.isEmpty()) {
+            hideCommentFocusIndicator();
+            return;
+        }
+        View decorView = root == null ? null : root.getRootView();
+        if (!(decorView instanceof ViewGroup)) {
+            hideCommentFocusIndicator();
+            return;
+        }
+        ViewGroup decor = (ViewGroup) decorView;
+        View indicator = commentFocusIndicator.get();
+        if (indicator == null || indicator.getParent() != decor) {
+            hideCommentFocusIndicator();
+            indicator = new View(root.getContext());
+            indicator.setBackgroundColor(Color.argb(28, 255, 255, 255));
+            indicator.setClickable(false);
+            indicator.setFocusable(false);
+            indicator.setFocusableInTouchMode(false);
+            indicator.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            decor.addView(indicator, new FrameLayout.LayoutParams(1, 1));
+            commentFocusIndicator = new WeakReference<View>(indicator);
+        }
+
+        int[] decorLocation = new int[2];
+        decor.getLocationOnScreen(decorLocation);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                Math.max(1, bounds.width()),
+                Math.max(1, bounds.height())
+        );
+        params.leftMargin = bounds.left - decorLocation[0];
+        params.topMargin = bounds.top - decorLocation[1];
+        indicator.setLayoutParams(params);
+        indicator.setVisibility(View.VISIBLE);
+        Log.w(TAG, "comment focus indicator bounds=" + bounds);
+    }
+
+    public static void hideCommentFocusIndicator() {
+        View indicator = commentFocusIndicator.get();
+        if (indicator != null && indicator.getParent() instanceof ViewGroup) {
+            ((ViewGroup) indicator.getParent()).removeView(indicator);
+        }
+        commentFocusIndicator.clear();
+    }
+
+    private static Rect findFocusedCommentBounds(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                AccessibilityNodeProvider provider = composeViews.get(i).getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                int[] focusTypes = new int[]{
+                        AccessibilityNodeInfo.FOCUS_INPUT,
+                        AccessibilityNodeInfo.FOCUS_ACCESSIBILITY
+                };
+                for (int focusType : focusTypes) {
+                    AccessibilityNodeInfo node;
+                    try {
+                        node = provider.findFocus(focusType);
+                    } catch (Throwable ignored) {
+                        node = null;
+                    }
+                    for (int depth = 0; node != null && depth < 10; depth++) {
+                        sealNode(node);
+                        if (hasCommentToggleAction(node)) {
+                            Rect bounds = new Rect();
+                            node.getBoundsInScreen(bounds);
+                            return bounds;
+                        }
+                        try {
+                            node = node.getParent();
+                        } catch (Throwable ignored) {
+                            node = null;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "comment focus bounds failed", throwable);
+        }
+        return null;
+    }
+
     public static boolean clickFocusedCommentContainer(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -604,12 +694,16 @@ public final class RedditComposeFocusBridge {
             return;
         }
         long[] delays = new long[]{50L, 140L};
+        final boolean[] restored = new boolean[]{false};
         for (long delay : delays) {
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
+                    if (restored[0]) {
+                        return;
+                    }
                     try {
-                        focusNearestCommentToggleNode(compose, provider, oldBounds);
+                        restored[0] = focusNearestCommentToggleNode(compose, provider, oldBounds);
                     } catch (Throwable throwable) {
                         Log.w(TAG, "commentToggle replacement refocus failed", throwable);
                     }
@@ -676,6 +770,9 @@ public final class RedditComposeFocusBridge {
         boolean focused = provider.performAction(bestId, AccessibilityNodeInfo.ACTION_FOCUS, null);
         Log.w(TAG, "commentToggle replacement id=" + bestId + " focused=" + focused
                 + " oldBounds=" + oldBounds + " score=" + bestScore);
+        if (focused) {
+            updateCommentFocusIndicator(compose.getRootView());
+        }
         return focused;
     }
 

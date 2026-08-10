@@ -1,6 +1,6 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.109 (2026-08-10)\n\n- Reddit: preserve keyboard post-detail state without changing the existing comment-entry path.\n- Reddit: skip comment child controls by advancing through Reddit's native focus chain rather than clearing focus.\n- Reddit: recover the nearest replacement comment row after Collapse or Expand changes its Compose node ID.\n- Reddit: leave P preview behavior unchanged.",
+  "description": "## 1.36.0-dev.109 (2026-08-10)\n\n- Reddit: preserve keyboard post-detail state without changing the existing comment-entry path.\n- Reddit: skip comment child controls by advancing through Reddit's native focus chain rather than clearing focus.\n- Reddit: recover the nearest replacement comment row after Collapse or Expand changes its Compose node ID.\n- Reddit: show a subtle non-interactive tint on the comment targeted by O.\n- Reddit: leave P preview behavior unchanged.",
   "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.109/patches-1.36.0-dev.109.mpp",
   "signature_download_url": "",
   "version": "1.36.0-dev.109"

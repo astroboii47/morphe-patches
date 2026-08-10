@@ -1805,6 +1805,7 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_U:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     keyboardPostDetailOpen = false;
+                    RedditComposeFocusBridge.hideCommentFocusIndicator();
                     FEED_HANDOFF_DONE = false;
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
@@ -1844,6 +1845,12 @@ public final class LongPressImagePreviewPatch {
                     if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
                         redispatchFeedKey(activity, detailKeyCode);
                     }
+                    root.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            RedditComposeFocusBridge.updateCommentFocusIndicator(root);
+                        }
+                    }, 40L);
                 }
             }, 40L);
             return true;
