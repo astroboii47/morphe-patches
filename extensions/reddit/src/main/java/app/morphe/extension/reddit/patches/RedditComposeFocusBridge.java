@@ -436,6 +436,10 @@ public final class RedditComposeFocusBridge {
 
     public static boolean preparePostDetailCommentNavigation(View root) {
         try {
+            if (hasFocusedCommentToggleAction(root)) {
+                Log.w(TAG, "postDetailCommentNav kept native comment focus");
+                return false;
+            }
             String focusedComposeText = getFocusedComposeNodeText(root);
             if (focusedComposeText.length() > 0 && looksLikePostChromeFocus(focusedComposeText)) {
                 clearComposeFocus(root);
@@ -469,7 +473,7 @@ public final class RedditComposeFocusBridge {
                 if (provider == null) {
                     continue;
                 }
-                if (performFocusedCommentToggle(provider)) {
+                if (performFocusedCommentToggle(root, provider)) {
                     Log.w(TAG, "focusedCommentContainer toggled compose index=" + i);
                     return true;
                 }
@@ -480,7 +484,7 @@ public final class RedditComposeFocusBridge {
         return false;
     }
 
-    private static boolean performFocusedCommentToggle(AccessibilityNodeProvider provider) {
+    private static boolean performFocusedCommentToggle(View root, AccessibilityNodeProvider provider) {
         int[] focusTypes = new int[]{
                 AccessibilityNodeInfo.FOCUS_INPUT,
                 AccessibilityNodeInfo.FOCUS_ACCESSIBILITY
@@ -497,6 +501,7 @@ public final class RedditComposeFocusBridge {
                 int virtualId = getNodeVirtualId(node);
                 if (virtualId != Integer.MIN_VALUE
                         && performCommentToggleAction(provider, virtualId, node)) {
+                    restoreCommentFocusAfterToggle(root, provider, virtualId);
                     Log.w(TAG, "focusedCommentToggle depth=" + depth
                             + " id=" + virtualId
                             + " text=\"" + summarizeText(readableText(node)) + "\"");
@@ -513,6 +518,117 @@ public final class RedditComposeFocusBridge {
         }
         Log.w(TAG, "focusedCommentToggle no native collapse/expand action");
         return false;
+    }
+
+    private static boolean hasFocusedCommentToggleAction(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                AccessibilityNodeProvider provider = composeViews.get(i).getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                int[] focusTypes = new int[]{
+                        AccessibilityNodeInfo.FOCUS_INPUT,
+                        AccessibilityNodeInfo.FOCUS_ACCESSIBILITY
+                };
+                for (int focusType : focusTypes) {
+                    AccessibilityNodeInfo node;
+                    try {
+                        node = provider.findFocus(focusType);
+                    } catch (Throwable ignored) {
+                        node = null;
+                    }
+                    for (int depth = 0; node != null && depth < 10; depth++) {
+                        sealNode(node);
+                        if (depth == 0 && isStandaloneCommentOverflow(node)) {
+                            break;
+                        }
+                        if (hasCommentToggleAction(node)) {
+                            return true;
+                        }
+                        try {
+                            node = node.getParent();
+                        } catch (Throwable ignored) {
+                            node = null;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedCommentToggle detection failed", throwable);
+        }
+        return false;
+    }
+
+    private static boolean isStandaloneCommentOverflow(AccessibilityNodeInfo info) {
+        String lower = normalizeWhitespace(readableText(info)).toLowerCase(Locale.US);
+        return lower.equals("more")
+                || lower.equals("more options")
+                || lower.equals("more actions")
+                || lower.equals("options")
+                || lower.equals("overflow");
+    }
+
+    private static boolean hasCommentToggleAction(AccessibilityNodeInfo info) {
+        if (info == null) {
+            return false;
+        }
+        try {
+            List<AccessibilityNodeInfo.AccessibilityAction> actions = info.getActionList();
+            if (actions == null) {
+                return false;
+            }
+            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                if (action == null || action.getLabel() == null) {
+                    continue;
+                }
+                String lower = action.getLabel().toString().toLowerCase(Locale.US);
+                if (lower.contains("collapse")
+                        || lower.contains("expand")
+                        || lower.contains("show less")
+                        || lower.contains("show more")) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static void restoreCommentFocusAfterToggle(
+            View root,
+            AccessibilityNodeProvider provider,
+            int virtualId
+    ) {
+        if (root == null || provider == null) {
+            return;
+        }
+        long[] delays = new long[]{40L, 120L};
+        for (long delay : delays) {
+            root.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        AccessibilityNodeInfo replacement = provider.createAccessibilityNodeInfo(virtualId);
+                        if (replacement == null) {
+                            return;
+                        }
+                        sealNode(replacement);
+                        boolean focused = provider.performAction(
+                                virtualId,
+                                AccessibilityNodeInfo.ACTION_FOCUS,
+                                null
+                        );
+                        Log.w(TAG, "commentToggle refocus id=" + virtualId + " focused=" + focused
+                                + " action=" + describeActions(replacement));
+                    } catch (Throwable throwable) {
+                        Log.w(TAG, "commentToggle refocus failed id=" + virtualId, throwable);
+                    }
+                }
+            }, delay);
+        }
     }
 
     private static int getNodeVirtualId(AccessibilityNodeInfo node) {

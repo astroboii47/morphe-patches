@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.107 (2026-08-10)\n\n- Reddit: suppress Android's full-screen focus highlight on P previews without changing preview focus or key-release handling.\n- Reddit: send the focused comment's native Collapse or Expand action through its Compose virtual-node provider.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.107/patches-1.36.0-dev.107.mpp",
+  "description": "## 1.36.0-dev.108 (2026-08-10)\n\n- Reddit: keep keyboard-opened post detail active even when media hides the Next Comment control.\n- Reddit: preserve native comment focus across Collapse and Expand recomposition.\n- Reddit: skip standalone comment overflow buttons while retaining native comment-row focus.\n- Reddit: leave the fixed P preview behavior unchanged.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.108/patches-1.36.0-dev.108.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.107"
+  "version": "1.36.0-dev.108"
 }

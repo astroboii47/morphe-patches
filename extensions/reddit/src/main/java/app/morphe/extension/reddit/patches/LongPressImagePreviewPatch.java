@@ -86,6 +86,7 @@ public final class LongPressImagePreviewPatch {
     private static int nativePostReturnX = Integer.MIN_VALUE;
     private static int nativePostReturnY = Integer.MIN_VALUE;
     private static boolean nativePostHeldOpen;
+    private static boolean keyboardPostDetailOpen;
     private static long nativePostOpenedAt;
     private static Activity currentActivity;
     private static int postFocusRestoreGeneration;
@@ -1788,7 +1789,8 @@ public final class LongPressImagePreviewPatch {
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_RIGHT;
                 break;
             case KeyEvent.KEYCODE_O:
-                if (RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
+                if (keyboardPostDetailOpen
+                        || RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
                         RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
                     }
@@ -1796,11 +1798,13 @@ public final class LongPressImagePreviewPatch {
                 }
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     rememberFocusedPostReturn(activity.getWindow().getDecorView());
+                    keyboardPostDetailOpen = true;
                 }
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_CENTER;
                 break;
             case KeyEvent.KEYCODE_U:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    keyboardPostDetailOpen = false;
                     FEED_HANDOFF_DONE = false;
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
@@ -1830,7 +1834,7 @@ public final class LongPressImagePreviewPatch {
         postFocusRestoreGeneration++;
         View root = activity.getWindow().getDecorView();
         if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
-                && RedditComposeFocusBridge.isPostDetailScreen(root)) {
+                && (keyboardPostDetailOpen || RedditComposeFocusBridge.isPostDetailScreen(root))) {
             final int detailKeyCode = mappedKeyCode;
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
             redispatchFeedKey(activity, detailKeyCode);
