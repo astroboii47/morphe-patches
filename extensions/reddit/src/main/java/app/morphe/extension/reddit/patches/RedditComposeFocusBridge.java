@@ -697,102 +697,64 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean moveSelectedComment(View root, int direction) {
-        try {
-            View compose = selectedCommentCompose.get();
-            if (compose == null || selectedCommentVirtualId == Integer.MIN_VALUE) {
-                return selectedCommentBounds.isEmpty()
-                        ? selectVisibleCommentBoundary(root, direction)
-                        : selectVisibleCommentRelative(root, direction);
-            }
-            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
-            AccessibilityNodeInfo current = provider == null
-                    ? null
-                    : provider.createAccessibilityNodeInfo(selectedCommentVirtualId);
-            if (provider == null || current == null) {
-                return selectVisibleCommentRelative(root, direction);
-            }
-            sealNode(current);
-            Rect currentBounds = new Rect();
-            current.getBoundsInScreen(currentBounds);
-            if (currentBounds.isEmpty()) {
-                return selectVisibleCommentRelative(root, direction);
-            }
-
-            Object delegate = readField(provider, "a");
-            Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
-            if (accessibilityDelegate == null) {
-                accessibilityDelegate = delegate;
-            }
-            if (accessibilityDelegate == null) {
-                return false;
-            }
-            Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
-            semanticsMapMethod.setAccessible(true);
-            Object map = semanticsMapMethod.invoke(accessibilityDelegate);
-            Object[] values = map == null ? null : (Object[]) readField(map, "c");
-            if (values == null) {
-                return false;
-            }
-
-            int bestId = Integer.MIN_VALUE;
-            Rect bestBounds = null;
-            long bestScore = Long.MAX_VALUE;
-            for (Object wrapper : values) {
-                Object node = wrapper == null ? null : readField(wrapper, "a");
-                Object idObject = node == null ? null : readField(node, "f");
-                if (!(idObject instanceof Integer)) {
-                    continue;
-                }
-                int id = ((Integer) idObject).intValue();
-                if (id == selectedCommentVirtualId) {
-                    continue;
-                }
-                if ((direction > 0 && id <= selectedCommentVirtualId)
-                        || (direction < 0 && id >= selectedCommentVirtualId)) {
-                    continue;
-                }
-                AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
-                if (info == null) {
-                    continue;
-                }
-                sealNode(info);
-                if (!hasCommentToggleAction(info)) {
-                    continue;
-                }
-                Rect bounds = commentDisplayBounds(info);
-                if (bounds.isEmpty() || bounds.height() < 40) {
-                    continue;
-                }
-                int deltaY = bounds.centerY() - currentBounds.centerY();
-                if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
-                    continue;
-                }
-                long score = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
-                        + Math.abs((long) deltaY) * 1000L
-                        + Math.abs((long) bounds.left - currentBounds.left);
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestId = id;
-                    bestBounds = new Rect(bounds);
-                }
-            }
-            if (bestId == Integer.MIN_VALUE || bestBounds == null) {
-                return selectVisibleCommentRelative(root, direction);
-            }
-
-            // ACTION_SHOW_ON_SCREEN is absent from the old Android stub used to compile extensions.
-            provider.performAction(bestId, 16908342, null);
-            clearComposeFocus(compose);
-            selectedCommentCompose = new WeakReference<View>(compose);
-            selectedCommentVirtualId = bestId;
-            selectedCommentBounds.set(bestBounds);
-            selectedCommentRetainedAfterToggle = false;
-            showCommentFocusIndicator(root, bestBounds);
-            Log.w(TAG, "selectedComment moved direction=" + direction
-                    + " id=" + bestId + " bounds=" + bestBounds);
+        if (moveSelectedCommentNatively(root, direction)) {
             return true;
+        }
+        return false;
+    }
+
+    private static boolean moveSelectedCommentNatively(View root, int direction) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectActiveComposeViews(root, composeViews);
+            View selectedCompose = selectedCommentCompose.get();
+            if (selectedCompose != null && composeViews.remove(selectedCompose)) {
+                composeViews.add(selectedCompose);
+            }
+            int composeDirection = direction > 0 ? 6 : 5;
+            int previousId = selectedCommentVirtualId;
+
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                if (compose == selectedCompose && previousId != Integer.MIN_VALUE) {
+                    provider.performAction(previousId, AccessibilityNodeInfo.ACTION_FOCUS, null);
+                }
+                Method getFocusOwner = compose.getClass().getMethod("getFocusOwner");
+                Object owner = getFocusOwner.invoke(compose);
+                if (owner == null) {
+                    continue;
+                }
+                Method nativeMove = owner.getClass().getDeclaredMethod("j", int.class, boolean.class);
+                nativeMove.setAccessible(true);
+                for (int step = 0; step < 16; step++) {
+                    if (!Boolean.TRUE.equals(nativeMove.invoke(owner, composeDirection, Boolean.TRUE))) {
+                        break;
+                    }
+                    CommentFocusTarget target = findFocusedCommentTarget(root);
+                    if (target == null || target.bounds.isEmpty()
+                            || target.bounds.height() < 40
+                            || (target.compose == selectedCompose && target.virtualId == previousId)) {
+                        continue;
+                    }
+                    selectedCommentCompose = new WeakReference<View>(target.compose);
+                    selectedCommentVirtualId = target.virtualId;
+                    selectedCommentBounds.set(target.bounds);
+                    selectedCommentRetainedAfterToggle = false;
+                    showCommentFocusIndicator(root, target.bounds);
+                    Log.w(TAG, "selectedComment native move direction=" + direction
+                            + " steps=" + (step + 1)
+                            + " id=" + target.virtualId
+                            + " bounds=" + target.bounds);
+                    return true;
+                }
+            }
+            return false;
         } catch (Throwable throwable) {
-            Log.w(TAG, "selectedComment move failed", throwable);
+            Log.w(TAG, "selectedComment native move failed", throwable);
             return false;
         }
     }
@@ -802,95 +764,6 @@ public final class RedditComposeFocusBridge {
             return true;
         }
         return selectVisibleCommentBoundary(root, direction);
-    }
-
-    private static boolean selectVisibleCommentRelative(View root, int direction) {
-        try {
-            if (root == null || selectedCommentBounds.isEmpty()) {
-                return false;
-            }
-            ArrayList<View> composeViews = new ArrayList<View>();
-            collectActiveComposeViews(root, composeViews);
-            View bestCompose = null;
-            int bestId = Integer.MIN_VALUE;
-            Rect bestBounds = null;
-            long bestScore = Long.MAX_VALUE;
-            for (int i = composeViews.size() - 1; i >= 0; i--) {
-                View candidateCompose = composeViews.get(i);
-                AccessibilityNodeProvider provider = candidateCompose.getAccessibilityNodeProvider();
-                Object delegate = provider == null ? null : readField(provider, "a");
-                Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
-                if (accessibilityDelegate == null) {
-                    accessibilityDelegate = delegate;
-                }
-                if (provider == null || accessibilityDelegate == null) {
-                    continue;
-                }
-                Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
-                semanticsMapMethod.setAccessible(true);
-                Object map = semanticsMapMethod.invoke(accessibilityDelegate);
-                Object[] values = map == null ? null : (Object[]) readField(map, "c");
-                if (values == null) {
-                    continue;
-                }
-                for (Object wrapper : values) {
-                    Object node = wrapper == null ? null : readField(wrapper, "a");
-                    Object idObject = node == null ? null : readField(node, "f");
-                    if (!(idObject instanceof Integer)) {
-                        continue;
-                    }
-                    int id = ((Integer) idObject).intValue();
-                    if ((direction > 0 && id <= selectedCommentVirtualId)
-                            || (direction < 0 && id >= selectedCommentVirtualId)) {
-                        continue;
-                    }
-                    AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
-                    if (info == null) {
-                        continue;
-                    }
-                    sealNode(info);
-                    if (!hasCommentToggleAction(info)) {
-                        continue;
-                    }
-                    Rect bounds = commentDisplayBounds(info);
-                    if (bounds.isEmpty() || bounds.height() < 40) {
-                        continue;
-                    }
-                    int deltaY = bounds.centerY() - selectedCommentBounds.centerY();
-                    if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
-                        continue;
-                    }
-                    long score = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
-                            + Math.abs((long) deltaY) * 1000L
-                            + Math.abs((long) bounds.left - selectedCommentBounds.left);
-                    if (score < bestScore) {
-                        bestScore = score;
-                        bestCompose = candidateCompose;
-                        bestId = id;
-                        bestBounds = new Rect(bounds);
-                    }
-                }
-            }
-            if (bestCompose == null || bestBounds == null) {
-                return false;
-            }
-            AccessibilityNodeProvider provider = bestCompose.getAccessibilityNodeProvider();
-            if (provider != null) {
-                provider.performAction(bestId, 16908342, null);
-            }
-            clearComposeFocus(bestCompose);
-            selectedCommentCompose = new WeakReference<View>(bestCompose);
-            selectedCommentVirtualId = bestId;
-            selectedCommentBounds.set(bestBounds);
-            selectedCommentRetainedAfterToggle = false;
-            showCommentFocusIndicator(root, bestBounds);
-            Log.w(TAG, "selectedComment moved across hosts direction=" + direction
-                    + " id=" + bestId + " bounds=" + bestBounds);
-            return true;
-        } catch (Throwable throwable) {
-            Log.w(TAG, "selectedComment cross-host move failed", throwable);
-            return false;
-        }
     }
 
     private static boolean selectVisibleCommentBoundary(View root, int direction) {
@@ -907,7 +780,6 @@ public final class RedditComposeFocusBridge {
             View bestCompose = null;
             int bestId = Integer.MIN_VALUE;
             Rect bestBounds = null;
-            long bestOrderScore = Long.MAX_VALUE;
 
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View candidateCompose = composeViews.get(i);
@@ -934,10 +806,6 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     int id = ((Integer) idObject).intValue();
-                    if ((direction > 0 && id <= selectedCommentVirtualId)
-                            || (direction < 0 && id >= selectedCommentVirtualId)) {
-                        continue;
-                    }
                     AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
                     if (info == null) {
                         continue;
@@ -959,20 +827,12 @@ public final class RedditComposeFocusBridge {
                             && Math.abs(bounds.centerY() - selectedCommentBounds.centerY()) <= 24) {
                         continue;
                     }
-                    long orderScore;
-                    if (selectedCommentVirtualId != Integer.MIN_VALUE) {
-                        orderScore = Math.abs((long) id - selectedCommentVirtualId) * 1000000L
-                                + (direction > 0 ? bounds.top : visibleBottom - bounds.bottom);
-                    } else {
-                        orderScore = direction > 0
-                                ? bounds.top - visibleTop
-                                : visibleBottom - bounds.bottom;
-                    }
-                    if (bestBounds == null || orderScore < bestOrderScore) {
+                    if (bestBounds == null
+                            || (direction > 0 && bounds.top < bestBounds.top)
+                            || (direction < 0 && bounds.bottom > bestBounds.bottom)) {
                         bestCompose = candidateCompose;
                         bestId = id;
                         bestBounds = new Rect(bounds);
-                        bestOrderScore = orderScore;
                     }
                 }
             }

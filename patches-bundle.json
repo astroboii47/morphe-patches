@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.125 (2026-08-11)\n\n- Reddit: stop highlight recreation after scrolling from clearing the selected comment ID and bounds.\n- Reddit: preserve the navigation anchor when replacing only the visual comment indicator.\n- Reddit: retain full resets only for actual post exit or explicit navigation reset events.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.125/patches-1.36.0-dev.125.mpp",
+  "description": "## 1.36.0-dev.126 (2026-08-11)\n\n- Reddit: move between comments through Compose's native directional focus traversal instead of sorting comments by virtual IDs or coordinates.\n- Reddit: treat controls within one comment as a single logical stop while preserving Reddit's native focus behavior.\n- Reddit: retain dev125's navigation-anchor preservation and use visible bounds only to recover after Compose recycles a scrolled page.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.126/patches-1.36.0-dev.126.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.125"
+  "version": "1.36.0-dev.126"
 }
