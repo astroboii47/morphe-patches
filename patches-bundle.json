@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.112 (2026-08-10)\n\n- Reddit: draw the comment selector on Reddit's exact focused node instead of the higher collapse-action ancestor.\n- Reddit: retain the linked native comment action so O still collapses or expands the comment containing that focused node.\n- Reddit: hide the comment selector on the three-dot More control and let O activate that control normally.\n- Reddit: keep the active Compose-host and rapid-key ordering fixes from dev111.\n- Reddit: leave P preview behavior unchanged.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.112/patches-1.36.0-dev.112.mpp",
+  "description": "## 1.36.0-dev.113 (2026-08-10)\n\n- Reddit: stop forcing a second Compose focus onto replacement comments after collapse or expand.\n- Reddit: remove the custom tint after a toggle while retaining the replacement ID for immediate re-expand.\n- Reddit: prevent the custom comment marker from remaining beside Reddit's native author, Reply, or More focus.\n- Reddit: keep the exact-node, active-host, and rapid-key ordering fixes from dev112.\n- Reddit: leave P preview behavior unchanged.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.113/patches-1.36.0-dev.113.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.112"
+  "version": "1.36.0-dev.113"
 }

@@ -514,13 +514,17 @@ public final class RedditComposeFocusBridge {
     }
 
     public static void hideCommentFocusIndicator() {
+        removeCommentFocusIndicatorView();
+        selectedCommentCompose.clear();
+        selectedCommentVirtualId = Integer.MIN_VALUE;
+    }
+
+    private static void removeCommentFocusIndicatorView() {
         View indicator = commentFocusIndicator.get();
         if (indicator != null && indicator.getParent() instanceof ViewGroup) {
             ((ViewGroup) indicator.getParent()).removeView(indicator);
         }
         commentFocusIndicator.clear();
-        selectedCommentCompose.clear();
-        selectedCommentVirtualId = Integer.MIN_VALUE;
     }
 
     private static CommentFocusTarget findFocusedCommentTarget(View root) {
@@ -889,21 +893,19 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "commentToggle replacement not found bounds=" + oldBounds);
             return false;
         }
-        boolean focused = provider.performAction(bestId, AccessibilityNodeInfo.ACTION_FOCUS, null);
-        Log.w(TAG, "commentToggle replacement id=" + bestId + " focused=" + focused
-                + " oldBounds=" + oldBounds + " score=" + bestScore);
-        if (focused) {
-            AccessibilityNodeInfo replacement = provider.createAccessibilityNodeInfo(bestId);
-            Rect replacementBounds = new Rect(oldBounds);
-            if (replacement != null) {
-                sealNode(replacement);
-                replacement.getBoundsInScreen(replacementBounds);
-            }
-            selectedCommentCompose = new WeakReference<View>(compose);
-            selectedCommentVirtualId = bestId;
-            showCommentFocusIndicator(compose.getRootView(), replacementBounds);
+        AccessibilityNodeInfo replacement = provider.createAccessibilityNodeInfo(bestId);
+        Rect replacementBounds = new Rect(oldBounds);
+        if (replacement != null) {
+            sealNode(replacement);
+            replacement.getBoundsInScreen(replacementBounds);
         }
-        return focused;
+        selectedCommentCompose = new WeakReference<View>(compose);
+        selectedCommentVirtualId = bestId;
+        removeCommentFocusIndicatorView();
+        Log.w(TAG, "commentToggle replacement retained id=" + bestId
+                + " bounds=" + replacementBounds
+                + " oldBounds=" + oldBounds + " score=" + bestScore);
+        return true;
     }
 
     private static int getNodeVirtualId(AccessibilityNodeInfo node) {
