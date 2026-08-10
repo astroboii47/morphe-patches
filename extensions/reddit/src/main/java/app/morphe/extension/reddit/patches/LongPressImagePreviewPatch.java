@@ -846,7 +846,7 @@ public final class LongPressImagePreviewPatch {
         IMAGE_LOADER.execute(() -> {
             Bitmap bitmap = null;
             try {
-                bitmap = downloadBitmap(mediaUrl);
+                bitmap = constrainPreviewBitmap(downloadBitmap(mediaUrl));
             } catch (Throwable ex) {
                 Logger.printException(() -> "Failed to load Reddit image preview", ex);
             }
@@ -880,6 +880,26 @@ public final class LongPressImagePreviewPatch {
         } finally {
             connection.disconnect();
         }
+    }
+
+    private static Bitmap constrainPreviewBitmap(Bitmap bitmap) {
+        if (bitmap == null) {
+            return null;
+        }
+        final long maxPixels = 12_000_000L;
+        long pixels = (long) bitmap.getWidth() * bitmap.getHeight();
+        if (pixels <= maxPixels) {
+            return bitmap;
+        }
+        double scale = Math.sqrt((double) maxPixels / pixels);
+        int width = Math.max(1, (int) Math.round(bitmap.getWidth() * scale));
+        int height = Math.max(1, (int) Math.round(bitmap.getHeight() * scale));
+        Bitmap scaled = Bitmap.createScaledBitmap(bitmap, width, height, true);
+        if (scaled != bitmap) {
+            bitmap.recycle();
+        }
+        Log.w(LOG_TAG, "scaled oversized preview to " + width + "x" + height);
+        return scaled;
     }
 
     private static Bitmap capturePreviewBitmap(View root, int rawX, int rawY) {
@@ -1856,12 +1876,13 @@ public final class LongPressImagePreviewPatch {
                     if (navigationGeneration != commentNavigationGeneration) {
                         return;
                     }
-                    if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
-                        redispatchFeedKey(activity, detailKeyCode);
+                    if (!RedditComposeFocusBridge.moveSelectedComment(
+                            root,
+                            detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1)) {
+                        RedditComposeFocusBridge.updateCommentFocusIndicator(root);
                     }
-                    RedditComposeFocusBridge.updateCommentFocusIndicator(root);
                 }
-            }, 40L);
+            }, 60L);
             return true;
         }
 

@@ -679,20 +679,20 @@ public final class RedditComposeFocusBridge {
         try {
             View compose = selectedCommentCompose.get();
             if (compose == null || selectedCommentVirtualId == Integer.MIN_VALUE) {
-                return false;
+                return selectVisibleCommentBoundary(root, direction);
             }
             AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
             AccessibilityNodeInfo current = provider == null
                     ? null
                     : provider.createAccessibilityNodeInfo(selectedCommentVirtualId);
             if (provider == null || current == null) {
-                return false;
+                return selectVisibleCommentBoundary(root, direction);
             }
             sealNode(current);
             Rect currentBounds = new Rect();
             current.getBoundsInScreen(currentBounds);
             if (currentBounds.isEmpty()) {
-                return false;
+                return selectVisibleCommentBoundary(root, direction);
             }
 
             Object delegate = readField(provider, "a");
@@ -750,7 +750,6 @@ public final class RedditComposeFocusBridge {
                 }
             }
             if (bestId == Integer.MIN_VALUE || bestBounds == null) {
-                hideCommentFocusIndicator();
                 return false;
             }
 
@@ -766,6 +765,93 @@ public final class RedditComposeFocusBridge {
             return true;
         } catch (Throwable throwable) {
             Log.w(TAG, "selectedComment move failed", throwable);
+            return false;
+        }
+    }
+
+    private static boolean selectVisibleCommentBoundary(View root, int direction) {
+        try {
+            if (root == null) {
+                return false;
+            }
+            int[] rootLocation = new int[2];
+            root.getLocationOnScreen(rootLocation);
+            int visibleTop = rootLocation[1];
+            int visibleBottom = visibleTop + root.getHeight();
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectActiveComposeViews(root, composeViews);
+            View bestCompose = null;
+            int bestId = Integer.MIN_VALUE;
+            Rect bestBounds = null;
+
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View candidateCompose = composeViews.get(i);
+                AccessibilityNodeProvider provider = candidateCompose.getAccessibilityNodeProvider();
+                Object delegate = provider == null ? null : readField(provider, "a");
+                Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
+                if (accessibilityDelegate == null) {
+                    accessibilityDelegate = delegate;
+                }
+                if (provider == null || accessibilityDelegate == null) {
+                    continue;
+                }
+                Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+                semanticsMapMethod.setAccessible(true);
+                Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+                Object[] values = map == null ? null : (Object[]) readField(map, "c");
+                if (values == null) {
+                    continue;
+                }
+                for (Object wrapper : values) {
+                    Object node = wrapper == null ? null : readField(wrapper, "a");
+                    Object idObject = node == null ? null : readField(node, "f");
+                    if (!(idObject instanceof Integer)) {
+                        continue;
+                    }
+                    int id = ((Integer) idObject).intValue();
+                    if (candidateCompose == selectedCommentCompose.get()
+                            && id == selectedCommentVirtualId) {
+                        continue;
+                    }
+                    AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
+                    if (info == null) {
+                        continue;
+                    }
+                    sealNode(info);
+                    if (!hasCommentToggleAction(info)) {
+                        continue;
+                    }
+                    Rect bounds = new Rect();
+                    info.getBoundsInScreen(bounds);
+                    if (bounds.isEmpty() || bounds.bottom <= visibleTop || bounds.top >= visibleBottom) {
+                        continue;
+                    }
+                    if (bestBounds == null
+                            || (direction > 0 && bounds.top < bestBounds.top)
+                            || (direction < 0 && bounds.bottom > bestBounds.bottom)) {
+                        bestCompose = candidateCompose;
+                        bestId = id;
+                        bestBounds = new Rect(bounds);
+                    }
+                }
+            }
+            if (bestCompose == null || bestBounds == null) {
+                return false;
+            }
+            AccessibilityNodeProvider bestProvider = bestCompose.getAccessibilityNodeProvider();
+            if (bestProvider != null) {
+                bestProvider.performAction(bestId, 16908342, null);
+            }
+            clearComposeFocus(bestCompose);
+            selectedCommentCompose = new WeakReference<View>(bestCompose);
+            selectedCommentVirtualId = bestId;
+            selectedCommentRetainedAfterToggle = false;
+            showCommentFocusIndicator(root, bestBounds);
+            Log.w(TAG, "selectedComment entered boundary direction=" + direction
+                    + " id=" + bestId + " bounds=" + bestBounds);
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "selectedComment boundary failed", throwable);
             return false;
         }
     }
