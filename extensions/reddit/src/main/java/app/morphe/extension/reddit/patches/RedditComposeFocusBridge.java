@@ -687,20 +687,22 @@ public final class RedditComposeFocusBridge {
         try {
             View compose = selectedCommentCompose.get();
             if (compose == null || selectedCommentVirtualId == Integer.MIN_VALUE) {
-                return selectVisibleCommentBoundary(root, direction);
+                return selectedCommentBounds.isEmpty()
+                        ? selectVisibleCommentBoundary(root, direction)
+                        : selectVisibleCommentRelative(root, direction);
             }
             AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
             AccessibilityNodeInfo current = provider == null
                     ? null
                     : provider.createAccessibilityNodeInfo(selectedCommentVirtualId);
             if (provider == null || current == null) {
-                return selectVisibleCommentBoundary(root, direction);
+                return selectVisibleCommentRelative(root, direction);
             }
             sealNode(current);
             Rect currentBounds = new Rect();
             current.getBoundsInScreen(currentBounds);
             if (currentBounds.isEmpty()) {
-                return selectVisibleCommentBoundary(root, direction);
+                return selectVisibleCommentRelative(root, direction);
             }
 
             Object delegate = readField(provider, "a");
@@ -758,7 +760,7 @@ public final class RedditComposeFocusBridge {
                 }
             }
             if (bestId == Integer.MIN_VALUE || bestBounds == null) {
-                return false;
+                return selectVisibleCommentRelative(root, direction);
             }
 
             // ACTION_SHOW_ON_SCREEN is absent from the old Android stub used to compile extensions.
@@ -774,6 +776,95 @@ public final class RedditComposeFocusBridge {
             return true;
         } catch (Throwable throwable) {
             Log.w(TAG, "selectedComment move failed", throwable);
+            return false;
+        }
+    }
+
+    public static boolean selectCommentAfterScroll(View root, int direction) {
+        return selectVisibleCommentBoundary(root, direction);
+    }
+
+    private static boolean selectVisibleCommentRelative(View root, int direction) {
+        try {
+            if (root == null || selectedCommentBounds.isEmpty()) {
+                return false;
+            }
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectActiveComposeViews(root, composeViews);
+            View bestCompose = null;
+            int bestId = Integer.MIN_VALUE;
+            Rect bestBounds = null;
+            long bestScore = Long.MAX_VALUE;
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View candidateCompose = composeViews.get(i);
+                AccessibilityNodeProvider provider = candidateCompose.getAccessibilityNodeProvider();
+                Object delegate = provider == null ? null : readField(provider, "a");
+                Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
+                if (accessibilityDelegate == null) {
+                    accessibilityDelegate = delegate;
+                }
+                if (provider == null || accessibilityDelegate == null) {
+                    continue;
+                }
+                Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+                semanticsMapMethod.setAccessible(true);
+                Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+                Object[] values = map == null ? null : (Object[]) readField(map, "c");
+                if (values == null) {
+                    continue;
+                }
+                for (Object wrapper : values) {
+                    Object node = wrapper == null ? null : readField(wrapper, "a");
+                    Object idObject = node == null ? null : readField(node, "f");
+                    if (!(idObject instanceof Integer)) {
+                        continue;
+                    }
+                    int id = ((Integer) idObject).intValue();
+                    AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
+                    if (info == null) {
+                        continue;
+                    }
+                    sealNode(info);
+                    if (!hasCommentToggleAction(info)) {
+                        continue;
+                    }
+                    Rect bounds = new Rect();
+                    info.getBoundsInScreen(bounds);
+                    if (bounds.isEmpty()) {
+                        continue;
+                    }
+                    int deltaY = bounds.centerY() - selectedCommentBounds.centerY();
+                    if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
+                        continue;
+                    }
+                    long score = Math.abs((long) deltaY) * 10000L
+                            + Math.abs((long) bounds.left - selectedCommentBounds.left);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestCompose = candidateCompose;
+                        bestId = id;
+                        bestBounds = new Rect(bounds);
+                    }
+                }
+            }
+            if (bestCompose == null || bestBounds == null) {
+                return false;
+            }
+            AccessibilityNodeProvider provider = bestCompose.getAccessibilityNodeProvider();
+            if (provider != null) {
+                provider.performAction(bestId, 16908342, null);
+            }
+            clearComposeFocus(bestCompose);
+            selectedCommentCompose = new WeakReference<View>(bestCompose);
+            selectedCommentVirtualId = bestId;
+            selectedCommentBounds.set(bestBounds);
+            selectedCommentRetainedAfterToggle = false;
+            showCommentFocusIndicator(root, bestBounds);
+            Log.w(TAG, "selectedComment moved across hosts direction=" + direction
+                    + " id=" + bestId + " bounds=" + bestBounds);
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "selectedComment cross-host move failed", throwable);
             return false;
         }
     }
@@ -875,6 +966,9 @@ public final class RedditComposeFocusBridge {
                     : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
             ArrayList<View> composeViews = new ArrayList<View>();
             collectActiveComposeViews(root, composeViews);
+            AccessibilityNodeProvider bestProvider = null;
+            int bestId = Integer.MIN_VALUE;
+            long bestArea = -1L;
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View compose = composeViews.get(i);
                 if (compose.performAccessibilityAction(action, null)) {
@@ -888,6 +982,63 @@ public final class RedditComposeFocusBridge {
                             + " index=" + i);
                     return true;
                 }
+                Object delegate = provider == null ? null : readField(provider, "a");
+                Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
+                if (accessibilityDelegate == null) {
+                    accessibilityDelegate = delegate;
+                }
+                if (provider == null || accessibilityDelegate == null) {
+                    continue;
+                }
+                Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+                semanticsMapMethod.setAccessible(true);
+                Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+                Object[] values = map == null ? null : (Object[]) readField(map, "c");
+                if (values == null) {
+                    continue;
+                }
+                for (Object wrapper : values) {
+                    Object node = wrapper == null ? null : readField(wrapper, "a");
+                    Object idObject = node == null ? null : readField(node, "f");
+                    if (!(idObject instanceof Integer)) {
+                        continue;
+                    }
+                    int id = ((Integer) idObject).intValue();
+                    AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
+                    if (info == null) {
+                        continue;
+                    }
+                    sealNode(info);
+                    boolean supportsScroll = false;
+                    List<AccessibilityNodeInfo.AccessibilityAction> actions = info.getActionList();
+                    if (actions != null) {
+                        for (AccessibilityNodeInfo.AccessibilityAction candidateAction : actions) {
+                            if (candidateAction != null && candidateAction.getId() == action) {
+                                supportsScroll = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!supportsScroll) {
+                        continue;
+                    }
+                    Rect bounds = new Rect();
+                    info.getBoundsInScreen(bounds);
+                    long area = bounds.isEmpty()
+                            ? 0L
+                            : (long) bounds.width() * bounds.height();
+                    if (area > bestArea) {
+                        bestArea = area;
+                        bestProvider = provider;
+                        bestId = id;
+                    }
+                }
+            }
+            if (bestProvider != null
+                    && bestProvider.performAction(bestId, action, null)) {
+                Log.w(TAG, "postDetail native scroll semantics direction=" + direction
+                        + " id=" + bestId + " area=" + bestArea);
+                return true;
             }
         } catch (Throwable throwable) {
             Log.w(TAG, "postDetail native scroll failed", throwable);

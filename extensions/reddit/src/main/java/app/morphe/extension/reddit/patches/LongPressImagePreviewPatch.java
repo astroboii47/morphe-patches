@@ -1868,7 +1868,10 @@ public final class LongPressImagePreviewPatch {
                 return true;
             }
             int detailDirection = detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
-            if (!RedditComposeFocusBridge.scrollPostDetailForComment(root, detailDirection)) {
+            final boolean nativeCommentScroll = RedditComposeFocusBridge.scrollPostDetailForComment(
+                    root,
+                    detailDirection);
+            if (!nativeCommentScroll) {
                 RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
                 redispatchFeedKey(activity, detailKeyCode);
             }
@@ -1879,9 +1882,12 @@ public final class LongPressImagePreviewPatch {
                     if (navigationGeneration != commentNavigationGeneration) {
                         return;
                     }
-                    RedditComposeFocusBridge.moveSelectedComment(
-                            root,
-                            detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1);
+                    int delayedDirection = detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
+                    if (nativeCommentScroll) {
+                        RedditComposeFocusBridge.selectCommentAfterScroll(root, delayedDirection);
+                    } else {
+                        RedditComposeFocusBridge.moveSelectedComment(root, delayedDirection);
+                    }
                 }
             }, 60L);
             return true;

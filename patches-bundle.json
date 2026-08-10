@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.116 (2026-08-10)\n\n- Reddit: use the post detail Compose container's native scroll action when the next comment is not yet composed.\n- Reddit: preserve the logical selected comment while crossing a viewport boundary.\n- Reddit: stop the old native-focus synchronizer from erasing the selector during boundary composition.\n- Reddit: select the first newly visible parent or child comment after the native scroll completes.\n- Reddit: retain the oversized preview bitmap crash guard from dev115.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.116/patches-1.36.0-dev.116.mpp",
+  "description": "## 1.36.0-dev.117 (2026-08-11)\n\n- Reddit: search every visible Compose host for the nearest parent or child comment before scrolling, preventing skipped comments.\n- Reddit: invoke scrolling on the virtual Compose semantics node that actually owns the post-detail scroll action.\n- Reddit: resume selection at the newly visible boundary only after a confirmed native scroll.\n- Reddit: preserve logical comment identity and highlighting across Compose host replacement and viewport boundaries.\n- Reddit: retain collapse/expand behavior and oversized preview crash protection.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.117/patches-1.36.0-dev.117.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.116"
+  "version": "1.36.0-dev.117"
 }
