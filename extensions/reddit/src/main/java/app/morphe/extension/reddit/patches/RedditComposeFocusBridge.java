@@ -522,6 +522,10 @@ public final class RedditComposeFocusBridge {
         selectedCommentRetainedAfterToggle = false;
     }
 
+    public static void suspendCommentFocusIndicator() {
+        removeCommentFocusIndicatorView();
+    }
+
     private static void removeCommentFocusIndicatorView() {
         View indicator = commentFocusIndicator.get();
         if (indicator != null && indicator.getParent() instanceof ViewGroup) {
@@ -854,6 +858,33 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "selectedComment boundary failed", throwable);
             return false;
         }
+    }
+
+    public static boolean scrollPostDetailForComment(View root, int direction) {
+        try {
+            int action = direction > 0
+                    ? AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    : AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectActiveComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                if (compose.performAccessibilityAction(action, null)) {
+                    Log.w(TAG, "postDetail native scroll view direction=" + direction
+                            + " index=" + i);
+                    return true;
+                }
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider != null && provider.performAction(-1, action, null)) {
+                    Log.w(TAG, "postDetail native scroll root direction=" + direction
+                            + " index=" + i);
+                    return true;
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "postDetail native scroll failed", throwable);
+        }
+        return false;
     }
 
     private static boolean isFocusedCommentOverflowControl(View root) {

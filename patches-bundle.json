@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.115 (2026-08-10)\n\n- Reddit: enter the visible comment list directly after post-detail scrolling, even when Reddit exposes no focused Compose node.\n- Reddit: retain comment selection while the next parent or child comment is being composed off-screen.\n- Reddit: resume at the correct visible comment boundary after scrolling instead of clearing the selector.\n- Reddit: constrain exceptionally large preview bitmaps before drawing to prevent Canvas crashes.\n- Reddit: leave normal HQ preview resolution and existing key behavior unchanged.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.115/patches-1.36.0-dev.115.mpp",
+  "description": "## 1.36.0-dev.116 (2026-08-10)\n\n- Reddit: use the post detail Compose container's native scroll action when the next comment is not yet composed.\n- Reddit: preserve the logical selected comment while crossing a viewport boundary.\n- Reddit: stop the old native-focus synchronizer from erasing the selector during boundary composition.\n- Reddit: select the first newly visible parent or child comment after the native scroll completes.\n- Reddit: retain the oversized preview bitmap crash guard from dev115.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.116/patches-1.36.0-dev.116.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.115"
+  "version": "1.36.0-dev.116"
 }
