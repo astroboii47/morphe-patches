@@ -720,9 +720,8 @@ public final class RedditComposeFocusBridge {
                 if (provider == null) {
                     continue;
                 }
-                boolean establishedFocus = false;
                 if (compose == selectedCompose && previousId != Integer.MIN_VALUE) {
-                    establishedFocus = provider.performAction(
+                    provider.performAction(
                             previousId,
                             AccessibilityNodeInfo.ACTION_FOCUS,
                             null
@@ -736,17 +735,15 @@ public final class RedditComposeFocusBridge {
                 Method nativeMove = owner.getClass().getDeclaredMethod("j", int.class, boolean.class);
                 nativeMove.setAccessible(true);
                 for (int step = 0; step < 16; step++) {
-                    boolean moved;
-                    if (step == 0 && !establishedFocus && !selectedCommentBounds.isEmpty()) {
+                    boolean moved = Boolean.TRUE.equals(
+                            nativeMove.invoke(owner, composeDirection, Boolean.TRUE)
+                    );
+                    if (!moved && step == 0 && !selectedCommentBounds.isEmpty()) {
                         moved = focusFromCommentBoundsNatively(
                                 compose,
                                 owner,
                                 composeDirection,
                                 selectedCommentBounds
-                        );
-                    } else {
-                        moved = Boolean.TRUE.equals(
-                                nativeMove.invoke(owner, composeDirection, Boolean.TRUE)
                         );
                     }
                     if (!moved) {
