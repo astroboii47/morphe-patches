@@ -4571,6 +4571,7 @@ public final class RedditComposeFocusBridge {
             if (node == null) {
                 continue;
             }
+            Object config = readField(node, "d");
             Object id = readField(node, "f");
             if (!(id instanceof Integer)) {
                 continue;
