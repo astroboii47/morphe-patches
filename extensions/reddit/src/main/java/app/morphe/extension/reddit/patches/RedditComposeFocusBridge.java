@@ -4224,12 +4224,27 @@ public final class RedditComposeFocusBridge {
             return false;
         }
 
+        Log.w(TAG, "focusedCommentSemantics id=" + focusedId
+                + " bounds=" + focusedBounds
+                + " text=\"" + summarizeText(focusedText) + "\""
+                + " actions=\"" + describeActions(provider.createAccessibilityNodeInfo(focusedId.intValue())) + "\"");
+
         if (looksLikeCommentContainerCandidate(focusedText, focusedBounds)
-                && !looksLikeAuthorOrProfileTarget(focusedText)
-                && provider.performAction(focusedId.intValue(), AccessibilityNodeInfo.ACTION_CLICK, null)) {
-            Log.w(TAG, "focusedCommentContainer clicked focused id=" + focusedId
-                    + " text=\"" + summarizeText(focusedText) + "\"");
-            return true;
+                && !looksLikeAuthorOrProfileTarget(focusedText)) {
+            AccessibilityNodeInfo focusedInfo = provider.createAccessibilityNodeInfo(focusedId.intValue());
+            if (focusedInfo != null) {
+                sealNode(focusedInfo);
+                if (performCommentToggleAction(provider, focusedId.intValue(), focusedInfo)) {
+                    Log.w(TAG, "focusedCommentContainer toggled focused id=" + focusedId
+                            + " text=\"" + summarizeText(focusedText) + "\"");
+                    return true;
+                }
+            }
+            if (provider.performAction(focusedId.intValue(), AccessibilityNodeInfo.ACTION_CLICK, null)) {
+                Log.w(TAG, "focusedCommentContainer clicked focused id=" + focusedId
+                        + " text=\"" + summarizeText(focusedText) + "\"");
+                return true;
+            }
         }
 
         int focusX = focusedBounds.centerX();
@@ -4262,13 +4277,95 @@ public final class RedditComposeFocusBridge {
             return false;
         }
 
+        AccessibilityNodeInfo bestInfo = provider.createAccessibilityNodeInfo(best.id);
+        if (bestInfo != null) {
+            sealNode(bestInfo);
+            if (performCommentToggleAction(provider, best.id, bestInfo)) {
+                Log.w(TAG, "focusedCommentContainer toggled id=" + best.id
+                        + " bounds=" + best.bounds
+                        + " focused=\"" + summarizeText(focusedText) + "\""
+                        + " target=\"" + summarizeText(best.text) + "\"");
+                return true;
+            }
+        }
+
         boolean clicked = provider.performAction(best.id, AccessibilityNodeInfo.ACTION_CLICK, null);
         Log.w(TAG, "focusedCommentContainer id=" + best.id
                 + " clicked=" + clicked
                 + " bounds=" + best.bounds
                 + " focused=\"" + summarizeText(focusedText) + "\""
-                + " target=\"" + summarizeText(best.text) + "\"");
+                + " target=\"" + summarizeText(best.text) + "\""
+                + " actions=\"" + describeActions(bestInfo) + "\"");
         return clicked;
+    }
+
+    private static boolean performCommentToggleAction(AccessibilityNodeProvider provider, int id, AccessibilityNodeInfo info) {
+        if (provider == null || info == null) {
+            return false;
+        }
+        try {
+            List<AccessibilityNodeInfo.AccessibilityAction> actions = info.getActionList();
+            if (actions == null) {
+                return false;
+            }
+            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                if (action == null) {
+                    continue;
+                }
+                CharSequence label = action.getLabel();
+                String lower = label == null ? "" : label.toString().toLowerCase(Locale.US);
+                if (lower.contains("collapse")
+                        || lower.contains("expand")
+                        || lower.contains("show less")
+                        || lower.contains("show more")) {
+                    boolean performed = provider.performAction(id, action.getId(), null);
+                    Log.w(TAG, "commentToggleAction id=" + id
+                            + " action=" + action.getId()
+                            + " label=\"" + lower + "\""
+                            + " performed=" + performed);
+                    if (performed) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "commentToggleAction failed id=" + id, throwable);
+        }
+        return false;
+    }
+
+    private static String describeActions(AccessibilityNodeInfo info) {
+        if (info == null) {
+            return "";
+        }
+        try {
+            sealNode(info);
+            List<AccessibilityNodeInfo.AccessibilityAction> actions = info.getActionList();
+            if (actions == null || actions.isEmpty()) {
+                return "";
+            }
+            StringBuilder builder = new StringBuilder();
+            for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                if (action == null) {
+                    continue;
+                }
+                if (builder.length() > 0) {
+                    builder.append(" | ");
+                }
+                builder.append(action.getId()).append(':');
+                CharSequence label = action.getLabel();
+                if (label != null) {
+                    builder.append(label);
+                }
+                if (builder.length() > 420) {
+                    builder.append("...");
+                    break;
+                }
+            }
+            return builder.toString();
+        } catch (Throwable throwable) {
+            return "";
+        }
     }
 
     private static boolean looksLikeCommentContainerCandidate(String text, Rect bounds) {
@@ -4406,6 +4503,7 @@ public final class RedditComposeFocusBridge {
             if (node == null) {
                 continue;
             }
+            Object config = readField(node, "d");
             Object id = readField(node, "f");
             if (!(id instanceof Integer)) {
                 continue;

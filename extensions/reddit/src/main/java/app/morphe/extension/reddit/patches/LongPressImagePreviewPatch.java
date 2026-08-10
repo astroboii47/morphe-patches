@@ -1830,13 +1830,14 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
                 && RedditComposeFocusBridge.isPostDetailScreen(root)) {
+            final int detailKeyCode = mappedKeyCode;
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
-            redispatchFeedKey(activity, mappedKeyCode);
+            redispatchFeedKey(activity, detailKeyCode);
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
-                        redispatchFeedKey(activity, mappedKeyCode);
+                        redispatchFeedKey(activity, detailKeyCode);
                     }
                 }
             }, 40L);
