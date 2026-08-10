@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.106 (2026-08-10)\n\n- Reddit: remove the laggy custom Compose comment scanner and selection overlay.\n- Reddit: restore the stable native post-detail keyboard navigation used before dev100.\n- Reddit: make O walk the currently focused native Compose node and invoke only its labeled Collapse or Expand action.\n- Reddit: leave P and media preview handling unchanged from dev105.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.106/patches-1.36.0-dev.106.mpp",
+  "description": "## 1.36.0-dev.107 (2026-08-10)\n\n- Reddit: suppress Android's full-screen focus highlight on P previews without changing preview focus or key-release handling.\n- Reddit: send the focused comment's native Collapse or Expand action through its Compose virtual-node provider.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.107/patches-1.36.0-dev.107.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.106"
+  "version": "1.36.0-dev.107"
 }

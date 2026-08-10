@@ -494,8 +494,11 @@ public final class RedditComposeFocusBridge {
             }
             for (int depth = 0; node != null && depth < 10; depth++) {
                 sealNode(node);
-                if (performCommentToggleAction(node)) {
+                int virtualId = getNodeVirtualId(node);
+                if (virtualId != Integer.MIN_VALUE
+                        && performCommentToggleAction(provider, virtualId, node)) {
                     Log.w(TAG, "focusedCommentToggle depth=" + depth
+                            + " id=" + virtualId
                             + " text=\"" + summarizeText(readableText(node)) + "\"");
                     return true;
                 }
@@ -510,6 +513,34 @@ public final class RedditComposeFocusBridge {
         }
         Log.w(TAG, "focusedCommentToggle no native collapse/expand action");
         return false;
+    }
+
+    private static int getNodeVirtualId(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return Integer.MIN_VALUE;
+        }
+        try {
+            Object sourceNodeId = AccessibilityNodeInfo.class
+                    .getMethod("getSourceNodeId")
+                    .invoke(node);
+            if (!(sourceNodeId instanceof Long)) {
+                return Integer.MIN_VALUE;
+            }
+            long nodeId = ((Long) sourceNodeId).longValue();
+            try {
+                Object virtualId = AccessibilityNodeInfo.class
+                        .getMethod("getVirtualDescendantId", long.class)
+                        .invoke(null, Long.valueOf(nodeId));
+                return virtualId instanceof Integer
+                        ? ((Integer) virtualId).intValue()
+                        : Integer.MIN_VALUE;
+            } catch (ReflectiveOperationException ignored) {
+                return (int) (nodeId >> 32);
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedCommentToggle could not read virtual id", throwable);
+            return Integer.MIN_VALUE;
+        }
     }
 
     private static boolean hasCommentJumpButton(View root) {

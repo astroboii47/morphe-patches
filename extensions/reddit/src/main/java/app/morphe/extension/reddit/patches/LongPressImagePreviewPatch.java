@@ -813,6 +813,7 @@ public final class LongPressImagePreviewPatch {
         overlay.setClickable(true);
         overlay.setFocusable(true);
         overlay.setFocusableInTouchMode(true);
+        overlay.setDefaultFocusHighlightEnabled(false);
         attachPreviewDismissHandlers(overlay);
     }
 
