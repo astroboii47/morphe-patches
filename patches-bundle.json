@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.111 (2026-08-10)\n\n- Reddit: resolve comment focus only from Android's active Compose host, avoiding stale targets from older post layers.\n- Reddit: refresh the live comment target when O is pressed so the tint and collapsed comment stay aligned.\n- Reddit: discard delayed indicator updates from older rapid keyboard presses.\n- Reddit: stop treating words such as profile or options inside post and comment content as navigation chrome.\n- Reddit: leave P preview behavior unchanged.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.111/patches-1.36.0-dev.111.mpp",
+  "description": "## 1.36.0-dev.112 (2026-08-10)\n\n- Reddit: draw the comment selector on Reddit's exact focused node instead of the higher collapse-action ancestor.\n- Reddit: retain the linked native comment action so O still collapses or expands the comment containing that focused node.\n- Reddit: hide the comment selector on the three-dot More control and let O activate that control normally.\n- Reddit: keep the active Compose-host and rapid-key ordering fixes from dev111.\n- Reddit: leave P preview behavior unchanged.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.112/patches-1.36.0-dev.112.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.111"
+  "version": "1.36.0-dev.112"
 }

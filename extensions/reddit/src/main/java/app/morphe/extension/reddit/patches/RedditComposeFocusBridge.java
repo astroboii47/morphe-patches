@@ -543,17 +543,38 @@ public final class RedditComposeFocusBridge {
                     } catch (Throwable ignored) {
                         node = null;
                     }
+                    Rect focusedBounds = new Rect();
+                    String focusedText = "";
+                    if (node != null) {
+                        sealNode(node);
+                        node.getBoundsInScreen(focusedBounds);
+                        focusedText = readableText(node);
+                        if (isCommentOverflowControl(focusedText)) {
+                            Log.w(TAG, "comment focus ignored overflow control text=\""
+                                    + summarizeText(focusedText) + "\"");
+                            return null;
+                        }
+                    }
                     for (int depth = 0; node != null && depth < 10; depth++) {
                         sealNode(node);
                         if (hasCommentToggleAction(node)) {
-                            Rect bounds = new Rect();
-                            node.getBoundsInScreen(bounds);
+                            Rect actionBounds = new Rect();
+                            node.getBoundsInScreen(actionBounds);
                             int virtualId = getNodeVirtualId(node);
                             if (virtualId != Integer.MIN_VALUE) {
+                                Rect indicatorBounds = focusedBounds.isEmpty()
+                                        ? actionBounds
+                                        : focusedBounds;
+                                Log.w(TAG, "comment focus target type=" + focusType
+                                        + " depth=" + depth
+                                        + " actionId=" + virtualId
+                                        + " focusBounds=" + focusedBounds
+                                        + " actionBounds=" + actionBounds
+                                        + " focusText=\"" + summarizeText(focusedText) + "\"");
                                 return new CommentFocusTarget(
                                         composeViews.get(i),
                                         virtualId,
-                                        bounds
+                                        indicatorBounds
                                 );
                             }
                         }
@@ -585,6 +606,11 @@ public final class RedditComposeFocusBridge {
 
     public static boolean clickFocusedCommentContainer(View root) {
         try {
+            if (isFocusedCommentOverflowControl(root)) {
+                hideCommentFocusIndicator();
+                Log.w(TAG, "focusedCommentContainer delegated overflow control");
+                return false;
+            }
             CommentFocusTarget liveTarget = findFocusedCommentTarget(root);
             if (liveTarget != null) {
                 selectedCommentCompose = new WeakReference<View>(liveTarget.compose);
@@ -636,6 +662,43 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "focusedCommentContainer failed", throwable);
         }
         return false;
+    }
+
+    private static boolean isFocusedCommentOverflowControl(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectActiveComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                AccessibilityNodeProvider provider = composeViews.get(i).getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                int[] focusTypes = new int[]{
+                        AccessibilityNodeInfo.FOCUS_INPUT,
+                        AccessibilityNodeInfo.FOCUS_ACCESSIBILITY
+                };
+                for (int focusType : focusTypes) {
+                    AccessibilityNodeInfo node = provider.findFocus(focusType);
+                    if (node == null) {
+                        continue;
+                    }
+                    sealNode(node);
+                    return isCommentOverflowControl(readableText(node));
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focused comment overflow lookup failed", throwable);
+        }
+        return false;
+    }
+
+    private static boolean isCommentOverflowControl(String text) {
+        String lower = normalizeWhitespace(text).toLowerCase(Locale.US);
+        return lower.equals("more")
+                || lower.equals("more options")
+                || lower.equals("more actions")
+                || lower.equals("overflow")
+                || lower.equals("overflow menu");
     }
 
     private static boolean performFocusedCommentToggle(
