@@ -754,7 +754,8 @@ public final class RedditComposeFocusBridge {
                 return false;
             }
 
-            provider.performAction(bestId, AccessibilityNodeInfo.ACTION_SHOW_ON_SCREEN, null);
+            // ACTION_SHOW_ON_SCREEN is absent from the old Android stub used to compile extensions.
+            provider.performAction(bestId, 16908342, null);
             clearComposeFocus(compose);
             selectedCommentCompose = new WeakReference<View>(compose);
             selectedCommentVirtualId = bestId;
