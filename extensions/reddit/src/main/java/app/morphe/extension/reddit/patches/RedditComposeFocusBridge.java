@@ -487,13 +487,13 @@ public final class RedditComposeFocusBridge {
     private static void showCommentFocusIndicator(View root, Rect bounds) {
         View decorView = root == null ? null : root.getRootView();
         if (!(decorView instanceof ViewGroup)) {
-            hideCommentFocusIndicator();
+            removeCommentFocusIndicatorView();
             return;
         }
         ViewGroup decor = (ViewGroup) decorView;
         View indicator = commentFocusIndicator.get();
         if (indicator == null || indicator.getParent() != decor) {
-            hideCommentFocusIndicator();
+            removeCommentFocusIndicatorView();
             indicator = new View(root.getContext());
             indicator.setBackgroundColor(Color.argb(28, 255, 255, 255));
             indicator.setClickable(false);
