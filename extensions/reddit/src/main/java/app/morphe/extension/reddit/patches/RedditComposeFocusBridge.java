@@ -558,15 +558,10 @@ public final class RedditComposeFocusBridge {
                 selected = direction < 0 ? candidates.get(0) : candidates.get(candidates.size() - 1);
             }
 
-            boolean focused = selected.provider.performAction(selected.id, AccessibilityNodeInfo.ACTION_FOCUS, null);
-            boolean accessibilityFocused = focused
-                    || selected.provider.performAction(selected.id, AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null);
             SELECTED_COMMENT_ID = selected.id;
             SELECTED_COMMENT_CENTER_Y = selected.centerY();
             SELECTED_COMMENT_TEXT = selected.text;
             Log.w(TAG, "commentSelection selected id=" + selected.id
-                    + " focused=" + focused
-                    + " accessibilityFocused=" + accessibilityFocused
                     + " bounds=" + selected.bounds
                     + " actions=\"" + selected.actions + "\""
                     + " text=\"" + summarizeText(selected.text) + "\"");
@@ -602,12 +597,10 @@ public final class RedditComposeFocusBridge {
                 }
             }
 
-            boolean clicked = selected.provider.performAction(selected.id, AccessibilityNodeInfo.ACTION_CLICK, null);
-            Log.w(TAG, "commentSelection clicked id=" + selected.id
-                    + " clicked=" + clicked
+            Log.w(TAG, "commentSelection has no collapse/expand action id=" + selected.id
                     + " actions=\"" + selected.actions + "\""
                     + " text=\"" + summarizeText(selected.text) + "\"");
-            return clicked;
+            return false;
         } catch (Throwable throwable) {
             Log.w(TAG, "commentSelection click failed", throwable);
             return false;

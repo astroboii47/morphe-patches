@@ -501,6 +501,7 @@ public final class LongPressImagePreviewPatch {
                 break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                scheduleCommentSelectionCleanup(activity);
                 if (touchNativePostHeld && nativePostHeldOpen) {
                     touchNativePostHeld = false;
                     synchronized (TOUCH_STATES) {
@@ -1792,10 +1793,7 @@ public final class LongPressImagePreviewPatch {
                 if (RedditComposeFocusBridge.hasSelectedComment(activity.getWindow().getDecorView())
                         || RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        boolean clicked = RedditComposeFocusBridge.clickSelectedComment(activity.getWindow().getDecorView());
-                        if (!clicked) {
-                            RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
-                        }
+                        RedditComposeFocusBridge.clickSelectedComment(activity.getWindow().getDecorView());
                     }
                     return true;
                 }
@@ -1807,6 +1805,8 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_U:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     FEED_HANDOFF_DONE = false;
+                    hideCommentSelectionHighlight();
+                    RedditComposeFocusBridge.clearSelectedComment();
                     int returnX = nativePostReturnX;
                     int returnY = nativePostReturnY;
                     activity.onBackPressed();
@@ -1834,7 +1834,10 @@ public final class LongPressImagePreviewPatch {
 
         postFocusRestoreGeneration++;
         View root = activity.getWindow().getDecorView();
-        if (mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP) {
+        boolean verticalNavigation = mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN
+                || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP;
+        boolean postDetail = verticalNavigation && RedditComposeFocusBridge.isPostDetailScreen(root);
+        if (postDetail) {
             Rect selectedComment = RedditComposeFocusBridge.moveSelectedComment(
                     root,
                     mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1
@@ -1843,16 +1846,26 @@ public final class LongPressImagePreviewPatch {
                 showCommentSelectionHighlight(activity, root, selectedComment);
                 return true;
             }
-        }
-
-        if (RedditComposeFocusBridge.hasSelectedComment(root)) {
             hideCommentSelectionHighlight();
             RedditComposeFocusBridge.clearSelectedComment();
+            final int detailDirection = mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
+            RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
+            redispatchFeedKey(activity, mappedKeyCode);
+            root.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    Rect enteredComment = RedditComposeFocusBridge.moveSelectedComment(root, detailDirection);
+                    if (enteredComment != null) {
+                        showCommentSelectionHighlight(activity, root, enteredComment);
+                    }
+                }
+            }, 24L);
+            return true;
         }
 
-        if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
-                && RedditComposeFocusBridge.isPostDetailScreen(root)) {
-            return true;
+        if (verticalNavigation) {
+            hideCommentSelectionHighlight();
+            RedditComposeFocusBridge.clearSelectedComment();
         }
 
         updatePreviewTargetY(root, mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1
@@ -1881,8 +1894,8 @@ public final class LongPressImagePreviewPatch {
             highlight.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             GradientDrawable drawable = new GradientDrawable();
             drawable.setColor(Color.TRANSPARENT);
-            drawable.setStroke(Math.max(2, dp(root, 2)), Color.argb(230, 255, 69, 0));
-            drawable.setCornerRadius(dp(root, 8));
+            drawable.setStroke(Math.max(1, dp(root, 1)), Color.argb(135, 255, 69, 0));
+            drawable.setCornerRadius(dp(root, 5));
             highlight.setBackground(drawable);
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(bounds.width(), bounds.height());
             params.leftMargin = bounds.left - rootLocation[0];
@@ -1907,6 +1920,22 @@ public final class LongPressImagePreviewPatch {
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static void scheduleCommentSelectionCleanup(Activity activity) {
+        if (activity == null || !RedditComposeFocusBridge.hasSelectedComment(activity.getWindow().getDecorView())) {
+            return;
+        }
+        View root = activity.getWindow().getDecorView();
+        root.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!RedditComposeFocusBridge.isPostDetailScreen(root)) {
+                    hideCommentSelectionHighlight();
+                    RedditComposeFocusBridge.clearSelectedComment();
+                }
+            }
+        }, 120L);
     }
 
     private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
@@ -2561,6 +2590,12 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
+            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK
+                    && event.getAction() == KeyEvent.ACTION_DOWN
+                    && activePreview == null) {
+                hideCommentSelectionHighlight();
+                RedditComposeFocusBridge.clearSelectedComment();
+            }
             if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
