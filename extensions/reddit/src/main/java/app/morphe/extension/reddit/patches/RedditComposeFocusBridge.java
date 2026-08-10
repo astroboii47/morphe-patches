@@ -70,6 +70,20 @@ public final class RedditComposeFocusBridge {
         String postUrl;
     }
 
+    private static final class CommentNodeCandidate {
+        final int id;
+        final Rect bounds;
+        final String text;
+        final boolean clickable;
+
+        CommentNodeCandidate(int id, Rect bounds, String text, boolean clickable) {
+            this.id = id;
+            this.bounds = new Rect(bounds);
+            this.text = text;
+            this.clickable = clickable;
+        }
+    }
+
     private static <K, V> void trimCache(Map<K, V> cache, int maxSize, int targetSize) {
         if (cache.size() <= maxSize) {
             return;
@@ -443,6 +457,31 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "postDetailCommentNav failed", throwable);
             return false;
         }
+    }
+
+    public static boolean clickFocusedCommentContainer(View root) {
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate == null) {
+                    continue;
+                }
+                if (clickFocusedCommentContainer(compose.getClass().getClassLoader(), provider, delegate)) {
+                    Log.w(TAG, "focusedCommentContainer clicked compose index=" + i);
+                    return true;
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedCommentContainer failed", throwable);
+        }
+        return false;
     }
 
     private static boolean hasCommentJumpButton(View root) {
@@ -4118,6 +4157,150 @@ public final class RedditComposeFocusBridge {
         return false;
     }
 
+    private static boolean clickFocusedCommentContainer(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return false;
+        }
+
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return false;
+        }
+
+        Integer focusedId = null;
+        Rect focusedBounds = null;
+        String focusedText = "";
+        ArrayList<CommentNodeCandidate> candidates = new ArrayList<CommentNodeCandidate>();
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object idObject = readField(node, "f");
+            if (!(idObject instanceof Integer)) {
+                continue;
+            }
+            int id = ((Integer) idObject).intValue();
+            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
+            if (info == null) {
+                continue;
+            }
+            sealNode(info);
+            Rect bounds = new Rect();
+            info.getBoundsInScreen(bounds);
+            if (bounds.isEmpty() || bounds.bottom <= 0 || bounds.right <= 0) {
+                continue;
+            }
+            String text = readableTreeText(provider, info, 0);
+            if (text.length() == 0) {
+                text = readableText(info);
+            }
+            if (info.isFocused()) {
+                focusedId = Integer.valueOf(id);
+                focusedBounds = new Rect(bounds);
+                focusedText = text;
+            }
+            if (looksLikeCommentContainerCandidate(text, bounds)) {
+                candidates.add(new CommentNodeCandidate(id, bounds, text, info.isClickable()));
+            }
+        }
+
+        if (focusedId == null || focusedBounds == null) {
+            Log.w(TAG, "focusedCommentContainer no focused node");
+            return false;
+        }
+
+        if (looksLikeCommentContainerCandidate(focusedText, focusedBounds)
+                && !looksLikeAuthorOrProfileTarget(focusedText)
+                && provider.performAction(focusedId.intValue(), AccessibilityNodeInfo.ACTION_CLICK, null)) {
+            Log.w(TAG, "focusedCommentContainer clicked focused id=" + focusedId
+                    + " text=\"" + summarizeText(focusedText) + "\"");
+            return true;
+        }
+
+        int focusX = focusedBounds.centerX();
+        int focusY = focusedBounds.centerY();
+        CommentNodeCandidate best = null;
+        long bestScore = Long.MAX_VALUE;
+        for (CommentNodeCandidate candidate : candidates) {
+            if (!candidate.bounds.contains(focusX, focusY)) {
+                continue;
+            }
+            if (focusedBounds.height() > 0
+                    && candidate.bounds.height() < Math.max(48, focusedBounds.height())) {
+                continue;
+            }
+            if (looksLikeAuthorOrProfileTarget(candidate.text)) {
+                continue;
+            }
+            long area = (long) candidate.bounds.width() * (long) candidate.bounds.height();
+            long score = area + (candidate.clickable ? 0L : 1000000000L);
+            if (score < bestScore) {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        if (best == null) {
+            Log.w(TAG, "focusedCommentContainer no container focusedText=\""
+                    + summarizeText(focusedText) + "\" focusedBounds=" + focusedBounds
+                    + " candidates=" + candidates.size());
+            return false;
+        }
+
+        boolean clicked = provider.performAction(best.id, AccessibilityNodeInfo.ACTION_CLICK, null);
+        Log.w(TAG, "focusedCommentContainer id=" + best.id
+                + " clicked=" + clicked
+                + " bounds=" + best.bounds
+                + " focused=\"" + summarizeText(focusedText) + "\""
+                + " target=\"" + summarizeText(best.text) + "\"");
+        return clicked;
+    }
+
+    private static boolean looksLikeCommentContainerCandidate(String text, Rect bounds) {
+        String normalized = normalizeWhitespace(text);
+        if (normalized.length() == 0 || bounds == null || bounds.height() < 40 || bounds.width() < 160) {
+            return false;
+        }
+        String lower = normalized.toLowerCase(Locale.US);
+        if (looksLikePostChromeFocus(normalized)
+                || lower.equals("reply")
+                || lower.equals("share")
+                || lower.equals("vote")
+                || lower.equals("upvote")
+                || lower.equals("downvote")
+                || lower.equals("comment")) {
+            return false;
+        }
+        return lower.contains("ago")
+                || lower.contains("vote")
+                || lower.contains("reply")
+                || lower.contains("award")
+                || normalized.length() >= 24;
+    }
+
+    private static boolean looksLikeAuthorOrProfileTarget(String text) {
+        String lower = normalizeWhitespace(text).toLowerCase(Locale.US);
+        if (lower.length() == 0) {
+            return false;
+        }
+        return lower.contains("profile")
+                || lower.startsWith("u/")
+                || lower.startsWith("user ")
+                || lower.contains("/user/")
+                || lower.contains("/profile/");
+    }
+
     private static boolean hasMatchingNode(AccessibilityNodeInfo node, String needle) {
         if (node == null) {
             return false;
@@ -4310,7 +4493,9 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("close")
                 || lower.contains("back")
                 || lower.contains("menu")
-                || lower.contains("more")
+                || lower.equals("more")
+                || lower.contains("more options")
+                || lower.contains("more actions")
                 || lower.contains("overflow")
                 || lower.contains("options")
                 || lower.contains("home")

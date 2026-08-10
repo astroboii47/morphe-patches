@@ -1789,7 +1789,9 @@ public final class LongPressImagePreviewPatch {
             case KeyEvent.KEYCODE_O:
                 if (RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+                        if (!RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView())) {
+                            redispatchFeedKey(activity, KeyEvent.KEYCODE_DPAD_CENTER);
+                        }
                     }
                     return true;
                 }

@@ -1,3 +1,8 @@
+## 1.36.0-dev.98 (2026-08-10)
+
+- Reddit: make O inside post detail click the focused comment container instead of author/profile/menu child nodes.
+- Reddit: narrow comment navigation chrome skipping so real comment text is less likely to be treated as a menu item.
+
 ## 1.36.0-dev.97 (2026-08-10)
 
 - Reddit: make K/Down skip comment overflow/menu stops in post detail when possible.
