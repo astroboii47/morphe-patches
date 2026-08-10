@@ -1,3 +1,5 @@
+## [1.36.0-dev.101](https://github.com/astroboii47/morphe-patches/compare/v1.36.0-dev.100...v1.36.0-dev.101) (2026-08-10)
+
 ## 1.0.0-dev.1 (2026-08-10)
 
 ## 1.36.0-dev.99 (2026-08-10)
