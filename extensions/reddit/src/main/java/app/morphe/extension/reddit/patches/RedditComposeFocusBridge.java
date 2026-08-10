@@ -62,6 +62,8 @@ public final class RedditComposeFocusBridge {
     private static final String TEXT_PREVIEW_SEPARATOR = "\n\u0001\n";
     private static final Pattern RICHTEXT_TEXT_PATTERN = Pattern.compile("\\\"t\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\\\\\"])*)\\\"");
     private static WeakReference<View> commentFocusIndicator = new WeakReference<View>(null);
+    private static WeakReference<View> selectedCommentCompose = new WeakReference<View>(null);
+    private static int selectedCommentVirtualId = Integer.MIN_VALUE;
 
     private RedditComposeFocusBridge() {}
 
@@ -440,13 +442,9 @@ public final class RedditComposeFocusBridge {
     public static boolean preparePostDetailCommentNavigation(View root) {
         try {
             int commentFocus = getFocusedCommentRelation(root);
-            if (commentFocus == 1) {
+            if (commentFocus != 0) {
                 Log.w(TAG, "postDetailCommentNav kept native comment focus");
                 return false;
-            }
-            if (commentFocus == 2) {
-                Log.w(TAG, "postDetailCommentNav skipped comment child control");
-                return true;
             }
             String focusedComposeText = getFocusedComposeNodeText(root);
             if (focusedComposeText.length() > 0 && looksLikePostChromeFocus(focusedComposeText)) {
@@ -472,11 +470,17 @@ public final class RedditComposeFocusBridge {
     }
 
     public static void updateCommentFocusIndicator(View root) {
-        Rect bounds = findFocusedCommentBounds(root);
-        if (bounds == null || bounds.isEmpty()) {
+        CommentFocusTarget target = findFocusedCommentTarget(root);
+        if (target == null || target.bounds.isEmpty()) {
             hideCommentFocusIndicator();
             return;
         }
+        selectedCommentCompose = new WeakReference<View>(target.compose);
+        selectedCommentVirtualId = target.virtualId;
+        showCommentFocusIndicator(root, target.bounds);
+    }
+
+    private static void showCommentFocusIndicator(View root, Rect bounds) {
         View decorView = root == null ? null : root.getRootView();
         if (!(decorView instanceof ViewGroup)) {
             hideCommentFocusIndicator();
@@ -515,9 +519,11 @@ public final class RedditComposeFocusBridge {
             ((ViewGroup) indicator.getParent()).removeView(indicator);
         }
         commentFocusIndicator.clear();
+        selectedCommentCompose.clear();
+        selectedCommentVirtualId = Integer.MIN_VALUE;
     }
 
-    private static Rect findFocusedCommentBounds(View root) {
+    private static CommentFocusTarget findFocusedCommentTarget(View root) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
             collectComposeViews(root, composeViews);
@@ -542,7 +548,14 @@ public final class RedditComposeFocusBridge {
                         if (hasCommentToggleAction(node)) {
                             Rect bounds = new Rect();
                             node.getBoundsInScreen(bounds);
-                            return bounds;
+                            int virtualId = getNodeVirtualId(node);
+                            if (virtualId != Integer.MIN_VALUE) {
+                                return new CommentFocusTarget(
+                                        composeViews.get(i),
+                                        virtualId,
+                                        bounds
+                                );
+                            }
                         }
                         try {
                             node = node.getParent();
@@ -558,8 +571,48 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    private static final class CommentFocusTarget {
+        final View compose;
+        final int virtualId;
+        final Rect bounds;
+
+        CommentFocusTarget(View compose, int virtualId, Rect bounds) {
+            this.compose = compose;
+            this.virtualId = virtualId;
+            this.bounds = new Rect(bounds);
+        }
+    }
+
     public static boolean clickFocusedCommentContainer(View root) {
         try {
+            View selectedCompose = selectedCommentCompose.get();
+            if (selectedCompose != null && selectedCommentVirtualId != Integer.MIN_VALUE) {
+                AccessibilityNodeProvider selectedProvider = selectedCompose.getAccessibilityNodeProvider();
+                AccessibilityNodeInfo selectedInfo = selectedProvider == null
+                        ? null
+                        : selectedProvider.createAccessibilityNodeInfo(selectedCommentVirtualId);
+                if (selectedInfo != null) {
+                    sealNode(selectedInfo);
+                    Rect oldBounds = new Rect();
+                    selectedInfo.getBoundsInScreen(oldBounds);
+                    if (hasCommentToggleAction(selectedInfo)
+                            && performCommentToggleAction(
+                            selectedProvider,
+                            selectedCommentVirtualId,
+                            selectedInfo
+                    )) {
+                        restoreCommentFocusAfterToggle(
+                                root,
+                                selectedCompose,
+                                selectedProvider,
+                                oldBounds
+                        );
+                        Log.w(TAG, "focusedCommentContainer toggled selected id="
+                                + selectedCommentVirtualId);
+                        return true;
+                    }
+                }
+            }
             ArrayList<View> composeViews = new ArrayList<View>();
             collectComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
@@ -771,7 +824,15 @@ public final class RedditComposeFocusBridge {
         Log.w(TAG, "commentToggle replacement id=" + bestId + " focused=" + focused
                 + " oldBounds=" + oldBounds + " score=" + bestScore);
         if (focused) {
-            updateCommentFocusIndicator(compose.getRootView());
+            AccessibilityNodeInfo replacement = provider.createAccessibilityNodeInfo(bestId);
+            Rect replacementBounds = new Rect(oldBounds);
+            if (replacement != null) {
+                sealNode(replacement);
+                replacement.getBoundsInScreen(replacementBounds);
+            }
+            selectedCommentCompose = new WeakReference<View>(compose);
+            selectedCommentVirtualId = bestId;
+            showCommentFocusIndicator(compose.getRootView(), replacementBounds);
         }
         return focused;
     }

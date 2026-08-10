@@ -1839,18 +1839,14 @@ public final class LongPressImagePreviewPatch {
             final int detailKeyCode = mappedKeyCode;
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
             redispatchFeedKey(activity, detailKeyCode);
+            RedditComposeFocusBridge.updateCommentFocusIndicator(root);
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
                         redispatchFeedKey(activity, detailKeyCode);
                     }
-                    root.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            RedditComposeFocusBridge.updateCommentFocusIndicator(root);
-                        }
-                    }, 40L);
+                    RedditComposeFocusBridge.updateCommentFocusIndicator(root);
                 }
             }, 40L);
             return true;
