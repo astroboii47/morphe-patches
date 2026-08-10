@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.117 (2026-08-11)\n\n- Reddit: search every visible Compose host for the nearest parent or child comment before scrolling, preventing skipped comments.\n- Reddit: invoke scrolling on the virtual Compose semantics node that actually owns the post-detail scroll action.\n- Reddit: resume selection at the newly visible boundary only after a confirmed native scroll.\n- Reddit: preserve logical comment identity and highlighting across Compose host replacement and viewport boundaries.\n- Reddit: retain collapse/expand behavior and oversized preview crash protection.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.117/patches-1.36.0-dev.117.mpp",
+  "description": "## 1.36.0-dev.118 (2026-08-11)\n\n- Reddit: recognize every native comment toggle label, including Show more and Show less, so keyboard navigation does not skip those comments.\n- Reddit: pair each native collapse/expand target with its full comment container for accurate highlighting and movement.\n- Reddit: retain native Compose scrolling, collapse/expand behavior, and oversized preview crash protection.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.118/patches-1.36.0-dev.118.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.117"
+  "version": "1.36.0-dev.118"
 }

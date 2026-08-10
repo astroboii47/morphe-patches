@@ -572,13 +572,12 @@ public final class RedditComposeFocusBridge {
                     for (int depth = 0; node != null && depth < 10; depth++) {
                         sealNode(node);
                         if (hasCommentToggleAction(node)) {
-                            Rect actionBounds = new Rect();
-                            node.getBoundsInScreen(actionBounds);
+                            Rect actionBounds = commentDisplayBounds(node);
                             int virtualId = getNodeVirtualId(node);
                             if (virtualId != Integer.MIN_VALUE) {
-                                Rect indicatorBounds = focusedBounds.isEmpty()
-                                        ? actionBounds
-                                        : focusedBounds;
+                                Rect indicatorBounds = actionBounds.isEmpty()
+                                        ? focusedBounds
+                                        : actionBounds;
                                 Log.w(TAG, "comment focus target type=" + focusType
                                         + " depth=" + depth
                                         + " actionId=" + virtualId
@@ -742,8 +741,7 @@ public final class RedditComposeFocusBridge {
                 if (!hasCommentToggleAction(info)) {
                     continue;
                 }
-                Rect bounds = new Rect();
-                info.getBoundsInScreen(bounds);
+                Rect bounds = commentDisplayBounds(info);
                 if (bounds.isEmpty()) {
                     continue;
                 }
@@ -828,8 +826,7 @@ public final class RedditComposeFocusBridge {
                     if (!hasCommentToggleAction(info)) {
                         continue;
                     }
-                    Rect bounds = new Rect();
-                    info.getBoundsInScreen(bounds);
+                    Rect bounds = commentDisplayBounds(info);
                     if (bounds.isEmpty()) {
                         continue;
                     }
@@ -917,8 +914,7 @@ public final class RedditComposeFocusBridge {
                     if (!hasCommentToggleAction(info)) {
                         continue;
                     }
-                    Rect bounds = new Rect();
-                    info.getBoundsInScreen(bounds);
+                    Rect bounds = commentDisplayBounds(info);
                     if (bounds.isEmpty() || bounds.bottom <= visibleTop || bounds.top >= visibleBottom) {
                         continue;
                     }
@@ -1179,13 +1175,45 @@ public final class RedditComposeFocusBridge {
                 }
                 String lower = action.getLabel().toString().toLowerCase(Locale.US);
                 if (lower.contains("collapse")
-                        || lower.contains("expand")) {
+                        || lower.contains("expand")
+                        || lower.contains("show less")
+                        || lower.contains("show more")) {
                     return true;
                 }
             }
         } catch (Throwable ignored) {
         }
         return false;
+    }
+
+    private static Rect commentDisplayBounds(AccessibilityNodeInfo actionNode) {
+        Rect actionBounds = new Rect();
+        if (actionNode == null) {
+            return actionBounds;
+        }
+        sealNode(actionNode);
+        actionNode.getBoundsInScreen(actionBounds);
+        Rect bestBounds = new Rect(actionBounds);
+        AccessibilityNodeInfo current = actionNode;
+        for (int depth = 0; current != null && depth < 6; depth++) {
+            sealNode(current);
+            Rect bounds = new Rect();
+            current.getBoundsInScreen(bounds);
+            String text = readableText(current);
+            if (!bounds.isEmpty()
+                    && bounds.width() >= actionBounds.width()
+                    && bounds.height() >= actionBounds.height()
+                    && looksLikeCommentContainerCandidate(text, bounds)
+                    && !looksLikeAuthorOrProfileTarget(text)) {
+                bestBounds.set(bounds);
+            }
+            try {
+                current = current.getParent();
+            } catch (Throwable ignored) {
+                current = null;
+            }
+        }
+        return bestBounds;
     }
 
     private static void restoreCommentFocusAfterToggle(
@@ -1254,8 +1282,7 @@ public final class RedditComposeFocusBridge {
             if (!hasCommentToggleAction(info)) {
                 continue;
             }
-            Rect bounds = new Rect();
-            info.getBoundsInScreen(bounds);
+            Rect bounds = commentDisplayBounds(info);
             if (bounds.isEmpty()) {
                 continue;
             }
