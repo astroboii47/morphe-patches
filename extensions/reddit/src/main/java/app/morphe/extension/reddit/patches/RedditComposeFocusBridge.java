@@ -64,6 +64,7 @@ public final class RedditComposeFocusBridge {
     private static WeakReference<View> commentFocusIndicator = new WeakReference<View>(null);
     private static WeakReference<View> selectedCommentCompose = new WeakReference<View>(null);
     private static int selectedCommentVirtualId = Integer.MIN_VALUE;
+    private static boolean selectedCommentRetainedAfterToggle;
 
     private RedditComposeFocusBridge() {}
 
@@ -477,6 +478,7 @@ public final class RedditComposeFocusBridge {
         }
         selectedCommentCompose = new WeakReference<View>(target.compose);
         selectedCommentVirtualId = target.virtualId;
+        selectedCommentRetainedAfterToggle = false;
         showCommentFocusIndicator(root, target.bounds);
     }
 
@@ -517,6 +519,7 @@ public final class RedditComposeFocusBridge {
         removeCommentFocusIndicatorView();
         selectedCommentCompose.clear();
         selectedCommentVirtualId = Integer.MIN_VALUE;
+        selectedCommentRetainedAfterToggle = false;
     }
 
     private static void removeCommentFocusIndicatorView() {
@@ -610,16 +613,18 @@ public final class RedditComposeFocusBridge {
 
     public static boolean clickFocusedCommentContainer(View root) {
         try {
-            if (isFocusedCommentOverflowControl(root)) {
+            if (!selectedCommentRetainedAfterToggle && isFocusedCommentOverflowControl(root)) {
                 hideCommentFocusIndicator();
                 Log.w(TAG, "focusedCommentContainer delegated overflow control");
                 return false;
             }
-            CommentFocusTarget liveTarget = findFocusedCommentTarget(root);
-            if (liveTarget != null) {
-                selectedCommentCompose = new WeakReference<View>(liveTarget.compose);
-                selectedCommentVirtualId = liveTarget.virtualId;
-                showCommentFocusIndicator(root, liveTarget.bounds);
+            if (!selectedCommentRetainedAfterToggle) {
+                CommentFocusTarget liveTarget = findFocusedCommentTarget(root);
+                if (liveTarget != null) {
+                    selectedCommentCompose = new WeakReference<View>(liveTarget.compose);
+                    selectedCommentVirtualId = liveTarget.virtualId;
+                    showCommentFocusIndicator(root, liveTarget.bounds);
+                }
             }
             View selectedCompose = selectedCommentCompose.get();
             if (selectedCompose != null && selectedCommentVirtualId != Integer.MIN_VALUE) {
@@ -648,6 +653,8 @@ public final class RedditComposeFocusBridge {
                         return true;
                     }
                 }
+                Log.w(TAG, "focusedCommentContainer selected node unavailable; delegated");
+                return false;
             }
             ArrayList<View> composeViews = new ArrayList<View>();
             collectActiveComposeViews(root, composeViews);
@@ -666,6 +673,100 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "focusedCommentContainer failed", throwable);
         }
         return false;
+    }
+
+    public static boolean moveSelectedComment(View root, int direction) {
+        try {
+            View compose = selectedCommentCompose.get();
+            if (compose == null || selectedCommentVirtualId == Integer.MIN_VALUE) {
+                return false;
+            }
+            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+            AccessibilityNodeInfo current = provider == null
+                    ? null
+                    : provider.createAccessibilityNodeInfo(selectedCommentVirtualId);
+            if (provider == null || current == null) {
+                return false;
+            }
+            sealNode(current);
+            Rect currentBounds = new Rect();
+            current.getBoundsInScreen(currentBounds);
+            if (currentBounds.isEmpty()) {
+                return false;
+            }
+
+            Object delegate = readField(provider, "a");
+            Object accessibilityDelegate = delegate == null ? null : readField(delegate, "i");
+            if (accessibilityDelegate == null) {
+                accessibilityDelegate = delegate;
+            }
+            if (accessibilityDelegate == null) {
+                return false;
+            }
+            Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+            semanticsMapMethod.setAccessible(true);
+            Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+            Object[] values = map == null ? null : (Object[]) readField(map, "c");
+            if (values == null) {
+                return false;
+            }
+
+            int bestId = Integer.MIN_VALUE;
+            Rect bestBounds = null;
+            long bestScore = Long.MAX_VALUE;
+            for (Object wrapper : values) {
+                Object node = wrapper == null ? null : readField(wrapper, "a");
+                Object idObject = node == null ? null : readField(node, "f");
+                if (!(idObject instanceof Integer)) {
+                    continue;
+                }
+                int id = ((Integer) idObject).intValue();
+                if (id == selectedCommentVirtualId) {
+                    continue;
+                }
+                AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(id);
+                if (info == null) {
+                    continue;
+                }
+                sealNode(info);
+                if (!hasCommentToggleAction(info)) {
+                    continue;
+                }
+                Rect bounds = new Rect();
+                info.getBoundsInScreen(bounds);
+                if (bounds.isEmpty()) {
+                    continue;
+                }
+                int deltaY = bounds.centerY() - currentBounds.centerY();
+                if ((direction > 0 && deltaY <= 8) || (direction < 0 && deltaY >= -8)) {
+                    continue;
+                }
+                long score = Math.abs((long) deltaY) * 10000L
+                        + Math.abs((long) bounds.left - currentBounds.left);
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestId = id;
+                    bestBounds = new Rect(bounds);
+                }
+            }
+            if (bestId == Integer.MIN_VALUE || bestBounds == null) {
+                hideCommentFocusIndicator();
+                return false;
+            }
+
+            provider.performAction(bestId, AccessibilityNodeInfo.ACTION_SHOW_ON_SCREEN, null);
+            clearComposeFocus(compose);
+            selectedCommentCompose = new WeakReference<View>(compose);
+            selectedCommentVirtualId = bestId;
+            selectedCommentRetainedAfterToggle = false;
+            showCommentFocusIndicator(root, bestBounds);
+            Log.w(TAG, "selectedComment moved direction=" + direction
+                    + " id=" + bestId + " bounds=" + bestBounds);
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "selectedComment move failed", throwable);
+            return false;
+        }
     }
 
     private static boolean isFocusedCommentOverflowControl(View root) {
@@ -901,7 +1002,9 @@ public final class RedditComposeFocusBridge {
         }
         selectedCommentCompose = new WeakReference<View>(compose);
         selectedCommentVirtualId = bestId;
-        removeCommentFocusIndicatorView();
+        selectedCommentRetainedAfterToggle = true;
+        clearComposeFocus(compose);
+        showCommentFocusIndicator(compose.getRootView(), replacementBounds);
         Log.w(TAG, "commentToggle replacement retained id=" + bestId
                 + " bounds=" + replacementBounds
                 + " oldBounds=" + oldBounds + " score=" + bestScore);

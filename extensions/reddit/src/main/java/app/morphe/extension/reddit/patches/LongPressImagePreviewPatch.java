@@ -1842,6 +1842,11 @@ public final class LongPressImagePreviewPatch {
                 && (keyboardPostDetailOpen || RedditComposeFocusBridge.isPostDetailScreen(root))) {
             final int detailKeyCode = mappedKeyCode;
             final int navigationGeneration = ++commentNavigationGeneration;
+            if (RedditComposeFocusBridge.moveSelectedComment(
+                    root,
+                    detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1)) {
+                return true;
+            }
             RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
             redispatchFeedKey(activity, detailKeyCode);
             RedditComposeFocusBridge.updateCommentFocusIndicator(root);
