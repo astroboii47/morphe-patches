@@ -438,7 +438,7 @@ public final class RedditComposeFocusBridge {
             }
 
             Log.w(TAG, "postDetailCommentNav kept focus text=\"" + summarizeText(focusedComposeText.length() > 0 ? focusedComposeText : focusedViewText) + "\"");
-            return true;
+            return false;
         } catch (Throwable throwable) {
             Log.w(TAG, "postDetailCommentNav failed", throwable);
             return false;
@@ -4310,6 +4310,9 @@ public final class RedditComposeFocusBridge {
                 || lower.contains("close")
                 || lower.contains("back")
                 || lower.contains("menu")
+                || lower.contains("more")
+                || lower.contains("overflow")
+                || lower.contains("options")
                 || lower.contains("home")
                 || lower.contains("search")
                 || lower.contains("profile");

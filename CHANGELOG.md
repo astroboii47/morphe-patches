@@ -1,3 +1,8 @@
+## 1.36.0-dev.97 (2026-08-10)
+
+- Reddit: make K/Down skip comment overflow/menu stops in post detail when possible.
+- Reddit: make O activate the focused comment inside post detail while keeping feed post-open behavior unchanged.
+
 ## 1.36.0-dev.96 (2026-08-10)
 
 - Reddit: make K/Down inside post detail move through comment content instead of getting trapped on the close button.
