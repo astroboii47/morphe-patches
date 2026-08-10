@@ -15,6 +15,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
@@ -90,6 +91,7 @@ public final class LongPressImagePreviewPatch {
     private static Activity currentActivity;
     private static int postFocusRestoreGeneration;
     private static boolean touchNativePostHeld;
+    private static View commentSelectionHighlight;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
             "feed_media_content_video_",
@@ -813,7 +815,6 @@ public final class LongPressImagePreviewPatch {
         overlay.setClickable(true);
         overlay.setFocusable(true);
         overlay.setFocusableInTouchMode(true);
-        overlay.setDefaultFocusHighlightEnabled(false);
         attachPreviewDismissHandlers(overlay);
     }
 
@@ -827,21 +828,17 @@ public final class LongPressImagePreviewPatch {
         });
         view.setOnKeyListener((target, keyCode, keyEvent) -> {
             if (keyEvent.getAction() == KeyEvent.ACTION_UP
-                    && isPreviewDismissKey(keyCode)) {
+                    && (keyCode == KeyEvent.KEYCODE_P
+                    || keyCode == KeyEvent.KEYCODE_M
+                    || keyCode == KeyEvent.KEYCODE_G
+                    || keyCode == KeyEvent.KEYCODE_T
+                    || keyCode == KeyEvent.KEYCODE_BACK
+                    || keyCode == KeyEvent.KEYCODE_ESCAPE)) {
                 hidePreview();
                 return true;
             }
             return false;
         });
-    }
-
-    private static boolean isPreviewDismissKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_P
-                || keyCode == KeyEvent.KEYCODE_M
-                || keyCode == KeyEvent.KEYCODE_G
-                || keyCode == KeyEvent.KEYCODE_T
-                || keyCode == KeyEvent.KEYCODE_BACK
-                || keyCode == KeyEvent.KEYCODE_ESCAPE;
     }
 
     private static void loadPreviewImage(String mediaUrl, ImageView preview, int generation) {
@@ -1792,14 +1789,16 @@ public final class LongPressImagePreviewPatch {
                 mappedKeyCode = KeyEvent.KEYCODE_DPAD_RIGHT;
                 break;
             case KeyEvent.KEYCODE_O:
-                if (RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
+                if (RedditComposeFocusBridge.hasSelectedComment(activity.getWindow().getDecorView())
+                        || RedditComposeFocusBridge.isPostDetailScreen(activity.getWindow().getDecorView())) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        boolean clickedComment = RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
-                        Log.w("MorpheRedditKeys", "postDetail O clickedComment=" + clickedComment);
+                        boolean clicked = RedditComposeFocusBridge.clickSelectedComment(activity.getWindow().getDecorView());
+                        if (!clicked) {
+                            RedditComposeFocusBridge.clickFocusedCommentContainer(activity.getWindow().getDecorView());
+                        }
                     }
                     return true;
                 }
-                Log.w("MorpheRedditKeys", "feed O path");
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
                     rememberFocusedPostReturn(activity.getWindow().getDecorView());
                 }
@@ -1835,19 +1834,24 @@ public final class LongPressImagePreviewPatch {
 
         postFocusRestoreGeneration++;
         View root = activity.getWindow().getDecorView();
+        if (mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            Rect selectedComment = RedditComposeFocusBridge.moveSelectedComment(
+                    root,
+                    mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1
+            );
+            if (selectedComment != null) {
+                showCommentSelectionHighlight(activity, root, selectedComment);
+                return true;
+            }
+        }
+
+        if (RedditComposeFocusBridge.hasSelectedComment(root)) {
+            hideCommentSelectionHighlight();
+            RedditComposeFocusBridge.clearSelectedComment();
+        }
+
         if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
                 && RedditComposeFocusBridge.isPostDetailScreen(root)) {
-            final int detailKeyCode = mappedKeyCode;
-            RedditComposeFocusBridge.preparePostDetailCommentNavigation(root);
-            redispatchFeedKey(activity, detailKeyCode);
-            root.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (RedditComposeFocusBridge.preparePostDetailCommentNavigation(root)) {
-                        redispatchFeedKey(activity, detailKeyCode);
-                    }
-                }
-            }, 40L);
             return true;
         }
 
@@ -1859,6 +1863,50 @@ public final class LongPressImagePreviewPatch {
         }
 
         return focusFeedContent(activity, root, direction, mappedKeyCode);
+    }
+
+    private static void showCommentSelectionHighlight(Activity activity, View root, Rect bounds) {
+        if (activity == null || root == null || bounds == null || bounds.isEmpty()) {
+            return;
+        }
+        try {
+            hideCommentSelectionHighlight();
+            ViewGroup decor = (ViewGroup) activity.getWindow().getDecorView();
+            int[] rootLocation = new int[2];
+            root.getLocationOnScreen(rootLocation);
+            View highlight = new View(activity);
+            highlight.setFocusable(false);
+            highlight.setFocusableInTouchMode(false);
+            highlight.setClickable(false);
+            highlight.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            GradientDrawable drawable = new GradientDrawable();
+            drawable.setColor(Color.TRANSPARENT);
+            drawable.setStroke(Math.max(2, dp(root, 2)), Color.argb(230, 255, 69, 0));
+            drawable.setCornerRadius(dp(root, 8));
+            highlight.setBackground(drawable);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(bounds.width(), bounds.height());
+            params.leftMargin = bounds.left - rootLocation[0];
+            params.topMargin = bounds.top - rootLocation[1];
+            decor.addView(highlight, params);
+            commentSelectionHighlight = highlight;
+        } catch (Throwable throwable) {
+            Log.w(LOG_TAG, "failed to show comment selection highlight", throwable);
+        }
+    }
+
+    private static void hideCommentSelectionHighlight() {
+        View highlight = commentSelectionHighlight;
+        commentSelectionHighlight = null;
+        if (highlight == null) {
+            return;
+        }
+        try {
+            ViewParent parent = highlight.getParent();
+            if (parent instanceof ViewGroup) {
+                ((ViewGroup) parent).removeView(highlight);
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
@@ -2513,12 +2561,6 @@ public final class LongPressImagePreviewPatch {
 
         @Override
         public boolean dispatchKeyEvent(KeyEvent event) {
-            if (event.getAction() == KeyEvent.ACTION_UP
-                    && activePreview != null
-                    && isPreviewDismissKey(event.getKeyCode())) {
-                hidePreview(activity);
-                return true;
-            }
             if (handleKeyboardFeedFocusKey(activity, event)) {
                 return true;
             }
