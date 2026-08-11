@@ -857,9 +857,11 @@ public final class RedditComposeFocusBridge {
             int visibleBottom = visibleTop + root.getHeight();
             ArrayList<View> composeViews = new ArrayList<View>();
             collectActiveComposeViews(root, composeViews);
+            Rect currentBounds = resolveSelectedCommentBounds();
             View bestCompose = null;
             int bestId = Integer.MIN_VALUE;
             Rect bestBounds = null;
+            long bestDistance = Long.MAX_VALUE;
 
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View candidateCompose = composeViews.get(i);
@@ -901,18 +903,28 @@ public final class RedditComposeFocusBridge {
                             || bounds.top >= visibleBottom) {
                         continue;
                     }
-                    if (id == selectedCommentVirtualId
-                            && !selectedCommentBounds.isEmpty()
-                            && Math.abs(bounds.centerX() - selectedCommentBounds.centerX()) <= 24
-                            && Math.abs(bounds.centerY() - selectedCommentBounds.centerY()) <= 24) {
+                    if (id == selectedCommentVirtualId) {
                         continue;
                     }
-                    if (bestBounds == null
-                            || (direction > 0 && bounds.top < bestBounds.top)
-                            || (direction < 0 && bounds.bottom > bestBounds.bottom)) {
+
+                    // After a native scroll, retain the existing comment as the anchor.
+                    // Selecting the first visible node made a downward move jump back to a
+                    // parent/earlier comment whenever Compose kept the anchor onscreen.
+                    boolean isAhead = currentBounds.isEmpty()
+                            || (direction > 0
+                            ? bounds.centerY() > currentBounds.centerY() + 8
+                            : bounds.centerY() < currentBounds.centerY() - 8);
+                    if (!isAhead) {
+                        continue;
+                    }
+                    long distance = currentBounds.isEmpty()
+                            ? (direction > 0 ? bounds.top : -bounds.bottom)
+                            : Math.abs((long) bounds.centerY() - currentBounds.centerY());
+                    if (bestBounds == null || distance < bestDistance) {
                         bestCompose = candidateCompose;
                         bestId = id;
                         bestBounds = new Rect(bounds);
+                        bestDistance = distance;
                     }
                 }
             }
@@ -936,6 +948,27 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "selectedComment boundary failed", throwable);
             return false;
         }
+    }
+
+    private static Rect resolveSelectedCommentBounds() {
+        Rect currentBounds = new Rect();
+        try {
+            View compose = selectedCommentCompose.get();
+            if (compose == null || selectedCommentVirtualId == Integer.MIN_VALUE) {
+                return currentBounds;
+            }
+            AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+            AccessibilityNodeInfo info = provider == null
+                    ? null
+                    : provider.createAccessibilityNodeInfo(selectedCommentVirtualId);
+            if (info != null) {
+                sealNode(info);
+                currentBounds.set(commentDisplayBounds(info));
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "selectedComment anchor lookup failed", throwable);
+        }
+        return currentBounds;
     }
 
     public static boolean scrollPostDetailForComment(View root, int direction) {
