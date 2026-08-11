@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.128 (2026-08-11)\n\n- Reddit: stop automatic Google credential preparation from interrupting normal username/password login on affected devices.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.128/patches-1.36.0-dev.128.mpp",
+  "description": "## 1.36.0-dev.129 (2026-08-11)\n\n- Reddit: restore the pre-dev128 login behavior.\n- Reddit: keep comment selection moving relative to the selected comment after scrolling.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.129/patches-1.36.0-dev.129.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.128"
+  "version": "1.36.0-dev.129"
 }
