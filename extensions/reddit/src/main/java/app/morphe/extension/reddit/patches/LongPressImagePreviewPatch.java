@@ -91,6 +91,7 @@ public final class LongPressImagePreviewPatch {
     private static Activity currentActivity;
     private static int postFocusRestoreGeneration;
     private static int commentNavigationGeneration;
+    private static boolean commentScrollPending;
     private static boolean touchNativePostHeld;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
@@ -1876,6 +1877,11 @@ public final class LongPressImagePreviewPatch {
         View root = activity.getWindow().getDecorView();
         if ((mappedKeyCode == KeyEvent.KEYCODE_DPAD_DOWN || mappedKeyCode == KeyEvent.KEYCODE_DPAD_UP)
                 && (keyboardPostDetailOpen || RedditComposeFocusBridge.isPostDetailScreen(root))) {
+            // Compose needs one layout pass after a boundary scroll before its next comment
+            // becomes visible in semantics. Do not let key repeat cancel that handoff.
+            if (commentScrollPending) {
+                return true;
+            }
             final int detailKeyCode = mappedKeyCode;
             final int navigationGeneration = ++commentNavigationGeneration;
             if (RedditComposeFocusBridge.moveSelectedComment(
@@ -1888,6 +1894,7 @@ public final class LongPressImagePreviewPatch {
                     root,
                     detailDirection);
             if (nativeCommentScroll) {
+                commentScrollPending = true;
                 RedditComposeFocusBridge.suspendCommentFocusIndicator();
             }
             if (!nativeCommentScroll) {
@@ -1899,6 +1906,7 @@ public final class LongPressImagePreviewPatch {
             root.postDelayed(new Runnable() {
                 @Override
                 public void run() {
+                    commentScrollPending = false;
                     if (navigationGeneration != commentNavigationGeneration) {
                         return;
                     }

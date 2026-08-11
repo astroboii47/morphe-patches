@@ -1210,6 +1210,19 @@ public final class RedditComposeFocusBridge {
             Rect bounds = new Rect();
             current.getBoundsInScreen(bounds);
             String text = readableText(current);
+            // The collapse/expand semantic action usually occupies only a thin row inside
+            // the comment. The closest enclosing semantic container shares its horizontal
+            // edges and is the correct visual target, even when Compose gives it no text.
+            boolean enclosesAction = bounds.left >= actionBounds.left - 16
+                    && bounds.right <= actionBounds.right + 16
+                    && bounds.top <= actionBounds.top
+                    && bounds.bottom >= actionBounds.bottom;
+            if (!bounds.isEmpty()
+                    && enclosesAction
+                    && bounds.height() >= actionBounds.height() + 48
+                    && bounds.height() <= 1200) {
+                return bounds;
+            }
             if (!bounds.isEmpty()
                     && bounds.width() >= actionBounds.width()
                     && bounds.height() >= actionBounds.height()
