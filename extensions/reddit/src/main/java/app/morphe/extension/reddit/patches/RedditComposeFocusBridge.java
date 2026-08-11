@@ -697,10 +697,9 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean moveSelectedComment(View root, int direction) {
-        if (moveSelectedCommentNatively(root, direction)) {
-            return true;
-        }
-        return false;
+        // Reddit's Compose focus owner does not expose comment rows as normal focus targets
+        // on the feed detail screen. Choose the neighbouring semantic comment before scrolling.
+        return selectVisibleCommentBoundary(root, direction);
     }
 
     private static boolean moveSelectedCommentNatively(View root, int direction) {
@@ -840,9 +839,6 @@ public final class RedditComposeFocusBridge {
     }
 
     public static boolean selectCommentAfterScroll(View root, int direction) {
-        if (moveSelectedComment(root, direction)) {
-            return true;
-        }
         return selectVisibleCommentBoundary(root, direction);
     }
 
@@ -931,10 +927,8 @@ public final class RedditComposeFocusBridge {
             if (bestCompose == null || bestBounds == null) {
                 return false;
             }
-            AccessibilityNodeProvider bestProvider = bestCompose.getAccessibilityNodeProvider();
-            if (bestProvider != null) {
-                bestProvider.performAction(bestId, 16908342, null);
-            }
+            // This node is already visible. Asking Compose to show it can trigger an extra
+            // layout scroll and make the indicator appear to jump to a different comment.
             clearComposeFocus(bestCompose);
             selectedCommentCompose = new WeakReference<View>(bestCompose);
             selectedCommentVirtualId = bestId;
@@ -1318,7 +1312,7 @@ public final class RedditComposeFocusBridge {
         Rect replacementBounds = new Rect(oldBounds);
         if (replacement != null) {
             sealNode(replacement);
-            replacement.getBoundsInScreen(replacementBounds);
+            replacementBounds.set(commentDisplayBounds(replacement));
         }
         selectedCommentCompose = new WeakReference<View>(compose);
         selectedCommentVirtualId = bestId;
