@@ -858,6 +858,7 @@ public final class RedditComposeFocusBridge {
             int bestId = Integer.MIN_VALUE;
             Rect bestBounds = null;
             long bestDistance = Long.MAX_VALUE;
+            ArrayList<Rect> visibleCommentBounds = new ArrayList<Rect>();
 
             for (int i = composeViews.size() - 1; i >= 0; i--) {
                 View candidateCompose = composeViews.get(i);
@@ -899,6 +900,7 @@ public final class RedditComposeFocusBridge {
                             || bounds.top >= visibleBottom) {
                         continue;
                     }
+                    visibleCommentBounds.add(new Rect(bounds));
                     if (id == selectedCommentVirtualId) {
                         continue;
                     }
@@ -934,7 +936,10 @@ public final class RedditComposeFocusBridge {
             selectedCommentVirtualId = bestId;
             selectedCommentBounds.set(bestBounds);
             selectedCommentRetainedAfterToggle = false;
-            showCommentFocusIndicator(root, bestBounds);
+            showCommentFocusIndicator(
+                    root,
+                    commentIndicatorBounds(bestBounds, visibleCommentBounds, visibleBottom)
+            );
             Log.w(TAG, "selectedComment entered boundary direction=" + direction
                     + " id=" + bestId + " bounds=" + bestBounds);
             return true;
@@ -942,6 +947,34 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "selectedComment boundary failed", throwable);
             return false;
         }
+    }
+
+    private static Rect commentIndicatorBounds(
+            Rect actionBounds,
+            ArrayList<Rect> visibleCommentBounds,
+            int visibleBottom
+    ) {
+        Rect indicatorBounds = new Rect(actionBounds);
+        // Some Reddit comment actions expose a 64px semantic strip rather than the comment.
+        // Use the next semantic comment as the visual boundary without changing the action ID.
+        if (actionBounds.height() > 120) {
+            return indicatorBounds;
+        }
+        int nextTop = Integer.MAX_VALUE;
+        for (Rect candidate : visibleCommentBounds) {
+            if (candidate.top > actionBounds.top + 8 && candidate.top < nextTop) {
+                nextTop = candidate.top;
+            }
+        }
+        if (nextTop != Integer.MAX_VALUE) {
+            indicatorBounds.bottom = Math.max(actionBounds.bottom, nextTop - 8);
+        } else {
+            indicatorBounds.bottom = Math.max(
+                    actionBounds.bottom,
+                    Math.min(visibleBottom - 8, actionBounds.top + 900)
+            );
+        }
+        return indicatorBounds;
     }
 
     private static Rect resolveSelectedCommentBounds() {

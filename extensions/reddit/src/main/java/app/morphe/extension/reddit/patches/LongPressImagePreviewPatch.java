@@ -92,6 +92,7 @@ public final class LongPressImagePreviewPatch {
     private static int postFocusRestoreGeneration;
     private static int commentNavigationGeneration;
     private static boolean commentScrollPending;
+    private static final int COMMENT_BOUNDARY_SCROLL_RETRIES = 3;
     private static boolean touchNativePostHeld;
     private static final String[] MEDIA_TAG_PREFIXES = new String[]{
             "feed_media_content_self_image_",
@@ -1856,7 +1857,20 @@ public final class LongPressImagePreviewPatch {
                 return false;
             case KeyEvent.KEYCODE_N:
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    RedditComposeFocusBridge.clickNextCommentButton(activity.getWindow().getDecorView());
+                    final View root = activity.getWindow().getDecorView();
+                    final int jumpGeneration = ++commentNavigationGeneration;
+                    commentScrollPending = false;
+                    RedditComposeFocusBridge.hideCommentFocusIndicator();
+                    if (RedditComposeFocusBridge.clickNextCommentButton(root)) {
+                        root.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (jumpGeneration == commentNavigationGeneration) {
+                                    RedditComposeFocusBridge.selectCommentAfterScroll(root, 1);
+                                }
+                            }
+                        }, 100L);
+                    }
                 }
                 return true;
             case KeyEvent.KEYCODE_P:
@@ -1903,21 +1917,24 @@ public final class LongPressImagePreviewPatch {
                     redispatchFeedKey(activity, detailKeyCode);
                 }
             }
-            root.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    commentScrollPending = false;
-                    if (navigationGeneration != commentNavigationGeneration) {
-                        return;
+            int delayedDirection = detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
+            if (nativeCommentScroll) {
+                settleCommentBoundaryScroll(
+                        root,
+                        delayedDirection,
+                        navigationGeneration,
+                        COMMENT_BOUNDARY_SCROLL_RETRIES
+                );
+            } else {
+                root.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (navigationGeneration == commentNavigationGeneration) {
+                            RedditComposeFocusBridge.moveSelectedComment(root, delayedDirection);
+                        }
                     }
-                    int delayedDirection = detailKeyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
-                    if (nativeCommentScroll) {
-                        RedditComposeFocusBridge.selectCommentAfterScroll(root, delayedDirection);
-                    } else {
-                        RedditComposeFocusBridge.moveSelectedComment(root, delayedDirection);
-                    }
-                }
-            }, 60L);
+                }, 60L);
+            }
             return true;
         }
 
@@ -1929,6 +1946,38 @@ public final class LongPressImagePreviewPatch {
         }
 
         return focusFeedContent(activity, root, direction, mappedKeyCode);
+    }
+
+    private static void settleCommentBoundaryScroll(
+            final View root,
+            final int direction,
+            final int navigationGeneration,
+            final int retriesRemaining
+    ) {
+        root.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (navigationGeneration != commentNavigationGeneration) {
+                    commentScrollPending = false;
+                    return;
+                }
+                if (RedditComposeFocusBridge.selectCommentAfterScroll(root, direction)) {
+                    commentScrollPending = false;
+                    return;
+                }
+                if (retriesRemaining > 0
+                        && RedditComposeFocusBridge.scrollPostDetailForComment(root, direction)) {
+                    settleCommentBoundaryScroll(
+                            root,
+                            direction,
+                            navigationGeneration,
+                            retriesRemaining - 1
+                    );
+                    return;
+                }
+                commentScrollPending = false;
+            }
+        }, 90L);
     }
 
     private static boolean handlePreviewKey(Activity activity, KeyEvent event) {
