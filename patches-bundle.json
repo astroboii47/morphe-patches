@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.131 (2026-08-11)\n\n- Reddit: queue comment selection after boundary scrolling.\n- Reddit: resolve enclosing comment bounds for the keyboard indicator.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.131/patches-1.36.0-dev.131.mpp",
+  "description": "## 1.36.0-dev.132 (2026-08-11)\n\n- Reddit: complete comment boundary handoff without repeated key presses.\n- Reddit: restore the selector after Next Comment and align its visible boundary.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.132/patches-1.36.0-dev.132.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.131"
+  "version": "1.36.0-dev.132"
 }
