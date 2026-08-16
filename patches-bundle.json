@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.133 (2026-08-12)\n\n- Reddit: keep comment navigation away from More and Join the conversation controls.\n- Reddit: remove unreliable expanded comment highlight geometry.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.133/patches-1.36.0-dev.133.mpp",
+  "description": "## 1.36.0-dev.134 (2026-08-17)\n\n- Reddit: ignore off-screen and narrow semantic controls during comment navigation.\n- Reddit: recognise only collapse and expand actions as comment controls.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.134/patches-1.36.0-dev.134.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.133"
+  "version": "1.36.0-dev.134"
 }
