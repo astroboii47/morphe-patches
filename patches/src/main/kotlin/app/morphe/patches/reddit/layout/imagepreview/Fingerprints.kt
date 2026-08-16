@@ -25,6 +25,42 @@ internal object CompactSelfImageConstructorFingerprint : Fingerprint(
     )
 )
 
+/** Reddit's v29 feed action-bar composers receive the post action model and feed event callback. */
+internal object FeedActionBarFingerprint : Fingerprint(
+    definingClass = "Li11;",
+    name = "R",
+    returnType = "Ljz;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf("Lhuz;", "Lahh;", "Z", "Licb;", "I")
+)
+
+internal object FeedActionBarVariantQFingerprint : Fingerprint(
+    definingClass = "Li11;",
+    name = "Q",
+    returnType = "Ljz;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf("Lhuz;", "Lahh;", "Z", "Z", "Licb;", "I", "I")
+)
+
+internal object FeedActionBarVariantSFingerprint : Fingerprint(
+    definingClass = "Li11;",
+    name = "S",
+    returnType = "Ljz;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf("Lhuz;", "Lahh;", "Z", "Z", "Lxff;", "Licb;", "I", "I")
+)
+
+internal object FeedActionBarContentFingerprint : Fingerprint(
+    definingClass = "Li11;",
+    name = "u",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
+    parameters = listOf(
+        "Lhuz;", "Lahh;", "Lv00;", "Lkotlin/jvm/functions/Function2;", "Ljz;", "Ljz;",
+        "Loev;", "Ljz;", "Z", "Ls8g0;", "Z", "Lw1j;", "Licb;", "I", "I", "I"
+    )
+)
+
 internal object CompactVideoConstructorFingerprint : Fingerprint(
     definingClass = "Lbdg0;",
     name = "<init>",

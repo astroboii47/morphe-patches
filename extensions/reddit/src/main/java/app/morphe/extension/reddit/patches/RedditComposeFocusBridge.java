@@ -55,6 +55,7 @@ public final class RedditComposeFocusBridge {
     private static final Map<String, PreviewRecord> PREVIEWS_BY_KEY = new LinkedHashMap<String, PreviewRecord>(512, 0.75f, true);
     private static final Map<String, PreviewRecord> PREVIEWS_BY_TITLE = new LinkedHashMap<String, PreviewRecord>(512, 0.75f, true);
     private static final Map<String, String> POST_BODIES_BY_URL = new LinkedHashMap<String, String>(256, 0.75f, true);
+    private static final Map<String, NativeFeedAction> NATIVE_FEED_ACTIONS = new LinkedHashMap<String, NativeFeedAction>(512, 0.75f, true);
     private static final int MAX_POST_BODIES = 1500;
     private static final int MAX_POST_MODELS = 600;
     private static final int MAX_PREVIEW_RECORDS = 1000;
@@ -75,6 +76,16 @@ public final class RedditComposeFocusBridge {
         String mediaUrl;
         String body;
         String postUrl;
+    }
+
+    private static final class NativeFeedAction {
+        final Object postActionModel;
+        final Object onEvent;
+
+        NativeFeedAction(Object postActionModel, Object onEvent) {
+            this.postActionModel = postActionModel;
+            this.onEvent = onEvent;
+        }
     }
 
     private static final class CommentNodeCandidate {
@@ -348,12 +359,34 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    /** Called from Reddit's feed action-bar composer with its real event callback. */
+    public static void registerNativeFeedActions(Object postActionModel, Object feedContext) {
+        try {
+            String postId = asString(readField(postActionModel, "e"));
+            Object onEvent = readField(feedContext, "a");
+            if (postId == null || postId.length() == 0 || onEvent == null) {
+                return;
+            }
+            synchronized (NATIVE_FEED_ACTIONS) {
+                trimCache(NATIVE_FEED_ACTIONS, MAX_POST_MODELS, MAX_POST_MODELS - 75);
+                NATIVE_FEED_ACTIONS.put(postId, new NativeFeedAction(postActionModel, onEvent));
+            }
+            Log.w(TAG, "registeredNativeFeedAction id=" + postId);
+        } catch (Throwable throwable) {
+            Log.w(TAG, "registerNativeFeedActions failed", throwable);
+        }
+    }
+
     /** Invokes Reddit's own action on the currently focused feed post. */
     public static boolean performFocusedPostAction(View root, String actionName) {
         if (root == null || actionName == null || actionName.length() == 0) {
             return false;
         }
         try {
+            if (("upvote".equals(actionName) || "downvote".equals(actionName))
+                    && dispatchFocusedNativeVote(root, actionName)) {
+                return true;
+            }
             ArrayList<View> composeViews = new ArrayList<View>();
             collectComposeViews(root, composeViews);
             for (int i = composeViews.size() - 1; i >= 0; i--) {
@@ -386,6 +419,62 @@ public final class RedditComposeFocusBridge {
             Log.w(TAG, "focusedPostAction failed action=" + actionName, throwable);
         }
         return false;
+    }
+
+    private static boolean dispatchFocusedNativeVote(View root, String actionName) {
+        try {
+            Object model = findFocusedPostUnitModel(root);
+            String postId = modelKindWithId(model);
+            if (postId == null || postId.length() == 0) {
+                String rowText = getFocusedPostTextPreview(root);
+                model = registeredModelForRowText(rowText);
+                postId = modelKindWithId(model);
+            }
+            if (postId == null || postId.length() == 0) {
+                Log.w(TAG, "nativeVote no focused post model");
+                return false;
+            }
+            NativeFeedAction nativeAction;
+            synchronized (NATIVE_FEED_ACTIONS) {
+                nativeAction = NATIVE_FEED_ACTIONS.get(postId);
+            }
+            if (nativeAction == null) {
+                Log.w(TAG, "nativeVote no registered callback id=" + postId);
+                return false;
+            }
+            Object actionModel = nativeAction.postActionModel;
+            ClassLoader loader = actionModel.getClass().getClassLoader();
+            Class<?> eventClass = loader.loadClass("com.reddit.feeds.ui.events.OnVoteClicked");
+            Class<?> directionClass = loader.loadClass("com.reddit.ui.compose.ds.VoteButtonDirection");
+            Object direction = directionClass.getField("upvote".equals(actionName) ? "Up" : "Down").get(null);
+            Object event = null;
+            for (Constructor<?> constructor : eventClass.getConstructors()) {
+                if (constructor.getParameterTypes().length != 6) {
+                    continue;
+                }
+                event = constructor.newInstance(
+                        readField(actionModel, "e"),
+                        readField(actionModel, "h"),
+                        readField(actionModel, "f"),
+                        readField(actionModel, "g"),
+                        direction,
+                        readField(actionModel, "k")
+                );
+                break;
+            }
+            if (event == null) {
+                Log.w(TAG, "nativeVote no event constructor id=" + postId);
+                return false;
+            }
+            Method invoke = nativeAction.onEvent.getClass().getMethod("invoke", Object.class);
+            invoke.setAccessible(true);
+            invoke.invoke(nativeAction.onEvent, event);
+            Log.w(TAG, "nativeVote dispatched action=" + actionName + " id=" + postId);
+            return true;
+        } catch (Throwable throwable) {
+            Log.w(TAG, "nativeVote dispatch failed action=" + actionName, throwable);
+            return false;
+        }
     }
 
     private static boolean performNamedActionInTree(

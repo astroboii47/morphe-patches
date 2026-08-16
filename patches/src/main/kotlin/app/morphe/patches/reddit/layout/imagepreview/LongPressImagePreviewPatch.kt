@@ -51,6 +51,20 @@ val longPressImagePreviewPatch = bytecodePatch(
             fingerprint.method.addInstructions(0, instructions)
         }
 
+        fun hookFeedActionBar(fingerprint: app.morphe.patcher.Fingerprint) {
+            hookMethodStart(
+                fingerprint,
+                """
+                    invoke-static { p0, p1 }, Lapp/morphe/extension/reddit/patches/RedditComposeFocusBridge;->registerNativeFeedActions(Ljava/lang/Object;Ljava/lang/Object;)V
+                """
+            )
+        }
+
+        hookFeedActionBar(FeedActionBarFingerprint)
+        runCatching { hookFeedActionBar(FeedActionBarVariantQFingerprint) }
+        runCatching { hookFeedActionBar(FeedActionBarVariantSFingerprint) }
+        runCatching { hookFeedActionBar(FeedActionBarContentFingerprint) }
+
         hookMethodStart(
             CompactSelfImageConstructorFingerprint,
             """
