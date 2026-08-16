@@ -348,6 +348,111 @@ public final class RedditComposeFocusBridge {
         return null;
     }
 
+    /** Invokes Reddit's own action on the currently focused feed post. */
+    public static boolean performFocusedPostAction(View root, String actionName) {
+        if (root == null || actionName == null || actionName.length() == 0) {
+            return false;
+        }
+        try {
+            ArrayList<View> composeViews = new ArrayList<View>();
+            collectComposeViews(root, composeViews);
+            for (int i = composeViews.size() - 1; i >= 0; i--) {
+                View compose = composeViews.get(i);
+                AccessibilityNodeProvider provider = compose.getAccessibilityNodeProvider();
+                if (provider == null) {
+                    continue;
+                }
+                Object delegate = readField(provider, "a");
+                if (delegate == null) {
+                    continue;
+                }
+                Integer postId = findFocusedPostUnitId(
+                        compose.getClass().getClassLoader(), provider, delegate);
+                if (postId == null) {
+                    continue;
+                }
+                AccessibilityNodeInfo post = provider.createAccessibilityNodeInfo(postId.intValue());
+                if (post == null) {
+                    continue;
+                }
+                sealNode(post);
+                if (performNamedActionInTree(post, actionName.toLowerCase(Locale.US), 0)) {
+                    Log.w(TAG, "focusedPostAction action=" + actionName + " id=" + postId);
+                    return true;
+                }
+                Log.w(TAG, "focusedPostAction not found action=" + actionName + " id=" + postId);
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedPostAction failed action=" + actionName, throwable);
+        }
+        return false;
+    }
+
+    private static boolean performNamedActionInTree(
+            AccessibilityNodeInfo node, String actionName, int depth) {
+        if (node == null || depth > 12) {
+            return false;
+        }
+        try {
+            sealNode(node);
+            if (matchesNamedAction(node, actionName)) {
+                List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+                if (actions != null) {
+                    for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+                        if (action != null && matchesActionName(action.getLabel(), actionName)
+                                && node.performAction(action.getId())) {
+                            return true;
+                        }
+                    }
+                }
+                if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+            }
+            int childCount = node.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                if (performNamedActionInTree(node.getChild(i), actionName, depth + 1)) {
+                    return true;
+                }
+            }
+        } catch (Throwable throwable) {
+            Log.w(TAG, "focusedPostAction tree failed action=" + actionName, throwable);
+        }
+        return false;
+    }
+
+    private static boolean matchesNamedAction(AccessibilityNodeInfo node, String actionName) {
+        if (node == null) {
+            return false;
+        }
+        if (matchesActionName(node.getContentDescription(), actionName)
+                || matchesActionName(node.getText(), actionName)) {
+            return true;
+        }
+        List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+        if (actions == null) {
+            return false;
+        }
+        for (AccessibilityNodeInfo.AccessibilityAction action : actions) {
+            if (action != null && matchesActionName(action.getLabel(), actionName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean matchesActionName(CharSequence value, String actionName) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = normalizeWhitespace(value.toString()).toLowerCase(Locale.US);
+        return normalized.equals(actionName)
+                || normalized.startsWith(actionName + " ")
+                || normalized.startsWith(actionName + ",")
+                || normalized.startsWith(actionName + " post")
+                || (actionName.equals("save") && normalized.startsWith("unsave"));
+    }
+
     public static int[] getPostPreviewPointAt(View root, int rawX, int rawY) {
         try {
             ArrayList<View> composeViews = new ArrayList<View>();
@@ -3813,6 +3918,50 @@ public final class RedditComposeFocusBridge {
             }
         }
         return best;
+    }
+
+    private static Integer findFocusedPostUnitId(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate) throws Exception {
+        Object accessibilityDelegate = readField(delegate, "i");
+        if (accessibilityDelegate == null) {
+            accessibilityDelegate = delegate;
+        }
+        Method semanticsMapMethod = accessibilityDelegate.getClass().getDeclaredMethod("s");
+        semanticsMapMethod.setAccessible(true);
+        Object map = semanticsMapMethod.invoke(accessibilityDelegate);
+        if (map == null) {
+            return null;
+        }
+        Object[] values = (Object[]) readField(map, "c");
+        if (values == null) {
+            return null;
+        }
+        Class<?> semanticsKeys = loader.loadClass("androidx.compose.ui.semantics.d");
+        Object testTagKey = readStaticField(semanticsKeys, "A");
+        for (Object wrapper : values) {
+            if (wrapper == null) {
+                continue;
+            }
+            Object node = readField(wrapper, "a");
+            if (node == null) {
+                continue;
+            }
+            Object config = readField(node, "d");
+            if (!"post_unit".equals(String.valueOf(getSemanticsValue(config, testTagKey)))) {
+                continue;
+            }
+            Object id = readField(node, "f");
+            if (!(id instanceof Integer)) {
+                continue;
+            }
+            AccessibilityNodeInfo info = provider.createAccessibilityNodeInfo(((Integer) id).intValue());
+            if (info != null) {
+                sealNode(info);
+                if (info.isFocused()) {
+                    return (Integer) id;
+                }
+            }
+        }
+        return null;
     }
 
     private static Object findPostUnitIdAt(ClassLoader loader, AccessibilityNodeProvider provider, Object delegate, int rawX, int rawY) throws Exception {

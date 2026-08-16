@@ -1873,6 +1873,24 @@ public final class LongPressImagePreviewPatch {
                     }
                 }
                 return true;
+            case KeyEvent.KEYCODE_Q:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    RedditComposeFocusBridge.performFocusedPostAction(
+                            activity.getWindow().getDecorView(), "upvote");
+                }
+                return true;
+            case KeyEvent.KEYCODE_W:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    RedditComposeFocusBridge.performFocusedPostAction(
+                            activity.getWindow().getDecorView(), "downvote");
+                }
+                return true;
+            case KeyEvent.KEYCODE_E:
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    RedditComposeFocusBridge.performFocusedPostAction(
+                            activity.getWindow().getDecorView(), "save");
+                }
+                return true;
             case KeyEvent.KEYCODE_P:
                 return handlePreviewKey(activity, event);
             case KeyEvent.KEYCODE_G:
