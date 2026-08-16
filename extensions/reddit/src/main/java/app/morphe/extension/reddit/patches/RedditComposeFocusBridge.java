@@ -853,8 +853,11 @@ public final class RedditComposeFocusBridge {
             }
             int[] rootLocation = new int[2];
             root.getLocationOnScreen(rootLocation);
+            int visibleLeft = rootLocation[0];
+            int visibleRight = visibleLeft + root.getWidth();
             int visibleTop = rootLocation[1];
             int visibleBottom = visibleTop + root.getHeight();
+            int minimumCommentWidth = root.getWidth() / 2;
             ArrayList<View> composeViews = new ArrayList<View>();
             collectActiveComposeViews(root, composeViews);
             Rect currentBounds = resolveSelectedCommentBounds();
@@ -899,6 +902,9 @@ public final class RedditComposeFocusBridge {
                     Rect bounds = commentDisplayBounds(info);
                     if (bounds.isEmpty()
                             || bounds.height() < 40
+                            || bounds.width() < minimumCommentWidth
+                            || bounds.right <= visibleLeft
+                            || bounds.left >= visibleRight
                             || bounds.bottom <= visibleTop
                             || bounds.top >= visibleBottom) {
                         continue;
@@ -1188,10 +1194,7 @@ public final class RedditComposeFocusBridge {
                     continue;
                 }
                 String lower = action.getLabel().toString().toLowerCase(Locale.US);
-                if (lower.contains("collapse")
-                        || lower.contains("expand")
-                        || lower.contains("show less")
-                        || lower.contains("show more")) {
+                if (lower.contains("collapse") || lower.contains("expand")) {
                     return true;
                 }
             }
