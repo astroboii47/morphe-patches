@@ -60,7 +60,7 @@ val longPressImagePreviewPatch = bytecodePatch(
             )
         }
 
-        hookFeedActionBar(FeedActionBarFingerprint)
+        runCatching { hookFeedActionBar(FeedActionBarFingerprint) }
         runCatching { hookFeedActionBar(FeedActionBarVariantQFingerprint) }
         runCatching { hookFeedActionBar(FeedActionBarVariantSFingerprint) }
         runCatching { hookFeedActionBar(FeedActionBarContentFingerprint) }
