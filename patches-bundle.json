@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.134 (2026-08-17)\n\n- Reddit: ignore off-screen and narrow semantic controls during comment navigation.\n- Reddit: recognise only collapse and expand actions as comment controls.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.134/patches-1.36.0-dev.134.mpp",
+  "description": "## 1.36.0-dev.135 (2026-08-17)\n\n- Reddit: add q upvote, w downvote, and e save/unsave for the currently selected feed post.\n- Uses Reddit's native semantic actions on the selected post; no coordinate taps.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.135/patches-1.36.0-dev.135.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.134"
+  "version": "1.36.0-dev.135"
 }
