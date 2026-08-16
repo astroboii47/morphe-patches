@@ -1788,6 +1788,15 @@ public final class LongPressImagePreviewPatch {
             return false;
         }
 
+        View keyboardRoot = activity.getWindow().getDecorView();
+        // A detail Compose host can remain attached for its exit animation. Do not let its
+        // comment marker remain over the feed once the visible screen is no longer a post.
+        if (!RedditComposeFocusBridge.isPostDetailScreen(keyboardRoot)
+                && RedditComposeFocusBridge.hasSelectedComment()) {
+            keyboardPostDetailOpen = false;
+            RedditComposeFocusBridge.hideCommentFocusIndicator();
+        }
+
         int keyCode = event.getKeyCode();
         int mappedKeyCode = keyCode;
         int direction = View.FOCUS_DOWN;
