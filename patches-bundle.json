@@ -1,7 +1,7 @@
 {
   "created_at": "2026-08-10T06:35:32",
-  "description": "## 1.36.0-dev.137 (2026-08-17)\n\n- Reddit: keep the native vote hook optional so unsupported bytecode shapes do not block Force Bottom Navigation or Long Press Image Preview.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.137/patches-1.36.0-dev.137.mpp",
+  "description": "## 1.36.0-dev.139 (2026-08-21)\n\n- Reddit: register the native vote callback for q/w.\n- Reddit: let Next Comment wait for the destination row to render and avoid highlighting barely visible rows.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.139/patches-1.36.0-dev.139.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.137"
+  "version": "1.36.0-dev.139"
 }
