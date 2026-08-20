@@ -1871,14 +1871,7 @@ public final class LongPressImagePreviewPatch {
                     commentScrollPending = false;
                     RedditComposeFocusBridge.hideCommentFocusIndicator();
                     if (RedditComposeFocusBridge.clickNextCommentButton(root)) {
-                        root.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (jumpGeneration == commentNavigationGeneration) {
-                                    RedditComposeFocusBridge.selectCommentAfterScroll(root, 1);
-                                }
-                            }
-                        }, 100L);
+                        settleNextCommentJump(root, jumpGeneration, 4);
                     }
                 }
                 return true;
@@ -2005,6 +1998,32 @@ public final class LongPressImagePreviewPatch {
                 commentScrollPending = false;
             }
         }, 90L);
+    }
+
+    /**
+     * Reddit's native Next Comment control scrolls first and exposes the destination comment
+     * to Compose semantics a frame or two later. Retry selection only; never issue another
+     * jump, otherwise a single press can skip comments.
+     */
+    private static void settleNextCommentJump(
+            final View root,
+            final int navigationGeneration,
+            final int retriesRemaining
+    ) {
+        root.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (navigationGeneration != commentNavigationGeneration) {
+                    return;
+                }
+                if (RedditComposeFocusBridge.selectCommentAfterScroll(root, 1)) {
+                    return;
+                }
+                if (retriesRemaining > 0) {
+                    settleNextCommentJump(root, navigationGeneration, retriesRemaining - 1);
+                }
+            }
+        }, 80L);
     }
 
     private static boolean handlePreviewKey(Activity activity, KeyEvent event) {

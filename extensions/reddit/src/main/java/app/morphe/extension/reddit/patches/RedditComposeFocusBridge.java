@@ -1094,13 +1094,20 @@ public final class RedditComposeFocusBridge {
                         continue;
                     }
                     Rect bounds = commentDisplayBounds(info);
+                    int visibleHeight = Math.min(bounds.bottom, visibleBottom)
+                            - Math.max(bounds.top, visibleTop);
+                    // Compose may expose the next row while only a few pixels of it are on
+                    // screen. That is not a usable selection target and made the indicator
+                    // appear to belong to the previous comment during a jump.
+                    int minimumVisibleHeight = Math.min(56, Math.max(24, bounds.height() / 4));
                     if (bounds.isEmpty()
                             || bounds.height() < 40
                             || bounds.width() < minimumCommentWidth
                             || bounds.right <= visibleLeft
                             || bounds.left >= visibleRight
                             || bounds.bottom <= visibleTop
-                            || bounds.top >= visibleBottom) {
+                            || bounds.top >= visibleBottom
+                            || visibleHeight < minimumVisibleHeight) {
                         continue;
                     }
                     if (id == selectedCommentVirtualId) {
