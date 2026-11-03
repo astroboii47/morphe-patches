@@ -35,7 +35,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START -->
-> **[v2.1.0-dev.7](https://github.com/MorpheApp/morphe-patches/releases/tag/v2.1.0-dev.7)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;196 patches total
+> **[v1.0.0](https://github.com/astroboii47/morphe-patches/releases/tag/v1.0.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;197 patches total
 <details>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;111 patches</summary>
 <br>
@@ -225,7 +225,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 </details>
 
 <details>
-<summary>📦 Reddit&nbsp;&nbsp;•&nbsp;&nbsp;31 patches</summary>
+<summary>📦 Reddit&nbsp;&nbsp;•&nbsp;&nbsp;32 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -255,6 +255,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | [Hide navigation buttons](#hide-navigation-buttons) | Adds options to hide buttons in the navigation bar. |  |
 | [Hide sidebar components](#hide-sidebar-components) | Adds options to hide the sidebar components. |  |
 | [Keep feed position](#keep-feed-position) | Adds an option to keep the feed at the same position after closing a post, image or video, instead of moving the opened post to the top of the screen. |  |
+| [Long press media preview](#long-press-media-preview) | Shows a large image while you hold that image in the Reddit feed. |  |
 | [Media viewer black background](#media-viewer-black-background) | Adds an option to use a black background behind images and videos in the media viewer, instead of the theme background color. |  |
 | [Media viewer fade](#media-viewer-fade) | Adds an option to lower or remove the dark fade behind the caption when viewing images and videos. |  |
 | [Open links directly](#open-links-directly) | Adds an option to skip over redirection URLs in external links. |  |
