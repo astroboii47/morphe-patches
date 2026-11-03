@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-11-04T02:17:00",
-  "description": "## 1.36.0-dev.148 (2026-11-04)\n\n- Export Reddit Compose media tags to Android accessibility nodes.\n- Activate exact image and external-link thumbnail detection on Android 16.\n- Keep the same-dex Reddit 2026.40 feed hooks from dev.147.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.148/patches-1.36.0-dev.148.mpp",
+  "created_at": "2026-11-04T02:34:00",
+  "description": "## 1.36.0-dev.149 (2026-11-04)\n\n- Match Reddit's merged post cards using their exact rendered title.\n- Resolve the touched card to its native post ID and cached image or link thumbnail.\n- Remove the ineffective broad Compose semantics change from dev.148.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.149/patches-1.36.0-dev.149.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.148"
+  "version": "1.36.0-dev.149"
 }
