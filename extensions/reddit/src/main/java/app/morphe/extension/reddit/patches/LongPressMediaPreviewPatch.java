@@ -35,8 +35,6 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import app.morphe.extension.reddit.settings.Settings;
-
 /** Shows a feed image at full size while the image itself is held. */
 @SuppressWarnings({"unused", "JavaReflectionMemberAccess"})
 public final class LongPressMediaPreviewPatch {
@@ -108,7 +106,6 @@ public final class LongPressMediaPreviewPatch {
         }
 
         private boolean handleTouch(MotionEvent event) {
-            if (!Settings.LONG_PRESS_MEDIA_PREVIEW.get()) return false;
             if (dispatchingCancel && event.getActionMasked() == MotionEvent.ACTION_CANCEL) return false;
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
