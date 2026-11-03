@@ -135,7 +135,14 @@ public final class LongPressMediaPreviewPatch {
         private void showIfStillHolding(TouchState state) {
             if (touch != state || state.cancelled || activity.isFinishing()) return;
             View root = activity.getWindow().getDecorView();
-            String linkId = findImageLinkId(root, Math.round(state.x), Math.round(state.y));
+            String linkId;
+            try {
+                linkId = findImageLinkId(root, Math.round(state.x), Math.round(state.y));
+            } catch (RuntimeException ignored) {
+                // Accessibility implementations differ between Reddit/Android builds. A failed
+                // lookup must leave the original touch untouched, never crash the application.
+                return;
+            }
             String url = linkId == null ? null : MEDIA_BY_LINK_ID.get(linkId);
             if (url == null) return;
             showPreview(root, url);
@@ -274,10 +281,19 @@ public final class LongPressMediaPreviewPatch {
                 if (index >= 0) return candidate.substring(index + IMAGE_TAG.length()).replaceAll("[^A-Za-z0-9_-].*$", "");
             }
             for (int i = node.getChildCount() - 1; i >= 0; i--) {
-                android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
-                if (child == null && provider != null) {
+                android.view.accessibility.AccessibilityNodeInfo child = null;
+                if (provider != null) {
                     int childId = childVirtualId(node, i);
                     if (childId != Integer.MIN_VALUE) child = provider.createAccessibilityNodeInfo(childId);
+                }
+                if (child == null) {
+                    try {
+                        child = node.getChild(i);
+                    } catch (IllegalStateException ignored) {
+                        // View-created nodes can be unsealed. Their properties are readable, but
+                        // Android deliberately rejects child traversal; the View hierarchy fallback
+                        // in findImageLinkId(View, ...) will continue the search safely.
+                    }
                 }
                 String result = findImageLinkId(child, provider, x, y, depth + 1);
                 if (result != null) return result;
