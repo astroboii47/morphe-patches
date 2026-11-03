@@ -23,10 +23,14 @@ internal object FeedSelfImageConstructorFingerprint : Fingerprint(
     )
 )
 
-/** Reddit's stable post presentation model, including external-link thumbnail resolutions. */
-internal object LinkPresentationModelConstructorFingerprint : Fingerprint(
-    definingClass = "Lcom/reddit/presentation/listing/model/LinkPresentationModel;",
+/** Reddit 2026.40.0's feed title-with-thumbnail section. */
+internal object FeedTitleWithThumbnailConstructorFingerprint : Fingerprint(
+    definingClass = "Lb240;",
     name = "<init>",
     returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR)
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;", "Ljava/lang/String;", "Z", "Ljava/lang/String;", "I",
+        "Lpzo0;", "Lkxp;", "Z", "Ll7j;", "Ljava/lang/String;", "Ljava/lang/String;"
+    )
 )

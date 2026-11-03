@@ -39,11 +39,11 @@ val longPressMediaPreviewPatch = bytecodePatch(
             },
             "invoke-static { p1 }, $EXTENSION_CLASS->registerImageModel(Ljava/lang/Object;)V"
         )
-        LinkPresentationModelConstructorFingerprint.method.addInstruction(
-            LinkPresentationModelConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
+        FeedTitleWithThumbnailConstructorFingerprint.method.addInstruction(
+            FeedTitleWithThumbnailConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
                 it.opcode == Opcode.RETURN_VOID
             },
-            "invoke-static { p0 }, $EXTENSION_CLASS->registerLinkModel(Ljava/lang/Object;)V"
+            "invoke-static { p0 }, $EXTENSION_CLASS->registerLinkThumbnailModel(Ljava/lang/Object;)V"
         )
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }

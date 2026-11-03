@@ -28,7 +28,6 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -89,15 +88,12 @@ public final class LongPressMediaPreviewPatch {
         if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
     }
 
-    /** Injection point from Reddit's stable LinkPresentationModel. */
-    public static void registerLinkModel(Object model) {
+    /** Injection point from Reddit's feed title-with-thumbnail section. */
+    public static void registerLinkThumbnailModel(Object model) {
         if (model == null) return;
-        String linkId = readStringField(model, "b");
-        String url = firstModelImageUrl(
-                readField(model, "W0"),
-                readField(model, "X0"),
-                readField(model, "S0")
-        );
+        String linkId = readStringField(model, "a");
+        Object thumbnail = readField(model, "f");
+        String url = firstImageUrl(readField(thumbnail, "i"));
         if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
     }
 
@@ -414,36 +410,6 @@ public final class LongPressMediaPreviewPatch {
             if (isImageUrl(second)) return second;
         }
         return null;
-    }
-
-    private static String firstModelImageUrl(Object... sources) {
-        for (Object source : sources) {
-            String url = modelImageUrl(source, 0);
-            if (url != null) return url;
-        }
-        return null;
-    }
-
-    private static String modelImageUrl(Object source, int depth) {
-        if (source == null || depth > 3) return null;
-        if (source instanceof Iterable<?>) {
-            String result = null;
-            for (Object item : (Iterable<?>) source) {
-                String candidate = modelImageUrl(item, depth + 1);
-                if (candidate != null) result = candidate;
-            }
-            return result;
-        }
-        try {
-            Method getUrl = source.getClass().getMethod("getUrl");
-            Object value = getUrl.invoke(source);
-            if (value instanceof String && isImageUrl((String) value)) return (String) value;
-        } catch (ReflectiveOperationException ignored) {
-            // Not an ImageResolution; inspect the link-preview resolution list below.
-        }
-        String direct = readStringField(source, "url");
-        if (isImageUrl(direct)) return direct;
-        return modelImageUrl(readField(source, "a"), depth + 1);
     }
 
     private static boolean isImageUrl(String value) {
