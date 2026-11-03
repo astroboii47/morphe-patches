@@ -35,11 +35,11 @@ internal object FeedTitleWithThumbnailConstructorFingerprint : Fingerprint(
     )
 )
 
-/** Compose's TestTag semantics node used by Reddit 2026.40.0. */
-internal object TestTagSemanticsFingerprint : Fingerprint(
-    definingClass = "Lymi0;",
-    name = "c",
+/** Reddit 2026.40.0's feed title section. */
+internal object FeedTitleConstructorFingerprint : Fingerprint(
+    definingClass = "Lz0j;",
+    name = "<init>",
     returnType = "V",
-    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
-    parameters = listOf("Llhe0;")
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf("Lx140;", "Lkotlin/jvm/functions/Function2;", "Z")
 )

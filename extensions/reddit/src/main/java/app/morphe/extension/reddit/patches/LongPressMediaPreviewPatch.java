@@ -56,6 +56,14 @@ public final class LongPressMediaPreviewPatch {
                 }
             }
     );
+    private static final Map<String, String> LINK_ID_BY_TITLE = Collections.synchronizedMap(
+            new LinkedHashMap<String, String>(MAX_MEDIA + 1, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > MAX_MEDIA;
+                }
+            }
+    );
     private static final Map<Activity, PreviewWindowCallback> CALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static boolean dispatchingCancel;
@@ -92,9 +100,22 @@ public final class LongPressMediaPreviewPatch {
     public static void registerLinkThumbnailModel(Object model) {
         if (model == null) return;
         String linkId = readStringField(model, "a");
+        String title = readStringField(model, "b");
         Object thumbnail = readField(model, "f");
         String url = firstImageUrl(readField(thumbnail, "i"));
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
         if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
+    }
+
+    /** Injection point from Reddit's feed title section. */
+    public static void registerTitleModel(Object model) {
+        if (model == null) return;
+        String linkId = readStringField(model, "e");
+        String title = Boolean.TRUE.equals(readField(model, "k"))
+                ? readStringField(model, "j")
+                : readStringField(model, "i");
+        if (title == null) title = readStringField(model, "i");
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
@@ -290,6 +311,7 @@ public final class LongPressMediaPreviewPatch {
             for (String candidate : candidates) {
                 String linkId = taggedLinkId(candidate, IMAGE_TAG);
                 if (linkId == null) linkId = taggedLinkId(candidate, LINK_THUMBNAIL_TAG);
+                if (linkId == null) linkId = linkIdForTitle(candidate);
                 if (linkId != null) return linkId;
             }
             int[] childIds = provider == null ? null : childVirtualIds(node);
@@ -366,6 +388,19 @@ public final class LongPressMediaPreviewPatch {
         int index = candidate.indexOf(prefix);
         if (index < 0) return null;
         return candidate.substring(index + prefix.length()).replaceAll("[^A-Za-z0-9_-].*$", "");
+    }
+
+    private static String linkIdForTitle(String candidate) {
+        if (candidate == null || "null".equals(candidate)) return null;
+        synchronized (LINK_ID_BY_TITLE) {
+            for (Map.Entry<String, String> entry : LINK_ID_BY_TITLE.entrySet()) {
+                String title = entry.getKey();
+                if (title != null && !title.isEmpty() && candidate.contains(title)) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return null;
     }
 
     private static void cancelUnderlyingLongPress(View root, float x, float y) {
