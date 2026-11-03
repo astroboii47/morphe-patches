@@ -22,3 +22,11 @@ internal object FeedSelfImageConstructorFingerprint : Fingerprint(
         "Ljava/lang/Float;", "Z", "Lqt30;"
     )
 )
+
+/** Reddit's stable post presentation model, including external-link thumbnail resolutions. */
+internal object LinkPresentationModelConstructorFingerprint : Fingerprint(
+    definingClass = "Lcom/reddit/presentation/listing/model/LinkPresentationModel;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR)
+)

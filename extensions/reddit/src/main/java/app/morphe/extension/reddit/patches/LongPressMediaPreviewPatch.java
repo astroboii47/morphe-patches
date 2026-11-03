@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Parcel;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -27,6 +28,7 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,10 +38,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Shows a feed image at full size while the image itself is held. */
-@SuppressWarnings({"unused", "JavaReflectionMemberAccess"})
+@SuppressWarnings("unused")
 public final class LongPressMediaPreviewPatch {
     private static final int MAX_MEDIA = 160;
     private static final String IMAGE_TAG = "feed_media_content_self_image_";
+    private static final String LINK_THUMBNAIL_TAG = "feed_post_title_with_thumbnail_";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService IMAGES = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "MorpheMediaPreview");
@@ -83,6 +86,18 @@ public final class LongPressMediaPreviewPatch {
         if (model == null) return;
         String linkId = readStringField(model, "e");
         String url = firstImageUrl(readField(model, "i"), readField(model, "k"));
+        if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
+    }
+
+    /** Injection point from Reddit's stable LinkPresentationModel. */
+    public static void registerLinkModel(Object model) {
+        if (model == null) return;
+        String linkId = readStringField(model, "b");
+        String url = firstModelImageUrl(
+                readField(model, "W0"),
+                readField(model, "X0"),
+                readField(model, "S0")
+        );
         if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
     }
 
@@ -277,22 +292,21 @@ public final class LongPressMediaPreviewPatch {
         try {
             String[] candidates = {String.valueOf(node.getViewIdResourceName()), String.valueOf(node.getContentDescription()), String.valueOf(node.getText())};
             for (String candidate : candidates) {
-                int index = candidate.indexOf(IMAGE_TAG);
-                if (index >= 0) return candidate.substring(index + IMAGE_TAG.length()).replaceAll("[^A-Za-z0-9_-].*$", "");
+                String linkId = taggedLinkId(candidate, IMAGE_TAG);
+                if (linkId == null) linkId = taggedLinkId(candidate, LINK_THUMBNAIL_TAG);
+                if (linkId != null) return linkId;
             }
-            for (int i = node.getChildCount() - 1; i >= 0; i--) {
+            int[] childIds = provider == null ? null : childVirtualIds(node);
+            int childCount = childIds == null ? node.getChildCount() : childIds.length;
+            for (int i = childCount - 1; i >= 0; i--) {
                 android.view.accessibility.AccessibilityNodeInfo child = null;
                 if (provider != null) {
-                    int childId = childVirtualId(node, i);
-                    if (childId != Integer.MIN_VALUE) child = provider.createAccessibilityNodeInfo(childId);
-                }
-                if (child == null) {
+                    child = provider.createAccessibilityNodeInfo(childIds[i]);
+                } else {
                     try {
                         child = node.getChild(i);
                     } catch (IllegalStateException ignored) {
-                        // View-created nodes can be unsealed. Their properties are readable, but
-                        // Android deliberately rejects child traversal; the View hierarchy fallback
-                        // in findImageLinkId(View, ...) will continue the search safely.
+                        // Provider-backed Compose nodes are handled above without hidden APIs.
                     }
                 }
                 String result = findImageLinkId(child, provider, x, y, depth + 1);
@@ -304,21 +318,58 @@ public final class LongPressMediaPreviewPatch {
         }
     }
 
-    private static int childVirtualId(android.view.accessibility.AccessibilityNodeInfo node, int index) {
+    /**
+     * Reads Compose virtual child IDs from the node's public Parcelable representation. Android 16
+     * blocks the hidden getChildId method, while getChild() rejects provider-created unsealed nodes.
+     * The parcel is the same stable data Android itself uses to transport accessibility nodes.
+     */
+    private static int[] childVirtualIds(android.view.accessibility.AccessibilityNodeInfo node) {
+        Parcel parcel = Parcel.obtain();
         try {
-            Object childId = android.view.accessibility.AccessibilityNodeInfo.class
-                    .getMethod("getChildId", int.class).invoke(node, index);
-            if (!(childId instanceof Long)) return Integer.MIN_VALUE;
-            try {
-                Object id = android.view.accessibility.AccessibilityNodeInfo.class
-                        .getMethod("getVirtualDescendantId", long.class).invoke(null, childId);
-                return id instanceof Integer ? (Integer) id : Integer.MIN_VALUE;
-            } catch (ReflectiveOperationException ignored) {
-                return (int) (((Long) childId) >> 32);
+            android.view.accessibility.AccessibilityNodeInfo copy =
+                    android.view.accessibility.AccessibilityNodeInfo.obtain(node);
+            copy.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            long fields = parcel.readLong();
+
+            if (hasField(fields, 0)) parcel.readInt();
+            if (hasField(fields, 1)) parcel.readLong();
+            if (hasField(fields, 2)) parcel.readInt();
+            if (hasField(fields, 3)) parcel.readLong();
+            if (hasField(fields, 4)) parcel.readLong();
+            if (hasField(fields, 5)) parcel.readLong();
+            if (hasField(fields, 6)) {
+                int count = parcel.readInt();
+                for (int i = 0; i < count; i++) parcel.readLong();
             }
-        } catch (Throwable ignored) {
-            return Integer.MIN_VALUE;
+            if (hasField(fields, 7)) parcel.readLong();
+            if (hasField(fields, 8)) parcel.readLong();
+            if (hasField(fields, 9)) parcel.readLong();
+            if (hasField(fields, 10)) parcel.readInt();
+            if (!hasField(fields, 11)) return new int[0];
+
+            int count = parcel.readInt();
+            if (count <= 0 || count > 10000) return new int[0];
+            int[] ids = new int[count];
+            for (int i = 0; i < count; i++) {
+                ids[i] = (int) (parcel.readLong() >> 32);
+            }
+            return ids;
+        } catch (RuntimeException ignored) {
+            return new int[0];
+        } finally {
+            parcel.recycle();
         }
+    }
+
+    private static boolean hasField(long fields, int index) {
+        return (fields & (1L << index)) != 0;
+    }
+
+    private static String taggedLinkId(String candidate, String prefix) {
+        int index = candidate.indexOf(prefix);
+        if (index < 0) return null;
+        return candidate.substring(index + prefix.length()).replaceAll("[^A-Za-z0-9_-].*$", "");
     }
 
     private static void cancelUnderlyingLongPress(View root, float x, float y) {
@@ -363,6 +414,36 @@ public final class LongPressMediaPreviewPatch {
             if (isImageUrl(second)) return second;
         }
         return null;
+    }
+
+    private static String firstModelImageUrl(Object... sources) {
+        for (Object source : sources) {
+            String url = modelImageUrl(source, 0);
+            if (url != null) return url;
+        }
+        return null;
+    }
+
+    private static String modelImageUrl(Object source, int depth) {
+        if (source == null || depth > 3) return null;
+        if (source instanceof Iterable<?>) {
+            String result = null;
+            for (Object item : (Iterable<?>) source) {
+                String candidate = modelImageUrl(item, depth + 1);
+                if (candidate != null) result = candidate;
+            }
+            return result;
+        }
+        try {
+            Method getUrl = source.getClass().getMethod("getUrl");
+            Object value = getUrl.invoke(source);
+            if (value instanceof String && isImageUrl((String) value)) return (String) value;
+        } catch (ReflectiveOperationException ignored) {
+            // Not an ImageResolution; inspect the link-preview resolution list below.
+        }
+        String direct = readStringField(source, "url");
+        if (isImageUrl(direct)) return direct;
+        return modelImageUrl(readField(source, "a"), depth + 1);
     }
 
     private static boolean isImageUrl(String value) {
