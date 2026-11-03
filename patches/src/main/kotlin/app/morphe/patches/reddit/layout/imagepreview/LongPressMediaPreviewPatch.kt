@@ -45,6 +45,12 @@ val longPressMediaPreviewPatch = bytecodePatch(
             },
             "invoke-static { p0 }, $EXTENSION_CLASS->registerLinkThumbnailModel(Ljava/lang/Object;)V"
         )
+        // Reddit writes media IDs as Compose TestTags but does not expose them to Android's
+        // accessibility nodes. Exporting those native tags lets touch lookup identify the exact row.
+        TestTagSemanticsFingerprint.method.addInstruction(
+            0,
+            "invoke-static { p1 }, Lkhe0;->a(Llhe0;)V"
+        )
         setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }

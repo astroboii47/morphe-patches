@@ -34,3 +34,12 @@ internal object FeedTitleWithThumbnailConstructorFingerprint : Fingerprint(
         "Lpzo0;", "Lkxp;", "Z", "Ll7j;", "Ljava/lang/String;", "Ljava/lang/String;"
     )
 )
+
+/** Compose's TestTag semantics node used by Reddit 2026.40.0. */
+internal object TestTagSemanticsFingerprint : Fingerprint(
+    definingClass = "Lymi0;",
+    name = "c",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Llhe0;")
+)
