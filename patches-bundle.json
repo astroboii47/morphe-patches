@@ -3,5 +3,6 @@
   "description": "## 1.36.0-dev.142 (2026-11-04)\n\n- Fix Reddit application matching for current 2026.40.0 APKM builds.\n- Includes touch-only long press media preview for feed images.",
   "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.142/patches-1.36.0-dev.142.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.142"
+  "version": "1.36.0-dev.142",
+  "public_key": "g8Ys9leTu2yeixojeR35HrNkK6eOSLpA6nNIizRutqI="
 }
