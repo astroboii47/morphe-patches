@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-11-04T12:42:00",
-  "description": "## 1.36.0-dev.152 (2026-11-04)\n\n- Read Reddit v40 image data from the correct nested feed model.\n- Remove duplicate global callback reattachment that interfered with the app UI.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.152/patches-1.36.0-dev.152.mpp",
+  "created_at": "2026-11-04T13:04:52",
+  "description": "## 1.36.0-dev.153 (2026-11-04)\n\n- Resolve the exact compact-feed post row under a long press on Reddit v40.\n- Add runtime diagnostics for title, thumbnail, image, and preview resolution.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.153/patches-1.36.0-dev.153.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.152"
+  "version": "1.36.0-dev.153"
 }
