@@ -29,7 +29,9 @@ val longPressMediaPreviewPatch = bytecodePatch(
     execute {
         // Install the touch wrapper on Reddit's real feed activity, not the Morphe settings view.
         RedditActivityOnCreateFingerprint.method.addInstruction(
-            0,
+            RedditActivityOnCreateFingerprint.method.implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            },
             "invoke-static { p0 }, $EXTENSION_CLASS->attach(Landroid/app/Activity;)V"
         )
 
@@ -37,7 +39,7 @@ val longPressMediaPreviewPatch = bytecodePatch(
             FeedSelfImageConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
                 it.opcode == Opcode.RETURN_VOID
             },
-            "invoke-static { p1 }, $EXTENSION_CLASS->registerImageModel(Ljava/lang/Object;)V"
+            "invoke-static { p0 }, $EXTENSION_CLASS->registerImageModel(Ljava/lang/Object;)V"
         )
         FeedTitleWithThumbnailConstructorFingerprint.method.addInstruction(
             FeedTitleWithThumbnailConstructorFingerprint.method.implementation!!.instructions.indexOfLast {

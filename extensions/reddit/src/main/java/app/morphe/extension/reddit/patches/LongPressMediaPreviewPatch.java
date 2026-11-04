@@ -8,7 +8,6 @@
 package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
-import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -16,7 +15,6 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcel;
-import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -71,9 +69,6 @@ public final class LongPressMediaPreviewPatch {
     );
     private static final Map<Activity, PreviewWindowCallback> CALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Activity, Boolean> LAYOUT_WATCHERS =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static volatile boolean lifecycleCallbacksRegistered;
     private static boolean dispatchingCancel;
 
     private LongPressMediaPreviewPatch() {
@@ -88,14 +83,6 @@ public final class LongPressMediaPreviewPatch {
         if (!isPatchIncluded() || activity == null || activity.isFinishing()) return;
         try {
             ensureWindowCallback(activity);
-            ensureLifecycleCallbacks(activity);
-            synchronized (LAYOUT_WATCHERS) {
-                if (!LAYOUT_WATCHERS.containsKey(activity)) {
-                    LAYOUT_WATCHERS.put(activity, Boolean.TRUE);
-                    activity.getWindow().getDecorView().getViewTreeObserver()
-                            .addOnGlobalLayoutListener(() -> ensureWindowCallback(activity));
-                }
-            }
         } catch (Throwable error) {
             Log.e(LOG_TAG, "attach failed", error);
         }
@@ -115,30 +102,13 @@ public final class LongPressMediaPreviewPatch {
         Log.i(LOG_TAG, "touch callback attached to " + activity.getClass().getName());
     }
 
-    private static synchronized void ensureLifecycleCallbacks(Activity activity) {
-        if (lifecycleCallbacksRegistered) return;
-        Application application = activity.getApplication();
-        if (application == null) return;
-        lifecycleCallbacksRegistered = true;
-        application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
-            @Override public void onActivityCreated(Activity value, Bundle state) { attach(value); }
-            @Override public void onActivityStarted(Activity value) { attach(value); }
-            @Override public void onActivityResumed(Activity value) { attach(value); }
-            @Override public void onActivityPaused(Activity value) { }
-            @Override public void onActivityStopped(Activity value) { }
-            @Override public void onActivitySaveInstanceState(Activity value, Bundle state) { }
-            @Override public void onActivityDestroyed(Activity value) {
-                CALLBACKS.remove(value);
-                LAYOUT_WATCHERS.remove(value);
-            }
-        });
-    }
-
     /** Injection point from Reddit's self-image feed model. */
     public static void registerImageModel(Object model) {
         if (model == null) return;
-        String linkId = readStringField(model, "e");
-        String url = firstImageUrl(readField(model, "i"), readField(model, "k"));
+        Object data = readField(model, "a");
+        if (data == null) return;
+        String linkId = readStringField(data, "e");
+        String url = firstImageUrl(readField(data, "i"), readField(data, "k"));
         if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
     }
 
