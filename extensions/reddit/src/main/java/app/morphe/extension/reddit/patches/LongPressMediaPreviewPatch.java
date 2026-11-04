@@ -383,6 +383,26 @@ public final class LongPressMediaPreviewPatch {
                 try {
                     row.getBoundsInScreen(rowBounds);
                     if (!rowBounds.contains(x, y)) continue;
+                    // This is the same descriptive child exported to TalkBack/UI Automator,
+                    // and avoids recursively decoding Compose's virtual-node graph.
+                    List<android.view.accessibility.AccessibilityNodeInfo> details =
+                            row.findAccessibilityNodeInfosByText("Posted");
+                    if (details != null) {
+                        for (android.view.accessibility.AccessibilityNodeInfo detail : details) {
+                            if (detail == null) continue;
+                            try {
+                                String linkId = linkIdForTitle(
+                                        String.valueOf(detail.getContentDescription())
+                                );
+                                if (linkId == null) {
+                                    linkId = linkIdForTitle(String.valueOf(detail.getText()));
+                                }
+                                if (linkId != null) return linkId;
+                            } finally {
+                                detail.recycle();
+                            }
+                        }
+                    }
                     String linkId = findLinkIdInPostRow(row, provider, new HashSet<>(), 0);
                     if (linkId != null) return linkId;
                 } finally {
