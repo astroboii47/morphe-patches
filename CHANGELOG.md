@@ -1,3 +1,21 @@
+## [1.0.1](https://github.com/astroboii47/morphe-patches/compare/v1.0.0...v1.0.1) (2026-11-04)
+
+### 🐛 Bug Fixes
+
+* **reddit:** export Compose media tags ([62c19d4](https://github.com/astroboii47/morphe-patches/commit/62c19d4518e6c9228c208b846c4f4bf8cce58016))
+* **reddit:** guard media preview accessibility traversal ([ef498a1](https://github.com/astroboii47/morphe-patches/commit/ef498a1465fbeb828ef1749d3953f33be0723dc0))
+* **reddit:** hook link thumbnails in feed dex ([108a68a](https://github.com/astroboii47/morphe-patches/commit/108a68a8e4f473c24ee2a7e2919734d75a9ab845))
+* **reddit:** keep media preview touch hook attached ([8e622b4](https://github.com/astroboii47/morphe-patches/commit/8e622b4b61704043cfc4fe630edd18cb13c837d2))
+* **reddit:** match merged feed rows by title ([5f0ac4f](https://github.com/astroboii47/morphe-patches/commit/5f0ac4f4a5176679d1d51d775bebad0d35217b84))
+* **reddit:** match wrapped application classes ([301d80b](https://github.com/astroboii47/morphe-patches/commit/301d80bceca006cbb24387ba27575da18b6dc703))
+* **reddit:** query merged Compose post nodes ([a89ca75](https://github.com/astroboii47/morphe-patches/commit/a89ca75b186646091b1844ad70d4c8cbfbea4182))
+* **reddit:** remove preview setting dependency ([183d250](https://github.com/astroboii47/morphe-patches/commit/183d250dcfc9c2d861012eb1901b5821f0998025))
+* **reddit:** restore Compose media preview lookup ([ea6b3e0](https://github.com/astroboii47/morphe-patches/commit/ea6b3e022b434b9e17dc36578f002150928cfa4b))
+* **reddit:** retain preview patch category detection ([405b220](https://github.com/astroboii47/morphe-patches/commit/405b220470d9bddf81775392e38a2c2b0d99425a))
+* **reddit:** target exact application class ([c3c45c7](https://github.com/astroboii47/morphe-patches/commit/c3c45c7fda48e88aa8ab3dd082ff5880f914277b))
+* restore bundle public key [skip ci] ([5ad4a5d](https://github.com/astroboii47/morphe-patches/commit/5ad4a5dff7bded4f16ae9fbad292291ba423f6a2))
+* retain compatible bundle metadata [skip ci] ([6f81391](https://github.com/astroboii47/morphe-patches/commit/6f813910cacd38ba5cf288053f6715a51749ce0d))
+
 ## 1.0.0 (2026-11-03)
 
 ### ⚠ BREAKING CHANGES

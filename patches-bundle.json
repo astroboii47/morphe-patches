@@ -3,5 +3,6 @@
   "description": "## 1.36.0-dev.151 (2026-11-04)\n\n- Keep Reddit's long-press media preview touch listener attached after activity startup and resume.\n- Restore the lifecycle reattachment behavior used by the working preview implementation.",
   "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.151/patches-1.36.0-dev.151.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.151"
+  "version": "1.36.0-dev.151",
+  "public_key": "g8Ys9leTu2yeixojeR35HrNkK6eOSLpA6nNIizRutqI="
 }
