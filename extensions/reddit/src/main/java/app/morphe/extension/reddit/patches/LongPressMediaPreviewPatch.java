@@ -143,6 +143,21 @@ public final class LongPressMediaPreviewPatch {
         }
     }
 
+    /** Injection point from Reddit v40's active compact LinkPreviewCardData model. */
+    public static void registerLinkPreviewCardModel(Object model) {
+        if (model == null) return;
+        String linkId = readStringField(model, "a");
+        String title = readStringField(model, "e");
+        String url = readStringField(readField(model, "l"), "a");
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        if (linkId != null && isImageUrl(url)) {
+            MEDIA_BY_LINK_ID.put(linkId, url);
+            Log.i(LOG_TAG, "cached link preview " + linkId);
+        } else {
+            Log.i(LOG_TAG, "cached link title " + linkId + " media=false");
+        }
+    }
+
     private static final class PreviewWindowCallback implements Window.Callback {
         private final Activity activity;
         private final Window.Callback delegate;
@@ -347,11 +362,13 @@ public final class LongPressMediaPreviewPatch {
                 continue;
             }
             if (nodes == null) continue;
+            Log.i(LOG_TAG, "row query " + query + " nodes=" + nodes.size());
             for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
                 try {
                     node.getBoundsInScreen(bounds);
                     if (!bounds.contains(x, y)) continue;
+                    Log.i(LOG_TAG, "row hit " + bounds + " desc=" + node.getContentDescription());
                     String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
                     if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
                     if (linkId != null) return linkId;

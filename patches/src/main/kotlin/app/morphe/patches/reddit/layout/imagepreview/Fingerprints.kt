@@ -43,3 +43,17 @@ internal object FeedTitleConstructorFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
     parameters = listOf("Lx140;", "Lkotlin/jvm/functions/Function2;", "Z")
 )
+
+/** Reddit 2026.40.0's active compact link-preview card data. */
+internal object LinkPreviewCardDataConstructorFingerprint : Fingerprint(
+    definingClass = "Lycs;",
+    name = "<init>",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.CONSTRUCTOR),
+    parameters = listOf(
+        "Ljava/lang/String;", "Lo030;", "Ljava/lang/String;", "Z",
+        "Ljava/lang/String;", "I", "Z", "Lkxp;", "Ljava/lang/String;",
+        "Ljava/lang/String;", "Lcom/reddit/linkpreviewcomponent/api/props/LinkPreviewLayout;",
+        "Lyds;", "Ljava/lang/String;", "Lcom/reddit/publisher/LinkPostContainersVariant;"
+    )
+)
