@@ -34,6 +34,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -83,6 +85,11 @@ public final class LongPressMediaPreviewPatch {
         if (!isPatchIncluded() || activity == null || activity.isFinishing()) return;
         try {
             ensureWindowCallback(activity);
+            // Reddit replaces its window callback during its own startup. Reattach after that
+            // setup completes so feed touch events reach the preview handler.
+            MAIN.postDelayed(() -> {
+                if (!activity.isFinishing()) ensureWindowCallback(activity);
+            }, 1_000L);
         } catch (Throwable error) {
             Log.e(LOG_TAG, "attach failed", error);
         }
@@ -139,13 +146,17 @@ public final class LongPressMediaPreviewPatch {
         if (title == null) title = readStringField(model, "i");
         if (linkId != null && title != null) {
             LINK_ID_BY_TITLE.put(title, linkId);
-            Log.i(LOG_TAG, "cached title " + linkId);
+            Log.i(LOG_TAG, "cached title " + linkId + " title=" + title);
         }
     }
 
     /** Injection point from Reddit v40's active compact LinkPreviewCardData model. */
     public static void registerLinkPreviewCardModel(Object model) {
         if (model == null) return;
+        // The visible section wraps the card data in field "a". Accept either form so this
+        // retained injection point can refresh media whenever the Compose card is rendered.
+        Object candidate = readField(model, "a");
+        if (candidate != null && !(candidate instanceof String)) model = candidate;
         String linkId = readStringField(model, "a");
         String title = readStringField(model, "e");
         String url = readStringField(readField(model, "l"), "a");
@@ -318,11 +329,16 @@ public final class LongPressMediaPreviewPatch {
     }
 
     private static String findImageLinkId(View view, int x, int y, int depth) {
-        if (view == null || depth > 12 || !view.isShown()) return null;
+        // Reddit 2026.40 nests the Compose feed more than twelve Android views below the
+        // activity decor on some devices. Stop at a defensive ceiling, not before the feed.
+        if (view == null || depth > 40 || !view.isShown()) return null;
         int[] position = new int[2];
         view.getLocationOnScreen(position);
         if (x < position[0] || y < position[1] || x >= position[0] + view.getWidth() || y >= position[1] + view.getHeight()) return null;
-        String linkId = findImageLinkId(view.getAccessibilityNodeProvider(), x, y, depth);
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        Log.i(LOG_TAG, "hit view depth=" + depth + " class=" + view.getClass().getName() +
+                " provider=" + (provider != null));
+        String linkId = findImageLinkId(provider, x, y, depth);
         if (linkId != null) return linkId;
         linkId = findImageLinkId(view.createAccessibilityNodeInfo(), null, x, y, depth);
         if (linkId != null) return linkId;
@@ -347,6 +363,34 @@ public final class LongPressMediaPreviewPatch {
     }
 
     private static String findLinkIdByVisiblePostRow(AccessibilityNodeProvider provider, int x, int y) {
+        // `post_unit` is Reddit's real Compose accessibility row. It spans both the post text
+        // and its thumbnail, so resolving its descriptive child identifies the held image/link
+        // without inferring a row from screen position or opening the outbound link.
+        List<android.view.accessibility.AccessibilityNodeInfo> postRows;
+        android.view.accessibility.AccessibilityNodeInfo host = null;
+        try {
+            host = provider.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
+            postRows = host == null ? null : host.findAccessibilityNodeInfosByViewId("post_unit");
+        } catch (RuntimeException ignored) {
+            postRows = null;
+        } finally {
+            if (host != null) host.recycle();
+        }
+        if (postRows != null) {
+            android.graphics.Rect rowBounds = new android.graphics.Rect();
+            for (android.view.accessibility.AccessibilityNodeInfo row : postRows) {
+                if (row == null) continue;
+                try {
+                    row.getBoundsInScreen(rowBounds);
+                    if (!rowBounds.contains(x, y)) continue;
+                    String linkId = findLinkIdInPostRow(row, provider, new HashSet<>(), 0);
+                    if (linkId != null) return linkId;
+                } finally {
+                    row.recycle();
+                }
+            }
+        }
+
         // Compact feed rows expose a merged post_unit node, but v40 no longer exports the
         // media section's test tag. Querying a stable phrase from the merged row gives us the
         // exact visible row under the finger without relying on hidden virtual-child APIs.
@@ -380,6 +424,37 @@ public final class LongPressMediaPreviewPatch {
         return null;
     }
 
+    private static String findLinkIdInPostRow(
+            android.view.accessibility.AccessibilityNodeInfo node,
+            AccessibilityNodeProvider provider,
+            Set<Integer> visited,
+            int depth
+    ) {
+        if (node == null || depth > 5) return null;
+        try {
+            String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
+            if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
+            if (linkId != null) return linkId;
+
+            int[] childIds = childVirtualIds(node);
+            for (int childId : childIds) {
+                if (!visited.add(childId)) continue;
+                android.view.accessibility.AccessibilityNodeInfo child =
+                        provider.createAccessibilityNodeInfo(childId);
+                if (child == null) continue;
+                try {
+                    linkId = findLinkIdInPostRow(child, provider, visited, depth + 1);
+                    if (linkId != null) return linkId;
+                } finally {
+                    child.recycle();
+                }
+            }
+            return null;
+        } finally {
+            // The row itself is caller-owned; provider children are recycled by their caller.
+        }
+    }
+
     private static String findLinkIdByProviderText(AccessibilityNodeProvider provider, int x, int y) {
         List<Map.Entry<String, String>> titles;
         synchronized (LINK_ID_BY_TITLE) {
@@ -397,11 +472,13 @@ public final class LongPressMediaPreviewPatch {
                 continue;
             }
             if (nodes == null) continue;
+            Log.i(LOG_TAG, "title query id=" + entry.getValue() + " nodes=" + nodes.size());
             for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
                 try {
                     node.getBoundsInScreen(bounds);
                     CharSequence description = node.getContentDescription();
+                    Log.i(LOG_TAG, "title candidate " + bounds + " desc=" + description);
                     if (bounds.contains(x, y) && description != null &&
                             description.toString().contains(entry.getKey())) {
                         return entry.getValue();
@@ -415,7 +492,7 @@ public final class LongPressMediaPreviewPatch {
     }
 
     private static String findImageLinkId(android.view.accessibility.AccessibilityNodeInfo node, AccessibilityNodeProvider provider, int x, int y, int depth) {
-        if (node == null || depth > 20) return null;
+        if (node == null || depth > 60) return null;
         android.graphics.Rect bounds = new android.graphics.Rect();
         node.getBoundsInScreen(bounds);
         if (!bounds.isEmpty() && !bounds.contains(x, y)) {
@@ -432,6 +509,10 @@ public final class LongPressMediaPreviewPatch {
             }
             int[] childIds = provider == null ? null : childVirtualIds(node);
             int childCount = childIds == null ? node.getChildCount() : childIds.length;
+            if (provider != null) {
+                Log.i(LOG_TAG, "virtual node depth=" + depth + " children=" + childCount +
+                        " id=" + node.getViewIdResourceName() + " desc=" + node.getContentDescription());
+            }
             for (int i = childCount - 1; i >= 0; i--) {
                 android.view.accessibility.AccessibilityNodeInfo child = null;
                 if (provider != null) {
@@ -489,7 +570,8 @@ public final class LongPressMediaPreviewPatch {
                 ids[i] = (int) (parcel.readLong() >> 32);
             }
             return ids;
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException error) {
+            Log.e(LOG_TAG, "virtual child decode failed", error);
             return new int[0];
         } finally {
             parcel.recycle();

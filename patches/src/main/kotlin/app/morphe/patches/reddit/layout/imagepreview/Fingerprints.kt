@@ -57,3 +57,37 @@ internal object LinkPreviewCardDataConstructorFingerprint : Fingerprint(
         "Lyds;", "Ljava/lang/String;", "Lcom/reddit/publisher/LinkPostContainersVariant;"
     )
 )
+
+/** Compose's TestTag semantics node used by Reddit 2026.40.0. */
+internal object TestTagSemanticsFingerprint : Fingerprint(
+    definingClass = "Lymi0;",
+    name = "c",
+    returnType = "V",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = listOf("Llhe0;")
+)
+
+/** Render methods run whenever these media sections are visible, including after process restore. */
+internal object FeedSelfImageRenderFingerprint : Fingerprint(
+    definingClass = "Lrbp;",
+    name = "b",
+    returnType = "Ljava/lang/String;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = emptyList()
+)
+
+internal object FeedTitleWithThumbnailRenderFingerprint : Fingerprint(
+    definingClass = "Lb240;",
+    name = "b",
+    returnType = "Ljava/lang/String;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = emptyList()
+)
+
+internal object LinkPreviewCardRenderFingerprint : Fingerprint(
+    definingClass = "Lzcs;",
+    name = "b",
+    returnType = "Ljava/lang/String;",
+    accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
+    parameters = emptyList()
+)
