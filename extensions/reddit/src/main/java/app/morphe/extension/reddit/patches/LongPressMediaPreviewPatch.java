@@ -109,7 +109,10 @@ public final class LongPressMediaPreviewPatch {
         if (data == null) return;
         String linkId = readStringField(data, "e");
         String url = firstImageUrl(readField(data, "i"), readField(data, "k"));
-        if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
+        if (linkId != null && url != null) {
+            MEDIA_BY_LINK_ID.put(linkId, url);
+            Log.i(LOG_TAG, "cached self image " + linkId);
+        }
     }
 
     /** Injection point from Reddit's feed title-with-thumbnail section. */
@@ -120,7 +123,10 @@ public final class LongPressMediaPreviewPatch {
         Object thumbnail = readField(model, "f");
         String url = firstImageUrl(readField(thumbnail, "i"));
         if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
-        if (linkId != null && url != null) MEDIA_BY_LINK_ID.put(linkId, url);
+        if (linkId != null && url != null) {
+            MEDIA_BY_LINK_ID.put(linkId, url);
+            Log.i(LOG_TAG, "cached thumbnail " + linkId);
+        }
     }
 
     /** Injection point from Reddit's feed title section. */
@@ -131,7 +137,10 @@ public final class LongPressMediaPreviewPatch {
                 ? readStringField(model, "j")
                 : readStringField(model, "i");
         if (title == null) title = readStringField(model, "i");
-        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        if (linkId != null && title != null) {
+            LINK_ID_BY_TITLE.put(title, linkId);
+            Log.i(LOG_TAG, "cached title " + linkId);
+        }
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
@@ -314,10 +323,44 @@ public final class LongPressMediaPreviewPatch {
 
     private static String findImageLinkId(AccessibilityNodeProvider provider, int x, int y, int depth) {
         if (provider == null) return null;
+        String rowLinkId = findLinkIdByVisiblePostRow(provider, x, y);
+        if (rowLinkId != null) return rowLinkId;
         String linkId = findLinkIdByProviderText(provider, x, y);
         if (linkId != null) return linkId;
         android.view.accessibility.AccessibilityNodeInfo node = provider.createAccessibilityNodeInfo(View.NO_ID);
         return findImageLinkId(node, provider, x, y, depth);
+    }
+
+    private static String findLinkIdByVisiblePostRow(AccessibilityNodeProvider provider, int x, int y) {
+        // Compact feed rows expose a merged post_unit node, but v40 no longer exports the
+        // media section's test tag. Querying a stable phrase from the merged row gives us the
+        // exact visible row under the finger without relying on hidden virtual-child APIs.
+        String[] rowQueries = {"Posted", "comments", "Reposted"};
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        for (String query : rowQueries) {
+            List<android.view.accessibility.AccessibilityNodeInfo> nodes;
+            try {
+                nodes = provider.findAccessibilityNodeInfosByText(
+                        query, AccessibilityNodeProvider.HOST_VIEW_ID
+                );
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            if (nodes == null) continue;
+            for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                try {
+                    node.getBoundsInScreen(bounds);
+                    if (!bounds.contains(x, y)) continue;
+                    String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
+                    if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
+                    if (linkId != null) return linkId;
+                } finally {
+                    node.recycle();
+                }
+            }
+        }
+        return null;
     }
 
     private static String findLinkIdByProviderText(AccessibilityNodeProvider provider, int x, int y) {
