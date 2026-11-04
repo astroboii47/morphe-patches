@@ -8,6 +8,7 @@
 package app.morphe.extension.reddit.patches;
 
 import android.app.Activity;
+import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -15,6 +16,8 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcel;
+import android.os.Bundle;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -41,6 +44,7 @@ import java.util.concurrent.Executors;
 @SuppressWarnings("unused")
 public final class LongPressMediaPreviewPatch {
     private static final int MAX_MEDIA = 160;
+    private static final String LOG_TAG = "MorpheMediaPreview";
     private static final String IMAGE_TAG = "feed_media_content_self_image_";
     private static final String LINK_THUMBNAIL_TAG = "feed_post_title_with_thumbnail_";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -67,6 +71,9 @@ public final class LongPressMediaPreviewPatch {
     );
     private static final Map<Activity, PreviewWindowCallback> CALLBACKS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Activity, Boolean> LAYOUT_WATCHERS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static volatile boolean lifecycleCallbacksRegistered;
     private static boolean dispatchingCancel;
 
     private LongPressMediaPreviewPatch() {
@@ -79,14 +86,52 @@ public final class LongPressMediaPreviewPatch {
     /** Injection point called by the Reddit activity hook. */
     public static void attach(Activity activity) {
         if (!isPatchIncluded() || activity == null || activity.isFinishing()) return;
-        synchronized (CALLBACKS) {
-            if (CALLBACKS.containsKey(activity)) return;
-            Window window = activity.getWindow();
-            if (window == null) return;
-            PreviewWindowCallback callback = new PreviewWindowCallback(activity, window.getCallback());
-            window.setCallback(callback);
-            CALLBACKS.put(activity, callback);
+        try {
+            ensureWindowCallback(activity);
+            ensureLifecycleCallbacks(activity);
+            synchronized (LAYOUT_WATCHERS) {
+                if (!LAYOUT_WATCHERS.containsKey(activity)) {
+                    LAYOUT_WATCHERS.put(activity, Boolean.TRUE);
+                    activity.getWindow().getDecorView().getViewTreeObserver()
+                            .addOnGlobalLayoutListener(() -> ensureWindowCallback(activity));
+                }
+            }
+        } catch (Throwable error) {
+            Log.e(LOG_TAG, "attach failed", error);
         }
+    }
+
+    private static void ensureWindowCallback(Activity activity) {
+        Window window = activity.getWindow();
+        if (window == null) return;
+        Window.Callback current = window.getCallback();
+        if (current instanceof PreviewWindowCallback) {
+            CALLBACKS.put(activity, (PreviewWindowCallback) current);
+            return;
+        }
+        PreviewWindowCallback callback = new PreviewWindowCallback(activity, current);
+        window.setCallback(callback);
+        CALLBACKS.put(activity, callback);
+        Log.i(LOG_TAG, "touch callback attached to " + activity.getClass().getName());
+    }
+
+    private static synchronized void ensureLifecycleCallbacks(Activity activity) {
+        if (lifecycleCallbacksRegistered) return;
+        Application application = activity.getApplication();
+        if (application == null) return;
+        lifecycleCallbacksRegistered = true;
+        application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
+            @Override public void onActivityCreated(Activity value, Bundle state) { attach(value); }
+            @Override public void onActivityStarted(Activity value) { attach(value); }
+            @Override public void onActivityResumed(Activity value) { attach(value); }
+            @Override public void onActivityPaused(Activity value) { }
+            @Override public void onActivityStopped(Activity value) { }
+            @Override public void onActivitySaveInstanceState(Activity value, Bundle state) { }
+            @Override public void onActivityDestroyed(Activity value) {
+                CALLBACKS.remove(value);
+                LAYOUT_WATCHERS.remove(value);
+            }
+        });
     }
 
     /** Injection point from Reddit's self-image feed model. */
@@ -142,6 +187,7 @@ public final class LongPressMediaPreviewPatch {
             if (dispatchingCancel && event.getActionMasked() == MotionEvent.ACTION_CANCEL) return false;
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    Log.i(LOG_TAG, "touch down x=" + event.getRawX() + " y=" + event.getRawY());
                     dismissPreview();
                     touch = new TouchState(event.getRawX(), event.getRawY());
                     MAIN.postDelayed(touch.show, ViewConfiguration.getLongPressTimeout());
@@ -177,6 +223,7 @@ public final class LongPressMediaPreviewPatch {
                 return;
             }
             String url = linkId == null ? null : MEDIA_BY_LINK_ID.get(linkId);
+            Log.i(LOG_TAG, "hold resolved linkId=" + linkId + " url=" + (url != null));
             if (url == null) return;
             showPreview(root, url);
             state.previewShown = true;
@@ -194,7 +241,9 @@ public final class LongPressMediaPreviewPatch {
             overlay.addView(image, new FrameLayout.LayoutParams(-1, -1));
             ((ViewGroup) root).addView(overlay, new ViewGroup.LayoutParams(-1, -1));
             preview = overlay;
+            Log.i(LOG_TAG, "preview overlay shown");
             IMAGES.execute(() -> loadImage(url, bitmap -> MAIN.post(() -> {
+                Log.i(LOG_TAG, "preview image loaded=" + (bitmap != null));
                 if (preview == overlay && bitmap != null) image.setImageBitmap(bitmap);
             })));
         }
