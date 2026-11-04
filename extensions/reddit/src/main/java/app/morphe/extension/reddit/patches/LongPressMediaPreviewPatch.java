@@ -29,6 +29,7 @@ import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -294,8 +295,44 @@ public final class LongPressMediaPreviewPatch {
 
     private static String findImageLinkId(AccessibilityNodeProvider provider, int x, int y, int depth) {
         if (provider == null) return null;
+        String linkId = findLinkIdByProviderText(provider, x, y);
+        if (linkId != null) return linkId;
         android.view.accessibility.AccessibilityNodeInfo node = provider.createAccessibilityNodeInfo(View.NO_ID);
         return findImageLinkId(node, provider, x, y, depth);
+    }
+
+    private static String findLinkIdByProviderText(AccessibilityNodeProvider provider, int x, int y) {
+        List<Map.Entry<String, String>> titles;
+        synchronized (LINK_ID_BY_TITLE) {
+            titles = new ArrayList<>(LINK_ID_BY_TITLE.entrySet());
+        }
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        for (int i = titles.size() - 1; i >= 0; i--) {
+            Map.Entry<String, String> entry = titles.get(i);
+            List<android.view.accessibility.AccessibilityNodeInfo> nodes;
+            try {
+                nodes = provider.findAccessibilityNodeInfosByText(
+                        entry.getKey(), AccessibilityNodeProvider.HOST_VIEW_ID
+                );
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            if (nodes == null) continue;
+            for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
+                if (node == null) continue;
+                try {
+                    node.getBoundsInScreen(bounds);
+                    CharSequence description = node.getContentDescription();
+                    if (bounds.contains(x, y) && description != null &&
+                            description.toString().contains(entry.getKey())) {
+                        return entry.getValue();
+                    }
+                } finally {
+                    node.recycle();
+                }
+            }
+        }
+        return null;
     }
 
     private static String findImageLinkId(android.view.accessibility.AccessibilityNodeInfo node, AccessibilityNodeProvider provider, int x, int y, int depth) {
