@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-11-04T02:52:00",
-  "description": "## 1.36.0-dev.150 (2026-11-04)\n\n- Query Reddit's Compose provider directly for merged post rows.\n- Match the exact cached title and native node bounds under the finger.\n- Bypass the unreliable virtual-child traversal used by earlier builds.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.150/patches-1.36.0-dev.150.mpp",
+  "created_at": "2026-11-04T11:47:12+11:00",
+  "description": "## 1.36.0-dev.151 (2026-11-04)\n\n- Keep Reddit's long-press media preview touch listener attached after activity startup and resume.\n- Restore the lifecycle reattachment behavior used by the working preview implementation.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.151/patches-1.36.0-dev.151.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.150"
+  "version": "1.36.0-dev.151"
 }
