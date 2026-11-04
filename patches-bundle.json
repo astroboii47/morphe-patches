@@ -1,7 +1,8 @@
 {
-  "created_at": "2026-11-04T13:14:40",
-  "description": "## 1.36.0-dev.154 (2026-11-04)\n\n- Hook Reddit v40's active compact LinkPreviewCardData model.\n- Cache each compact post's native ID, title, and media URL for exact long-press preview matching.",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.36.0-dev.154/patches-1.36.0-dev.154.mpp",
+  "created_at": "2026-11-04T07:32:49",
+  "description": "## [1.0.2](https://github.com/astroboii47/morphe-patches/compare/v1.0.1...v1.0.2) (2026-11-04)\n\n### 🐛 Bug Fixes\n\n* **reddit:** hook active compact preview cards ([5c05766](https://github.com/astroboii47/morphe-patches/commit/5c057666c135e775dfb288d8abc4677edb55defd))\n* **reddit:** resolve compact media preview rows ([16cdc62](https://github.com/astroboii47/morphe-patches/commit/16cdc626f531e3fc3156967b8634fe73fdd7f418))\n* **reddit:** resolve held media through native post rows ([7173d50](https://github.com/astroboii47/morphe-patches/commit/7173d50e5f3b399999a058d632567eb891204b2f))\n* **reddit:** restore v40 media model preview hook ([bca3afc](https://github.com/astroboii47/morphe-patches/commit/bca3afcbfe56bcb80e6fd3bf25d6311df1a4e515))\n* restore matching signed bundle metadata [skip ci] ([ecc9ed7](https://github.com/astroboii47/morphe-patches/commit/ecc9ed794c3fc158dffd36cb699bdb883c48b6f2))\n* restore unsigned dev source format [skip ci] ([6564f02](https://github.com/astroboii47/morphe-patches/commit/6564f02f039bf9d1119dd09fbcd981e66ccccd91))\n* serve signed dev.151 bundle [skip ci] ([f281079](https://github.com/astroboii47/morphe-patches/commit/f2810790d0daf901f8cec57603065b9a81a45df3))\n* use manager-compatible metadata timestamp [skip ci] ([1b11f77](https://github.com/astroboii47/morphe-patches/commit/1b11f775a173891c909f65af040f2ff8ab652244))",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.0.2/patches-1.0.2.mpp",
   "signature_download_url": "",
-  "version": "1.36.0-dev.154"
+  "version": "1.0.2",
+  "public_key": "g8Ys9leTu2yeixojeR35HrNkK6eOSLpA6nNIizRutqI="
 }
