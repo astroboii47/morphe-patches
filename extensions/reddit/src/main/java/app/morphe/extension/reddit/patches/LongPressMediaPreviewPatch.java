@@ -45,6 +45,10 @@ import android.view.accessibility.AccessibilityNodeProvider;
 @SuppressWarnings("unused")
 public final class LongPressMediaPreviewPatch {
     private static final int MAX_MEDIA = 160;
+    // Android refuses to draw very large bitmaps. This still exceeds any current phone display
+    // while preventing a full-resolution source from crashing the Reddit process.
+    private static final int MAX_PREVIEW_DIMENSION = 2560;
+    private static final long MAX_PREVIEW_PIXELS = 10_000_000L;
     private static final String LOG_TAG = "MorpheMediaPreview";
     private static final String IMAGE_TAG = "feed_media_content_self_image_";
     private static final String LINK_THUMBNAIL_TAG = "feed_post_title_with_thumbnail_";
@@ -500,18 +504,41 @@ public final class LongPressMediaPreviewPatch {
     private static void loadImage(String url, BitmapConsumer consumer) {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setConnectTimeout(6000);
-            connection.setReadTimeout(10000);
-            connection.setInstanceFollowRedirects(true);
+            connection = openImageConnection(url);
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
             try (InputStream stream = connection.getInputStream()) {
-                consumer.accept(BitmapFactory.decodeStream(stream));
+                BitmapFactory.decodeStream(stream, null, bounds);
+            }
+            connection.disconnect();
+            connection = openImageConnection(url);
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = imageSampleSize(bounds.outWidth, bounds.outHeight);
+            try (InputStream stream = connection.getInputStream()) {
+                consumer.accept(BitmapFactory.decodeStream(stream, null, options));
             }
         } catch (Exception ignored) {
             consumer.accept(null);
         } finally {
             if (connection != null) connection.disconnect();
         }
+    }
+
+    private static HttpURLConnection openImageConnection(String url) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setConnectTimeout(6000);
+        connection.setReadTimeout(10000);
+        connection.setInstanceFollowRedirects(true);
+        return connection;
+    }
+
+    private static int imageSampleSize(int width, int height) {
+        int sample = 1;
+        while (width / sample > MAX_PREVIEW_DIMENSION || height / sample > MAX_PREVIEW_DIMENSION
+                || ((long) width / sample) * ((long) height / sample) > MAX_PREVIEW_PIXELS) {
+            sample *= 2;
+        }
+        return sample;
     }
 
     private static String findImageLinkId(View root, int x, int y) {
