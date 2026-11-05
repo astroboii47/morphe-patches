@@ -983,17 +983,21 @@ public final class LongPressMediaPreviewPatch {
     }
 
     private static String firstImageUrl(Object... sources) {
+        String best = null;
         for (Object source : sources) {
             if (source == null) continue;
             String first = readStringField(source, "a");
             String second = readStringField(source, "b");
-            // Reddit's media source chooses b when its c flag is set.
-            boolean useSecond = Boolean.TRUE.equals(readField(source, "c"));
-            if (useSecond && isImageUrl(second)) return second;
-            if (isImageUrl(first)) return first;
-            if (isImageUrl(second)) return second;
+            // Feed rendering may deliberately choose a compact display variant. A held
+            // preview should instead use the highest-resolution source Reddit supplied.
+            if (isImageUrl(first) && (best == null || imageQuality(first) > imageQuality(best))) {
+                best = first;
+            }
+            if (isImageUrl(second) && (best == null || imageQuality(second) > imageQuality(best))) {
+                best = second;
+            }
         }
-        return null;
+        return best;
     }
 
     /**
