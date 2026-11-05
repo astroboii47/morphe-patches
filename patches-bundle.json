@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-11-05T02:35:45",
-  "description": "## [1.0.3](https://github.com/astroboii47/morphe-patches/compare/v1.0.2...v1.0.3) (2026-11-05)\n\n### 🐛 Bug Fixes\n\n* **reddit:** resolve media previews from held post row ([52da7bc](https://github.com/astroboii47/morphe-patches/commit/52da7bc68e08fcba6d5a744440f112f6dc32bcd3))\n* **reddit:** stabilize long press media preview ([7090643](https://github.com/astroboii47/morphe-patches/commit/709064368d3f0af1c90dcb9a5d038c681a9f61c6))",
-  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.0.3/patches-1.0.3.mpp",
+  "created_at": "2026-11-05T13:55:00",
+  "description": "## 1.0.4 (2026-11-05)\n\n- Re-sign the custom Morphe source with its new permanent source key.\n- Include the stable Reddit long-press media preview fix.",
+  "download_url": "https://github.com/astroboii47/morphe-patches/releases/download/v1.0.4/patches-1.0.4.mpp",
   "signature_download_url": "",
-  "version": "1.0.3",
-  "public_key": "g8Ys9leTu2yeixojeR35HrNkK6eOSLpA6nNIizRutqI="
+  "version": "1.0.4",
+  "public_key": "iOhdGoLxaOPwXa5jLBC5XIjE8hWdV0mN5koVnMKoU5M="
 }
