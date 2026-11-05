@@ -25,8 +25,10 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Field;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.Collections;
 import java.util.ArrayList;
@@ -39,12 +41,15 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.lang.reflect.Method;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import android.view.accessibility.AccessibilityNodeProvider;
 
 /** Shows a feed image at full size while the image itself is held. */
 @SuppressWarnings("unused")
 public final class LongPressMediaPreviewPatch {
     private static final int MAX_MEDIA = 160;
+    private static final int MAX_EXTERNAL_HTML_BYTES = 512 * 1024;
     // Android refuses to draw very large bitmaps. This still exceeds any current phone display
     // while preventing a full-resolution source from crashing the Reddit process.
     private static final int MAX_PREVIEW_DIMENSION = 2560;
@@ -68,6 +73,14 @@ public final class LongPressMediaPreviewPatch {
             }
     );
     private static final Map<String, String> LINK_ID_BY_TITLE = Collections.synchronizedMap(
+            new LinkedHashMap<String, String>(MAX_MEDIA + 1, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > MAX_MEDIA;
+                }
+            }
+    );
+    private static final Map<String, String> OUTBOUND_URL_BY_LINK_ID = Collections.synchronizedMap(
             new LinkedHashMap<String, String>(MAX_MEDIA + 1, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
@@ -306,6 +319,8 @@ public final class LongPressMediaPreviewPatch {
 
         String title = stringResult(link, "getTitle");
         if (title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        String outboundUrl = stringResult(link, "getUrl");
+        if (isExternalPageUrl(outboundUrl)) OUTBOUND_URL_BY_LINK_ID.put(linkId, outboundUrl);
 
         String url = previewImageUrl(readField(link, "preview"));
         if (url == null) url = stringResult(readField(link, "thumbnailImage"), "getUrl");
@@ -422,14 +437,15 @@ public final class LongPressMediaPreviewPatch {
                 return;
             }
             String url = linkId == null ? null : MEDIA_BY_LINK_ID.get(linkId);
+            String outboundUrl = linkId == null ? null : OUTBOUND_URL_BY_LINK_ID.get(linkId);
             Log.i(LOG_TAG, "hold resolved linkId=" + linkId + " url=" + (url != null));
             if (url == null) return;
-            showPreview(root, url);
+            showPreview(root, url, outboundUrl);
             state.previewShown = true;
             cancelUnderlyingLongPress(root, state.x, state.y);
         }
 
-        private void showPreview(View root, String url) {
+        private void showPreview(View root, String url, String outboundUrl) {
             if (!(root instanceof ViewGroup)) return;
             FrameLayout overlay = new FrameLayout(activity);
             overlay.setBackground(new ColorDrawable(0xEE000000));
@@ -441,10 +457,24 @@ public final class LongPressMediaPreviewPatch {
             ((ViewGroup) root).addView(overlay, new ViewGroup.LayoutParams(-1, -1));
             preview = overlay;
             Log.i(LOG_TAG, "preview overlay shown");
-            IMAGES.execute(() -> loadImage(url, bitmap -> MAIN.post(() -> {
-                Log.i(LOG_TAG, "preview image loaded=" + (bitmap != null));
-                if (preview == overlay && bitmap != null) image.setImageBitmap(bitmap);
-            })));
+            IMAGES.execute(() -> {
+                final long[] pixels = {0L};
+                loadImage(url, bitmap -> {
+                    if (bitmap != null) pixels[0] = bitmapPixels(bitmap);
+                    MAIN.post(() -> {
+                        Log.i(LOG_TAG, "preview image loaded=" + (bitmap != null));
+                        if (preview == overlay && bitmap != null) image.setImageBitmap(bitmap);
+                    });
+                });
+                String externalImage = findExternalPreviewImage(outboundUrl);
+                if (externalImage == null) return;
+                loadImage(externalImage, bitmap -> MAIN.post(() -> {
+                    if (preview == overlay && bitmap != null && bitmapPixels(bitmap) > pixels[0]) {
+                        image.setImageBitmap(bitmap);
+                        Log.i(LOG_TAG, "upgraded external preview image");
+                    }
+                }));
+            });
         }
 
         private void dismissPreview() {
@@ -539,6 +569,68 @@ public final class LongPressMediaPreviewPatch {
             sample *= 2;
         }
         return sample;
+    }
+
+    private static long bitmapPixels(Bitmap bitmap) {
+        return (long) bitmap.getWidth() * bitmap.getHeight();
+    }
+
+    private static boolean isExternalPageUrl(String value) {
+        return value != null && value.startsWith("https://") && !value.contains("reddit.com/")
+                && !value.contains("redd.it/");
+    }
+
+    private static String findExternalPreviewImage(String pageUrl) {
+        if (!isExternalPageUrl(pageUrl)) return null;
+        HttpURLConnection connection = null;
+        try {
+            connection = openImageConnection(pageUrl);
+            connection.setReadTimeout(4000);
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) AppleWebKit/537.36");
+            byte[] body;
+            try (InputStream stream = connection.getInputStream()) {
+                body = readLimited(stream, MAX_EXTERNAL_HTML_BYTES);
+            }
+            String html = new String(body, java.nio.charset.StandardCharsets.UTF_8);
+            String imageUrl = metaImageUrl(html, pageUrl, "og:image");
+            if (imageUrl == null) imageUrl = metaImageUrl(html, pageUrl, "twitter:image");
+            return imageUrl;
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static byte[] readLimited(InputStream stream, int limit) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int remaining = limit;
+        while (remaining > 0) {
+            int count = stream.read(buffer, 0, Math.min(buffer.length, remaining));
+            if (count < 0) break;
+            output.write(buffer, 0, count);
+            remaining -= count;
+        }
+        return output.toByteArray();
+    }
+
+    private static String metaImageUrl(String html, String pageUrl, String name) {
+        Pattern tagPattern = Pattern.compile("<meta\\b[^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher tags = tagPattern.matcher(html);
+        while (tags.find()) {
+            String tag = tags.group();
+            if (!tag.matches("(?is).*\\b(?:property|name)\\s*=\\s*['\"]?" + Pattern.quote(name) + "['\"]?.*")) continue;
+            Matcher content = Pattern.compile("(?is)\\bcontent\\s*=\\s*(['\"])(.*?)\\1").matcher(tag);
+            if (!content.find()) continue;
+            try {
+                String value = new URI(pageUrl).resolve(content.group(2)).toString();
+                if (value.startsWith("https://")) return value;
+            } catch (Exception ignored) {
+                // Ignore malformed publisher metadata and retain Reddit's preview.
+            }
+        }
+        return null;
     }
 
     private static String findImageLinkId(View root, int x, int y) {
