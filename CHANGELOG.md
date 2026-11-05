@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/astroboii47/morphe-patches/compare/v1.0.2...v1.0.3) (2026-11-05)
+
+### 🐛 Bug Fixes
+
+* **reddit:** resolve media previews from held post row ([52da7bc](https://github.com/astroboii47/morphe-patches/commit/52da7bc68e08fcba6d5a744440f112f6dc32bcd3))
+* **reddit:** stabilize long press media preview ([7090643](https://github.com/astroboii47/morphe-patches/commit/709064368d3f0af1c90dcb9a5d038c681a9f61c6))
+
 ## [1.0.2](https://github.com/astroboii47/morphe-patches/compare/v1.0.1...v1.0.2) (2026-11-04)
 
 ### 🐛 Bug Fixes
