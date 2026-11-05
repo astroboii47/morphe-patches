@@ -21,7 +21,6 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.accessibility.AccessibilityNodeProvider;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -39,6 +38,8 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.lang.reflect.Method;
+import android.view.accessibility.AccessibilityNodeProvider;
 
 /** Shows a feed image at full size while the image itself is held. */
 @SuppressWarnings("unused")
@@ -47,6 +48,7 @@ public final class LongPressMediaPreviewPatch {
     private static final String LOG_TAG = "MorpheMediaPreview";
     private static final String IMAGE_TAG = "feed_media_content_self_image_";
     private static final String LINK_THUMBNAIL_TAG = "feed_post_title_with_thumbnail_";
+    private static final String LINK_PREVIEW_CARD_TAG = "feed_link_preview_card_";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService IMAGES = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "MorpheMediaPreview");
@@ -115,9 +117,15 @@ public final class LongPressMediaPreviewPatch {
         Object data = readField(model, "a");
         if (data == null) return;
         String linkId = readStringField(data, "e");
-        String url = firstImageUrl(readField(data, "i"), readField(data, "k"));
+        Object primary = readField(data, "i");
+        Object fallback = readField(data, "k");
+        String url = firstImageUrl(primary, fallback);
+        Log.i(LOG_TAG, "self media link=" + linkId + " primary="
+                + (primary == null ? "null" : primary.getClass().getName())
+                + " fallback=" + (fallback == null ? "null" : fallback.getClass().getName())
+                + " url=" + (url != null));
         if (linkId != null && url != null) {
-            MEDIA_BY_LINK_ID.put(linkId, url);
+            cacheImage(linkId, url);
             Log.i(LOG_TAG, "cached self image " + linkId);
         }
     }
@@ -127,12 +135,75 @@ public final class LongPressMediaPreviewPatch {
         if (model == null) return;
         String linkId = readStringField(model, "a");
         String title = readStringField(model, "b");
-        Object thumbnail = readField(model, "f");
-        String url = firstImageUrl(readField(thumbnail, "i"));
+        // b240.f is a sealed media-content variant (image/video/gallery), not the
+        // thumbnail itself. Every rendered variant carries its source in i: wd7,
+        // whose a/b fields are the usable media URLs.
+        Object mediaContent = readField(model, "f");
+        Object source = readField(mediaContent, "i");
+        String url = firstImageUrl(source);
+        Log.i(LOG_TAG, "compact media link=" + linkId + " type="
+                + (mediaContent == null ? "null" : mediaContent.getClass().getName())
+                + " source=" + (source == null ? "null" : source.getClass().getName())
+                + " url=" + (url != null));
         if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
         if (linkId != null && url != null) {
-            MEDIA_BY_LINK_ID.put(linkId, url);
+            cacheImage(linkId, url);
             Log.i(LOG_TAG, "cached thumbnail " + linkId);
+        }
+    }
+
+    /** Injection point from Reddit v40's normal compact linked-preview title section. */
+    public static void registerLinkedPreviewModel(Object model) {
+        if (model == null) return;
+        String linkId = readStringField(model, "a");
+        String title = readStringField(model, "b");
+        Object linkMeta = readField(model, "f");
+        String url = firstImageUrl(linkMeta);
+        if (url == null) url = readValue(readField(linkMeta, "d"));
+        if (url == null) url = readValue(readField(linkMeta, "h"));
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        if (linkId != null && isImageUrl(url)) {
+            cacheImage(linkId, url);
+            Log.i(LOG_TAG, "cached linked preview " + linkId);
+        } else {
+            Log.i(LOG_TAG, "linked preview media=false link=" + linkId + " meta="
+                    + (linkMeta == null ? "null" : linkMeta.getClass().getName()));
+        }
+    }
+
+    /** Injection point from Reddit's gallery feed section. */
+    public static void registerGalleryModel(Object model) {
+        if (model == null) return;
+        Object gallery = readField(model, "a");
+        String linkId = readStringField(gallery, "e");
+        String title = readStringField(gallery, "f");
+        Object items = readField(gallery, "j");
+        Object firstItem = items instanceof List && !((List<?>) items).isEmpty()
+                ? ((List<?>) items).get(0) : null;
+        Object source = readField(firstItem, "a");
+        String url = firstImageUrl(source, readField(firstItem, "b"));
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        if (linkId != null && isImageUrl(url)) {
+            cacheImage(linkId, url);
+            Log.i(LOG_TAG, "cached gallery " + linkId);
+        } else {
+            Log.i(LOG_TAG, "gallery media=false link=" + linkId);
+        }
+    }
+
+    /** Diagnostic reader for Reddit's real per-row section list. */
+    public static void registerPostUnitModel(Object model) {
+        if (model == null) return;
+        String linkId = readStringField(model, "a");
+        Object sections = readField(model, "b");
+        if (sections instanceof List) {
+            StringBuilder types = new StringBuilder();
+            for (Object section : (List<?>) sections) {
+                if (section == null) continue;
+                if (types.length() > 0) types.append(',');
+                types.append(section.getClass().getName());
+            }
+            Log.i(LOG_TAG, "post unit=" + linkId + " sections=" + types);
         }
     }
 
@@ -157,16 +228,135 @@ public final class LongPressMediaPreviewPatch {
         // retained injection point can refresh media whenever the Compose card is rendered.
         Object candidate = readField(model, "a");
         if (candidate != null && !(candidate instanceof String)) model = candidate;
-        String linkId = readStringField(model, "a");
+        // Link cards keep the post identifier as ParcelablePostIdentifier in b. Field a is
+        // presentation data, so indexing by it made valid previews unreachable from the held row.
+        String linkId = readValue(readField(model, "b"));
         String title = readStringField(model, "e");
         String url = readStringField(readField(model, "l"), "a");
         if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
         if (linkId != null && isImageUrl(url)) {
-            MEDIA_BY_LINK_ID.put(linkId, url);
+            cacheImage(linkId, url);
             Log.i(LOG_TAG, "cached link preview " + linkId);
         } else {
             Log.i(LOG_TAG, "cached link title " + linkId + " media=false");
         }
+    }
+
+    /**
+     * Runs at the Compose renderer that is proven to receive every visible link card. The card's
+     * post identifier is its ParcelablePostIdentifier (field b), rather than field a.
+     */
+    public static void registerLinkPreviewCardRenderModel(Object model) {
+        if (model == null) return;
+        String linkId = readValue(readField(model, "b"));
+        String title = readStringField(model, "e");
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+
+        String[] candidates = {
+                readStringField(model, "a"), readStringField(model, "i"),
+                readStringField(model, "j"), readStringField(model, "m"),
+                readStringField(readField(model, "l"), "a")
+        };
+        String url = null;
+        for (String candidate : candidates) {
+            if (isImageUrl(candidate)) {
+                url = candidate;
+                break;
+            }
+        }
+        Log.i(LOG_TAG, "rendered link card id=" + linkId + " title=" + title
+                + " media=" + (url != null) + " fields="
+                + (candidates[0] != null) + "," + (candidates[1] != null) + ","
+                + (candidates[2] != null) + "," + (candidates[3] != null) + ","
+                + (candidates[4] != null));
+        if (linkId != null && url != null) {
+            cacheImage(linkId, url);
+            Log.i(LOG_TAG, "cached rendered link media " + linkId);
+        }
+    }
+
+    /** Captures compact link thumbnails before Compose renders the card. */
+    public static void registerCompactLinkMediaModel(Object model) {
+        if (model == null) return;
+        // r140 inherits Reddit's stable getLinkId() contract. Its h field is optional and is
+        // null on the normal compact-link rows currently displayed in the feed.
+        String linkId = stringResult(model, "getLinkId");
+        String title = readStringField(model, "f");
+        String url = firstImageUrl(readField(model, "i"));
+        if (linkId != null && title != null) LINK_ID_BY_TITLE.put(title, linkId);
+        if (linkId != null && url != null) {
+            cacheImage(linkId, url);
+            Log.i(LOG_TAG, "cached compact link media " + linkId);
+        } else {
+            Log.i(LOG_TAG, "compact link media unavailable id=" + linkId);
+        }
+    }
+
+    /** Records real post media while Reddit maps its full network Link into a feed row. */
+    public static void registerDomainLink(Object link) {
+        if (link == null) return;
+        // This method is invoked from Link.getKindWithId itself, so calling the getter here
+        // would recurse through the injected hook. Read its immutable backing field instead.
+        String linkId = readStringField(link, "kindWithId");
+        if (linkId == null || !linkId.startsWith("t3_")) return;
+
+        String title = stringResult(link, "getTitle");
+        if (title != null) LINK_ID_BY_TITLE.put(title, linkId);
+
+        String url = previewImageUrl(readField(link, "preview"));
+        if (url == null) url = stringResult(readField(link, "thumbnailImage"), "getUrl");
+        if (url != null && isImageUrl(url)) {
+            if (cacheImage(linkId, url)) {
+                Log.i(LOG_TAG, "cached domain preview " + linkId);
+            }
+        } else {
+            Log.i(LOG_TAG, "domain preview unavailable " + linkId);
+        }
+    }
+
+    /** Captures media from the fully assembled feed row Reddit actually renders. */
+    public static void registerFeedRow(Object row) {
+        if (row == null) return;
+        Object title = readField(row, "i");
+        String linkId = readStringField(title, "e");
+        if (linkId == null || !linkId.startsWith("t3_")) return;
+        String postTitle = readStringField(title, "i");
+        if (postTitle != null) LINK_ID_BY_TITLE.put(postTitle, linkId);
+
+        Object metadata = readField(row, "l");
+        Object directMedia = readField(metadata, "D");
+        String url = firstImageUrl(invokeNoArgs(directMedia, "h"));
+
+        if (url == null) {
+            Object items = readField(row, "j");
+            if (items instanceof List && !((List<?>) items).isEmpty()) {
+                Object first = ((List<?>) items).get(0);
+                url = firstImageUrl(readField(first, "a"), readField(first, "b"));
+            }
+        }
+        if (url != null) {
+            cacheImage(linkId, url);
+            Log.i(LOG_TAG, "cached assembled feed media " + linkId);
+        } else {
+            Log.i(LOG_TAG, "assembled feed media unavailable " + linkId);
+        }
+    }
+
+    private static String previewImageUrl(Object preview) {
+        Object images = invokeNoArgs(preview, "getImages");
+        if (!(images instanceof List) || ((List<?>) images).isEmpty()) return null;
+        Object image = ((List<?>) images).get(0);
+        String source = stringResult(invokeNoArgs(image, "getSource"), "getUrl");
+        if (isImageUrl(source)) return source;
+        Object resolutions = invokeNoArgs(image, "getResolutions");
+        if (resolutions instanceof List) {
+            List<?> list = (List<?>) resolutions;
+            for (int index = list.size() - 1; index >= 0; index--) {
+                String candidate = stringResult(list.get(index), "getUrl");
+                if (isImageUrl(candidate)) return candidate;
+            }
+        }
+        return null;
     }
 
     private static final class PreviewWindowCallback implements Window.Callback {
@@ -335,12 +525,35 @@ public final class LongPressMediaPreviewPatch {
         int[] position = new int[2];
         view.getLocationOnScreen(position);
         if (x < position[0] || y < position[1] || x >= position[0] + view.getWidth() || y >= position[1] + view.getHeight()) return null;
-        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
-        Log.i(LOG_TAG, "hit view depth=" + depth + " class=" + view.getClass().getName() +
-                " provider=" + (provider != null));
-        String linkId = findImageLinkId(provider, x, y, depth);
+        Log.i(LOG_TAG, "hit view depth=" + depth + " class=" + view.getClass().getName());
+        String linkId = findLinkIdInComposeSemantics(view, x, y);
         if (linkId != null) return linkId;
-        linkId = findImageLinkId(view.createAccessibilityNodeInfo(), null, x, y, depth);
+        android.view.accessibility.AccessibilityNodeInfo node = view.createAccessibilityNodeInfo();
+        linkId = findLinkIdByNodeResource(node, x, y, 0);
+        if (linkId != null) {
+            if (node != null) node.recycle();
+            return linkId;
+        }
+        linkId = findLinkIdByVisiblePostRow(node, x, y);
+        if (node != null) node.recycle();
+        if (linkId != null) return linkId;
+        AccessibilityNodeProvider provider = view.getAccessibilityNodeProvider();
+        if (provider != null) {
+            Log.i(LOG_TAG, "provider=" + provider.getClass().getName());
+            android.view.accessibility.AccessibilityNodeInfo providerRoot =
+                    provider.createAccessibilityNodeInfo(View.NO_ID);
+            Log.i(LOG_TAG, "provider root children=" +
+                    (providerRoot == null ? -1 : providerRoot.getChildCount()));
+            try {
+                linkId = findLinkIdByNodeResource(providerRoot, x, y, 0);
+                if (linkId != null) return linkId;
+            } finally {
+                if (providerRoot != null) providerRoot.recycle();
+            }
+        }
+        linkId = findLinkIdByProviderText(provider, x, y);
+        if (linkId != null) return linkId;
+        linkId = findLinkIdInProviderTree(provider, x, y);
         if (linkId != null) return linkId;
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
@@ -352,29 +565,169 @@ public final class LongPressMediaPreviewPatch {
         return null;
     }
 
-    private static String findImageLinkId(AccessibilityNodeProvider provider, int x, int y, int depth) {
-        if (provider == null) return null;
-        String rowLinkId = findLinkIdByVisiblePostRow(provider, x, y);
-        if (rowLinkId != null) return rowLinkId;
-        String linkId = findLinkIdByProviderText(provider, x, y);
-        if (linkId != null) return linkId;
-        android.view.accessibility.AccessibilityNodeInfo node = provider.createAccessibilityNodeInfo(View.NO_ID);
-        return findImageLinkId(node, provider, x, y, depth);
+    /**
+     * Reddit's feed is Compose. The Android provider deliberately does not implement text
+     * searches, but the Compose view exposes its own SemanticsOwner. Reading that tree gives us
+     * the exact TestTag and rendered bounds for the held media, without guessing which post is
+     * nearby.
+     */
+    private static String findLinkIdInComposeSemantics(View view, int screenX, int screenY) {
+        if (!"androidx.compose.ui.platform.c".equals(view.getClass().getName())) return null;
+        try {
+            Object owner = view.getClass().getMethod("getSemanticsOwner").invoke(view);
+            if (owner == null) return null;
+            Object root = owner.getClass().getMethod("a").invoke(owner);
+            if (root == null) return null;
+            Class<?> nodeClass = root.getClass();
+            Method children = nodeClass.getMethod("i", boolean.class, boolean.class);
+            Method config = nodeClass.getMethod("k");
+            Method bounds = nodeClass.getMethod("g");
+            Class<?> configClass = config.getReturnType();
+            Class<?> keyClass = Class.forName("androidx.compose.ui.semantics.g");
+            Object tagKey = Class.forName("androidx.compose.ui.semantics.d")
+                    .getField("A").get(null);
+            Object descriptionKey = Class.forName("androidx.compose.ui.semantics.d")
+                    .getField("a").get(null);
+            Method getConfigValue = configClass.getMethod("c", keyClass);
+            int[] location = new int[2];
+            view.getLocationOnScreen(location);
+            return findLinkIdInComposeNode(
+                    root, children, config, bounds, getConfigValue, tagKey, descriptionKey,
+                    screenX - location[0], screenY - location[1], new HashSet<>(), 0
+            );
+        } catch (Throwable error) {
+            Log.e(LOG_TAG, "compose semantics unavailable", error);
+            return null;
+        }
     }
 
-    private static String findLinkIdByVisiblePostRow(AccessibilityNodeProvider provider, int x, int y) {
+    @SuppressWarnings("unchecked")
+    private static String findLinkIdInComposeNode(
+            Object node,
+            Method children,
+            Method config,
+            Method bounds,
+            Method getConfigValue,
+            Object tagKey,
+            Object descriptionKey,
+            float x,
+            float y,
+            Set<Integer> visited,
+            int depth
+    ) throws Exception {
+        if (node == null || depth > 80 || !visited.add(System.identityHashCode(node))) return null;
+        Object rect = bounds.invoke(node);
+        Object semantics = config.invoke(node);
+        Object value = null;
+        Object description = null;
+        if (semantics != null) {
+            try {
+                // SemanticsConfiguration.c intentionally throws when a node simply has no tag.
+                value = getConfigValue.invoke(semantics, tagKey);
+            } catch (java.lang.reflect.InvocationTargetException ignored) {
+                // Continue into the node's children.
+            }
+            try {
+                description = getConfigValue.invoke(semantics, descriptionKey);
+            } catch (java.lang.reflect.InvocationTargetException ignored) {
+                // Not every semantics node has a description.
+            }
+        }
+        String mediaId = linkIdFromMediaTag(value instanceof String ? (String) value : null);
+        if (rect != null) {
+            Field left = rect.getClass().getField("a");
+            Field top = rect.getClass().getField("b");
+            Field right = rect.getClass().getField("c");
+            Field bottom = rect.getClass().getField("d");
+            float l = left.getFloat(rect), t = top.getFloat(rect);
+            float r = right.getFloat(rect), b = bottom.getFloat(rect);
+            if (mediaId != null) {
+                Log.i(LOG_TAG, "Compose media bounds=" + l + "," + t + "," + r + "," + b + " tag=" + value);
+                if (x >= l && x < r && y >= t && y < b) {
+                    Log.i(LOG_TAG, "matched Compose media tag=" + value);
+                    return mediaId;
+                }
+            }
+            if (x >= l && x < r && y >= t && y < b) {
+                Log.i(LOG_TAG, "Compose hit bounds=" + l + "," + t + "," + r + "," + b
+                        + " desc=" + String.valueOf(description));
+                String linkId = linkIdForSemanticsDescription(description);
+                if (linkId != null) {
+                    Log.i(LOG_TAG, "matched Compose post row=" + linkId);
+                    return linkId;
+                }
+            }
+        }
+        List<Object> childNodes = (List<Object>) children.invoke(node, false, true);
+        if (childNodes == null) return null;
+        for (Object child : childNodes) {
+            String linkId = findLinkIdInComposeNode(
+                    child, children, config, bounds, getConfigValue, tagKey, descriptionKey,
+                    x, y, visited, depth + 1
+            );
+            if (linkId != null) return linkId;
+        }
+        return null;
+    }
+
+    /**
+     * Compose exposes the exact feed-media ID as a TestTag resource name. Android's normal
+     * child API preserves that name, while the provider's search APIs do not on Android 16.
+     */
+    private static String findLinkIdByNodeResource(
+            android.view.accessibility.AccessibilityNodeInfo node, int x, int y, int depth
+    ) {
+        if (node == null || depth > 80) return null;
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        node.getBoundsInScreen(bounds);
+        if (!bounds.isEmpty() && !bounds.contains(x, y)) return null;
+        String resource = node.getViewIdResourceName();
+        String linkId = linkIdFromMediaTag(resource);
+        if (linkId != null) {
+            Log.i(LOG_TAG, "matched media test tag=" + resource);
+            return linkId;
+        }
+        for (int index = 0; index < node.getChildCount(); index++) {
+            android.view.accessibility.AccessibilityNodeInfo child = null;
+            try {
+                child = node.getChild(index);
+                linkId = findLinkIdByNodeResource(child, x, y, depth + 1);
+                if (linkId != null) return linkId;
+            } catch (RuntimeException ignored) {
+                // Some Compose virtual nodes are recycled during a recomposition.
+            } finally {
+                if (child != null) child.recycle();
+            }
+        }
+        return null;
+    }
+
+    private static String linkIdFromMediaTag(String resource) {
+        if (resource == null) return null;
+        int marker = resource.indexOf(IMAGE_TAG);
+        if (marker < 0) marker = resource.indexOf(LINK_THUMBNAIL_TAG);
+        if (marker < 0) marker = resource.indexOf(LINK_PREVIEW_CARD_TAG);
+        if (marker < 0) return null;
+        int start = marker + (resource.startsWith(IMAGE_TAG, marker)
+                ? IMAGE_TAG.length() : resource.startsWith(LINK_THUMBNAIL_TAG, marker)
+                ? LINK_THUMBNAIL_TAG.length() : LINK_PREVIEW_CARD_TAG.length());
+        String candidate = resource.substring(start);
+        int slash = candidate.lastIndexOf('/');
+        if (slash >= 0) candidate = candidate.substring(slash + 1);
+        return candidate.startsWith("t3_") ? candidate : null;
+    }
+
+    private static String findLinkIdByVisiblePostRow(
+            android.view.accessibility.AccessibilityNodeInfo root, int x, int y
+    ) {
         // `post_unit` is Reddit's real Compose accessibility row. It spans both the post text
         // and its thumbnail, so resolving its descriptive child identifies the held image/link
         // without inferring a row from screen position or opening the outbound link.
         List<android.view.accessibility.AccessibilityNodeInfo> postRows;
-        android.view.accessibility.AccessibilityNodeInfo host = null;
         try {
-            host = provider.createAccessibilityNodeInfo(AccessibilityNodeProvider.HOST_VIEW_ID);
-            postRows = host == null ? null : host.findAccessibilityNodeInfosByViewId("post_unit");
+            postRows = root == null ? null : root.findAccessibilityNodeInfosByViewId("post_unit");
         } catch (RuntimeException ignored) {
             postRows = null;
-        } finally {
-            if (host != null) host.recycle();
         }
         if (postRows != null) {
             android.graphics.Rect rowBounds = new android.graphics.Rect();
@@ -403,7 +756,8 @@ public final class LongPressMediaPreviewPatch {
                             }
                         }
                     }
-                    String linkId = findLinkIdInPostRow(row, provider, new HashSet<>(), 0);
+                    String linkId = linkIdForTitle(String.valueOf(row.getContentDescription()));
+                    if (linkId == null) linkId = linkIdForTitle(String.valueOf(row.getText()));
                     if (linkId != null) return linkId;
                 } finally {
                     row.recycle();
@@ -411,77 +765,21 @@ public final class LongPressMediaPreviewPatch {
             }
         }
 
-        // Compact feed rows expose a merged post_unit node, but v40 no longer exports the
-        // media section's test tag. Querying a stable phrase from the merged row gives us the
-        // exact visible row under the finger without relying on hidden virtual-child APIs.
-        String[] rowQueries = {"Posted", "comments", "Reposted"};
-        android.graphics.Rect bounds = new android.graphics.Rect();
-        for (String query : rowQueries) {
-            List<android.view.accessibility.AccessibilityNodeInfo> nodes;
-            try {
-                nodes = provider.findAccessibilityNodeInfosByText(
-                        query, AccessibilityNodeProvider.HOST_VIEW_ID
-                );
-            } catch (RuntimeException ignored) {
-                continue;
-            }
-            if (nodes == null) continue;
-            Log.i(LOG_TAG, "row query " + query + " nodes=" + nodes.size());
-            for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
-                if (node == null) continue;
-                try {
-                    node.getBoundsInScreen(bounds);
-                    if (!bounds.contains(x, y)) continue;
-                    Log.i(LOG_TAG, "row hit " + bounds + " desc=" + node.getContentDescription());
-                    String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
-                    if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
-                    if (linkId != null) return linkId;
-                } finally {
-                    node.recycle();
-                }
-            }
-        }
         return null;
     }
 
-    private static String findLinkIdInPostRow(
-            android.view.accessibility.AccessibilityNodeInfo node,
-            AccessibilityNodeProvider provider,
-            Set<Integer> visited,
-            int depth
+    private static String findLinkIdByProviderText(
+            AccessibilityNodeProvider provider, int x, int y
     ) {
-        if (node == null || depth > 5) return null;
-        try {
-            String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
-            if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
-            if (linkId != null) return linkId;
-
-            int[] childIds = childVirtualIds(node);
-            for (int childId : childIds) {
-                if (!visited.add(childId)) continue;
-                android.view.accessibility.AccessibilityNodeInfo child =
-                        provider.createAccessibilityNodeInfo(childId);
-                if (child == null) continue;
-                try {
-                    linkId = findLinkIdInPostRow(child, provider, visited, depth + 1);
-                    if (linkId != null) return linkId;
-                } finally {
-                    child.recycle();
-                }
-            }
-            return null;
-        } finally {
-            // The row itself is caller-owned; provider children are recycled by their caller.
-        }
-    }
-
-    private static String findLinkIdByProviderText(AccessibilityNodeProvider provider, int x, int y) {
+        if (provider == null) return null;
         List<Map.Entry<String, String>> titles;
         synchronized (LINK_ID_BY_TITLE) {
             titles = new ArrayList<>(LINK_ID_BY_TITLE.entrySet());
         }
         android.graphics.Rect bounds = new android.graphics.Rect();
-        for (int i = titles.size() - 1; i >= 0; i--) {
+        // Rendered rows are the newest entries, so inspect only the recent slice of the bounded
+        // cache. This is a direct provider query, never a recursive Compose tree walk.
+        for (int i = titles.size() - 1, checked = 0; i >= 0 && checked < 24; i--, checked++) {
             Map.Entry<String, String> entry = titles.get(i);
             List<android.view.accessibility.AccessibilityNodeInfo> nodes;
             try {
@@ -492,15 +790,15 @@ public final class LongPressMediaPreviewPatch {
                 continue;
             }
             if (nodes == null) continue;
-            Log.i(LOG_TAG, "title query id=" + entry.getValue() + " nodes=" + nodes.size());
             for (android.view.accessibility.AccessibilityNodeInfo node : nodes) {
                 if (node == null) continue;
                 try {
                     node.getBoundsInScreen(bounds);
                     CharSequence description = node.getContentDescription();
-                    Log.i(LOG_TAG, "title candidate " + bounds + " desc=" + description);
-                    if (bounds.contains(x, y) && description != null &&
-                            description.toString().contains(entry.getKey())) {
+                    CharSequence text = node.getText();
+                    if (bounds.contains(x, y) &&
+                            ((description != null && description.toString().contains(entry.getKey())) ||
+                                    (text != null && text.toString().contains(entry.getKey())))) {
                         return entry.getValue();
                     }
                 } finally {
@@ -511,102 +809,91 @@ public final class LongPressMediaPreviewPatch {
         return null;
     }
 
-    private static String findImageLinkId(android.view.accessibility.AccessibilityNodeInfo node, AccessibilityNodeProvider provider, int x, int y, int depth) {
-        if (node == null || depth > 60) return null;
-        android.graphics.Rect bounds = new android.graphics.Rect();
-        node.getBoundsInScreen(bounds);
-        if (!bounds.isEmpty() && !bounds.contains(x, y)) {
-            node.recycle();
-            return null;
-        }
+    private static String findLinkIdInProviderTree(
+            AccessibilityNodeProvider provider, int x, int y
+    ) {
+        if (provider == null) return null;
+        android.view.accessibility.AccessibilityNodeInfo root =
+                provider.createAccessibilityNodeInfo(View.NO_ID);
+        if (root == null) return null;
         try {
-            String[] candidates = {String.valueOf(node.getViewIdResourceName()), String.valueOf(node.getContentDescription()), String.valueOf(node.getText())};
-            for (String candidate : candidates) {
-                String linkId = taggedLinkId(candidate, IMAGE_TAG);
-                if (linkId == null) linkId = taggedLinkId(candidate, LINK_THUMBNAIL_TAG);
-                if (linkId == null) linkId = linkIdForTitle(candidate);
-                if (linkId != null) return linkId;
-            }
-            int[] childIds = provider == null ? null : childVirtualIds(node);
-            int childCount = childIds == null ? node.getChildCount() : childIds.length;
-            if (provider != null) {
-                Log.i(LOG_TAG, "virtual node depth=" + depth + " children=" + childCount +
-                        " id=" + node.getViewIdResourceName() + " desc=" + node.getContentDescription());
-            }
-            for (int i = childCount - 1; i >= 0; i--) {
-                android.view.accessibility.AccessibilityNodeInfo child = null;
-                if (provider != null) {
-                    child = provider.createAccessibilityNodeInfo(childIds[i]);
-                } else {
-                    try {
-                        child = node.getChild(i);
-                    } catch (IllegalStateException ignored) {
-                        // Provider-backed Compose nodes are handled above without hidden APIs.
-                    }
-                }
-                String result = findImageLinkId(child, provider, x, y, depth + 1);
-                if (result != null) return result;
-            }
-            return null;
+            return findLinkIdInProviderTree(root, provider, x, y, new HashSet<>(), 0);
         } finally {
-            node.recycle();
+            root.recycle();
         }
     }
 
+    private static String findLinkIdInProviderTree(
+            android.view.accessibility.AccessibilityNodeInfo node,
+            AccessibilityNodeProvider provider,
+            int x,
+            int y,
+            Set<Integer> visited,
+            int depth
+    ) {
+        if (node == null || depth > 80) return null;
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        node.getBoundsInScreen(bounds);
+        if (!bounds.isEmpty() && !bounds.contains(x, y)) return null;
+        String linkId = linkIdForTitle(String.valueOf(node.getContentDescription()));
+        if (linkId == null) linkId = linkIdForTitle(String.valueOf(node.getText()));
+        if (linkId != null) return linkId;
+        for (int childId : childVirtualIds(node)) {
+            if (childId == Integer.MIN_VALUE || !visited.add(childId)) continue;
+            android.view.accessibility.AccessibilityNodeInfo child =
+                    provider.createAccessibilityNodeInfo(childId);
+            if (child == null) continue;
+            try {
+                linkId = findLinkIdInProviderTree(child, provider, x, y, visited, depth + 1);
+                if (linkId != null) return linkId;
+            } finally {
+                child.recycle();
+            }
+        }
+        return null;
+    }
+
     /**
-     * Reads Compose virtual child IDs from the node's public Parcelable representation. Android 16
-     * blocks the hidden getChildId method, while getChild() rejects provider-created unsealed nodes.
-     * The parcel is the same stable data Android itself uses to transport accessibility nodes.
+     * Compose exposes virtual children through the parcelled AccessibilityNodeInfo structure.
+     * Android 16 blocks the hidden getChildId API, while this is the same public parcel data the
+     * old working build used.
      */
     private static int[] childVirtualIds(android.view.accessibility.AccessibilityNodeInfo node) {
         Parcel parcel = Parcel.obtain();
         try {
-            android.view.accessibility.AccessibilityNodeInfo copy =
-                    android.view.accessibility.AccessibilityNodeInfo.obtain(node);
-            copy.writeToParcel(parcel, 0);
+            android.view.accessibility.AccessibilityNodeInfo.obtain(node).writeToParcel(parcel, 0);
             parcel.setDataPosition(0);
             long fields = parcel.readLong();
-
-            if (hasField(fields, 0)) parcel.readInt();
-            if (hasField(fields, 1)) parcel.readLong();
-            if (hasField(fields, 2)) parcel.readInt();
-            if (hasField(fields, 3)) parcel.readLong();
-            if (hasField(fields, 4)) parcel.readLong();
-            if (hasField(fields, 5)) parcel.readLong();
-            if (hasField(fields, 6)) {
+            if ((fields & (1L << 0)) != 0) parcel.readInt();
+            if ((fields & (1L << 1)) != 0) parcel.readLong();
+            if ((fields & (1L << 2)) != 0) parcel.readInt();
+            if ((fields & (1L << 3)) != 0) parcel.readLong();
+            if ((fields & (1L << 4)) != 0) parcel.readLong();
+            if ((fields & (1L << 5)) != 0) parcel.readLong();
+            if ((fields & (1L << 6)) != 0) {
                 int count = parcel.readInt();
-                for (int i = 0; i < count; i++) parcel.readLong();
+                for (int index = 0; index < count; index++) parcel.readLong();
             }
-            if (hasField(fields, 7)) parcel.readLong();
-            if (hasField(fields, 8)) parcel.readLong();
-            if (hasField(fields, 9)) parcel.readLong();
-            if (hasField(fields, 10)) parcel.readInt();
-            if (!hasField(fields, 11)) return new int[0];
-
+            if ((fields & (1L << 7)) != 0) parcel.readLong();
+            if ((fields & (1L << 8)) != 0) parcel.readLong();
+            if ((fields & (1L << 9)) != 0) parcel.readLong();
+            if ((fields & (1L << 10)) != 0) parcel.readInt();
+            if ((fields & (1L << 11)) == 0) return new int[0];
             int count = parcel.readInt();
-            if (count <= 0 || count > 10000) return new int[0];
-            int[] ids = new int[count];
-            for (int i = 0; i < count; i++) {
-                ids[i] = (int) (parcel.readLong() >> 32);
+            if (count <= 0 || count > 10_000) return new int[0];
+            int[] result = new int[count];
+            for (int index = 0; index < count; index++) {
+                result[index] = (int) (parcel.readLong() >> 32);
             }
-            return ids;
-        } catch (RuntimeException error) {
-            Log.e(LOG_TAG, "virtual child decode failed", error);
+            return result;
+        } catch (RuntimeException ignored) {
             return new int[0];
         } finally {
             parcel.recycle();
         }
     }
 
-    private static boolean hasField(long fields, int index) {
-        return (fields & (1L << index)) != 0;
-    }
 
-    private static String taggedLinkId(String candidate, String prefix) {
-        int index = candidate.indexOf(prefix);
-        if (index < 0) return null;
-        return candidate.substring(index + prefix.length()).replaceAll("[^A-Za-z0-9_-].*$", "");
-    }
 
     private static String linkIdForTitle(String candidate) {
         if (candidate == null || "null".equals(candidate)) return null;
@@ -619,6 +906,19 @@ public final class LongPressMediaPreviewPatch {
             }
         }
         return null;
+    }
+
+    private static String linkIdForSemanticsDescription(Object description) {
+        if (description instanceof List) {
+            synchronized (LINK_ID_BY_TITLE) {
+                for (Object part : (List<?>) description) {
+                    if (!(part instanceof String)) continue;
+                    String exact = LINK_ID_BY_TITLE.get(part);
+                    if (exact != null) return exact;
+                }
+            }
+        }
+        return linkIdForTitle(String.valueOf(description));
     }
 
     private static void cancelUnderlyingLongPress(View root, float x, float y) {
@@ -638,17 +938,48 @@ public final class LongPressMediaPreviewPatch {
     }
 
     private static Object readField(Object object, String name) {
-        try {
-            Field field = object.getClass().getField(name);
-            return field.get(object);
-        } catch (Exception ignored) {
-            return null;
+        if (object == null) return null;
+        for (Class<?> type = object.getClass(); type != null; type = type.getSuperclass()) {
+            try {
+                Field field = type.getDeclaredField(name);
+                field.setAccessible(true);
+                return field.get(object);
+            } catch (NoSuchFieldException ignored) {
+                // Continue through the model's inherited fields.
+            } catch (Exception ignored) {
+                return null;
+            }
         }
+        return null;
     }
 
     private static String readStringField(Object object, String name) {
         Object value = readField(object, name);
         return value instanceof String ? (String) value : null;
+    }
+
+    private static Object invokeNoArgs(Object object, String methodName) {
+        if (object == null) return null;
+        try {
+            return object.getClass().getMethod(methodName).invoke(object);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static String stringResult(Object object, String methodName) {
+        Object result = invokeNoArgs(object, methodName);
+        return result instanceof String ? (String) result : null;
+    }
+
+    private static String readValue(Object object) {
+        if (object == null) return null;
+        try {
+            Object value = object.getClass().getMethod("getValue").invoke(object);
+            return value instanceof String ? (String) value : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static String firstImageUrl(Object... sources) {
@@ -663,6 +994,36 @@ public final class LongPressMediaPreviewPatch {
             if (isImageUrl(second)) return second;
         }
         return null;
+    }
+
+    /**
+     * Feed sections are mapped independently and often out of order. Preserve the best source
+     * Reddit has supplied instead of allowing a late compact thumbnail to replace it.
+     */
+    private static boolean cacheImage(String linkId, String url) {
+        if (linkId == null || !isImageUrl(url)) return false;
+        synchronized (MEDIA_BY_LINK_ID) {
+            String current = MEDIA_BY_LINK_ID.get(linkId);
+            if (current != null && imageQuality(current) >= imageQuality(url)) return false;
+            MEDIA_BY_LINK_ID.put(linkId, url);
+            return true;
+        }
+    }
+
+    private static int imageQuality(String url) {
+        if (url == null) return 0;
+        int quality = url.contains("i.redd.it/") ? 3_000_000
+                : url.contains("preview.redd.it/") ? 2_000_000 : 1_000_000;
+        int marker = url.indexOf("width=");
+        if (marker < 0) return quality;
+        marker += "width=".length();
+        int end = marker;
+        while (end < url.length() && Character.isDigit(url.charAt(end))) end++;
+        try {
+            return quality + Integer.parseInt(url.substring(marker, end));
+        } catch (RuntimeException ignored) {
+            return quality;
+        }
     }
 
     private static boolean isImageUrl(String value) {

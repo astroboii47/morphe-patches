@@ -47,6 +47,24 @@ val longPressMediaPreviewPatch = bytecodePatch(
             },
             "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkThumbnailModel(Ljava/lang/Object;)V"
         )
+        FeedTitleWithLinkedPreviewConstructorFingerprint.method.addInstruction(
+            FeedTitleWithLinkedPreviewConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            },
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkedPreviewModel(Ljava/lang/Object;)V"
+        )
+        FeedGalleryConstructorFingerprint.method.addInstruction(
+            FeedGalleryConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            },
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerGalleryModel(Ljava/lang/Object;)V"
+        )
+        FeedPostUnitConstructorFingerprint.method.addInstruction(
+            FeedPostUnitConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            },
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerPostUnitModel(Ljava/lang/Object;)V"
+        )
         FeedTitleConstructorFingerprint.method.addInstruction(
             FeedTitleConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
                 it.opcode == Opcode.RETURN_VOID
@@ -59,6 +77,32 @@ val longPressMediaPreviewPatch = bytecodePatch(
             },
             "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkPreviewCardModel(Ljava/lang/Object;)V"
         )
+        LinkPreviewCardRendererFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkPreviewCardRenderModel(Ljava/lang/Object;)V"
+        )
+        CompactLinkMediaConstructorFingerprint.method.addInstruction(
+            CompactLinkMediaConstructorFingerprint.method.implementation!!.instructions.indexOfLast {
+                it.opcode == Opcode.RETURN_VOID
+            },
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerCompactLinkMediaModel(Ljava/lang/Object;)V"
+        )
+        DomainLinkIdentityFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerDomainLink(Ljava/lang/Object;)V"
+        )
+        DomainLinkPreviewFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerDomainLink(Ljava/lang/Object;)V"
+        )
+        FeedDomainLinkMapperFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerDomainLink(Ljava/lang/Object;)V"
+        )
+        FeedRowAssemblerFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p2 .. p2 }, $EXTENSION_CLASS->registerFeedRow(Ljava/lang/Object;)V"
+        )
         FeedSelfImageRenderFingerprint.method.addInstruction(
             0,
             "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerImageModel(Ljava/lang/Object;)V"
@@ -66,6 +110,14 @@ val longPressMediaPreviewPatch = bytecodePatch(
         FeedTitleWithThumbnailRenderFingerprint.method.addInstruction(
             0,
             "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkThumbnailModel(Ljava/lang/Object;)V"
+        )
+        FeedTitleWithLinkedPreviewRenderFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerLinkedPreviewModel(Ljava/lang/Object;)V"
+        )
+        FeedGalleryRenderFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $EXTENSION_CLASS->registerGalleryModel(Ljava/lang/Object;)V"
         )
         LinkPreviewCardRenderFingerprint.method.addInstruction(
             0,
