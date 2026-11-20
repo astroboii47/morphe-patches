@@ -2,6 +2,9 @@ name: Build source bundle
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - v43-phone-layout
 
 permissions:
   contents: read
