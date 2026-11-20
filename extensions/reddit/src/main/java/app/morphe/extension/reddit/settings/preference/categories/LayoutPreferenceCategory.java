@@ -263,6 +263,10 @@ public class LayoutPreferenceCategory extends ConditionalPreferenceCategory {
         if (TabletGridFeedPatch.isPatchIncluded()) {
             addPreference(new BooleanSettingPreference(
                     context,
+                    Settings.ENABLE_TABLET_LAYOUTS_ON_PHONE
+            ));
+            addPreference(new BooleanSettingPreference(
+                    context,
                     Settings.TABLET_GRID_FEED
             ));
             addPreference(new CustomDialogListPreference(

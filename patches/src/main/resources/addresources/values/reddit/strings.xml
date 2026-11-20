@@ -95,6 +95,9 @@ To use an older version, you must &lt;b>uninstall&lt;/b> Reddit and then install
     <string name="morphe_disable_modern_home_title">Disable modern home UI</string>
     <string name="morphe_disable_screenshot_popup_title">Disable screenshot popup</string>
     <string name="morphe_disable_screenshot_popup_summary">Disables the popup that appears when taking a screenshot</string>
+    <string name="morphe_enable_tablet_layouts_on_phone_title">Enable tablet layouts on phone</string>
+    <string name="morphe_enable_tablet_layouts_on_phone_summary_on">Allows Tablet grid feed and Post side panel to run on phones</string>
+    <string name="morphe_enable_tablet_layouts_on_phone_summary_off">Tablet grid feed and Post side panel run only on tablets</string>
     <string name="morphe_feed_auto_scroll_title">Feed auto-scroll</string>
     <string name="morphe_feed_auto_scroll_summary_on">Feeds show a play button that slowly scrolls the feed. Touching the feed stops scrolling</string>
     <string name="morphe_feed_auto_scroll_summary_off">Feeds do not show a play button</string>

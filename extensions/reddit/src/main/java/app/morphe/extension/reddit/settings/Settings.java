@@ -71,6 +71,7 @@ public class Settings extends BaseSettings {
     public static final StringSetting CUSTOM_FONT_FILE_PATH = new StringSetting("morphe_custom_font_file_path", "", true);
     public static final BooleanSetting DISABLE_MODERN_HOME = new BooleanSetting("morphe_disable_modern_home", FALSE, true);
     public static final BooleanSetting DISABLE_SCREENSHOT_POPUP = new BooleanSetting("morphe_disable_screenshot_popup", TRUE, true);
+    public static final BooleanSetting ENABLE_TABLET_LAYOUTS_ON_PHONE = new BooleanSetting("morphe_enable_tablet_layouts_on_phone", FALSE);
     public static final BooleanSetting FEED_AUTO_SCROLL = new BooleanSetting("morphe_feed_auto_scroll", FALSE, true);
     public static final EnumSetting<ScrollSpeed> FEED_AUTO_SCROLL_SPEED = new EnumSetting<>("morphe_feed_auto_scroll_speed", ScrollSpeed.MEDIUM, parent(FEED_AUTO_SCROLL));
     public static final FloatSetting FEED_MEDIA_MAX_HEIGHT = new FloatSetting("morphe_feed_media_max_height", 1.33f);
