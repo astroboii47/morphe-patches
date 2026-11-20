@@ -11,27 +11,21 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.patch
-import app.morphe.patches.reddit.misc.extension.sharedExtensionPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
-import app.morphe.util.setExtensionIsPatchIncluded
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
-
-private const val EXTENSION_CLASS =
-    "Lapp/morphe/extension/reddit/patches/TabletGridFeedPatch;"
 
 internal const val FEED_TYPE_CLASS = "Lcom/reddit/feeds/data/FeedType;"
 
 @Suppress("unused")
 val tabletGridFeedPatch = patch(
-    name = "Tablet grid feed",
-    description = "Adds an option to show feeds as a grid with 2 or 3 columns on tablets."
+    name = "Phone grid feed",
+    description = "Shows supported feeds as a two-column grid on phones and tablets."
 ) {
     compatibleWith(COMPATIBILITY_REDDIT)
 
-    dependsOn(sharedExtensionPatch)
-
     execute {
-        // Number of grid columns.
+        // A phone has room for two grid columns. Avoid a runtime setting class so this
+        // patch can coexist with Reddit patches provided by other Morphe sources.
         CalculateCrossAxisCellSizesFingerprint.let {
             it.method.apply {
                 val index = it.instructionMatches.first().index
@@ -40,8 +34,7 @@ val tabletGridFeedPatch = patch(
                 addInstructions(
                     index + 1,
                     """
-                        invoke-static { p1, v$register }, $EXTENSION_CLASS->getGridColumns(II)I
-                        move-result v$register
+                        const/16 v$register, 0x2
                     """
                 )
             }
@@ -85,14 +78,9 @@ val tabletGridFeedPatch = patch(
             addInstructionsWithLabels(
                 0,
                 """
-                    move-object/from16 v0, ${listRegister(FEED_TYPE_CLASS)}
-                    invoke-static { v0 }, $EXTENSION_CLASS->showGridFeed(Ljava/lang/Enum;)Z
-                    move-result v0
-                    if-eqz v0, :list_feed
-
                     move/from16 v0, ${listRegister("F")}
-                    invoke-static { v0 }, $EXTENSION_CLASS->getGridTopPadding(F)F
-                    move-result v1
+                    const/high16 v1, 0x41000000 # 8.0f
+                    add-float/2addr v1, v0
                     const/high16 v0, 0x41800000 # 16.0f
                     new-instance v4, $paddingType
                     invoke-direct { v4, v0, v1, v0, v0 }, $paddingType-><init>(FFFF)V
@@ -100,12 +88,8 @@ val tabletGridFeedPatch = patch(
                     invoke-static/range { v0 .. v${gridParameters.size - 1} }, $gridFeed
                     return-void
 
-                    :list_feed
-                    nop
                 """
             )
         }
-
-        setExtensionIsPatchIncluded(EXTENSION_CLASS)
     }
 }
