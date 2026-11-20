@@ -14,7 +14,7 @@ import app.morphe.patcher.patch.patch
 import app.morphe.patcher.util.cloneParameters
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod.Companion.toMutable
 import app.morphe.patcher.util.registersUsed
-import app.morphe.patches.reddit.misc.settings.settingsPatch
+import app.morphe.patches.reddit.misc.extension.sharedExtensionPatch
 import app.morphe.patches.reddit.shared.Constants.COMPATIBILITY_REDDIT
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.setExtensionIsPatchIncluded
@@ -32,7 +32,7 @@ val postSidePanelPatch = patch(
 ) {
     compatibleWith(COMPATIBILITY_REDDIT)
 
-    dependsOn(settingsPatch)
+    dependsOn(sharedExtensionPatch)
 
     execute {
         // Show the post screen as a dialog, which keeps the feed visible behind it.

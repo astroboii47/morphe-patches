@@ -47,8 +47,7 @@ public final class TabletGridFeedPatch {
     }
 
     private static boolean useGrid() {
-        return Settings.TABLET_GRID_FEED.get()
-                && (Utils.isTablet() || Settings.ENABLE_TABLET_LAYOUTS_ON_PHONE.get());
+        return Settings.TABLET_GRID_FEED.get();
     }
 
     /**

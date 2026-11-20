@@ -107,9 +107,7 @@ public final class PostSidePanelPatch {
             synchronized (panelScreens) {
                 Boolean usePanel = panelScreens.get(postScreen);
                 if (usePanel == null) {
-                    usePanel = (Utils.isTablet() && Utils.getContext().getResources()
-                            .getConfiguration().screenWidthDp >= MIN_WINDOW_WIDTH_DP)
-                            || Settings.ENABLE_TABLET_LAYOUTS_ON_PHONE.get();
+                    usePanel = Settings.POST_SIDE_PANEL.get();
                     panelScreens.put(postScreen, usePanel);
                 }
                 return usePanel;
@@ -229,10 +227,6 @@ public final class PostSidePanelPatch {
      */
     private static int getPanelStartMargin(int windowWidth) {
         if (windowWidth < Dim.dp(MIN_WINDOW_WIDTH_DP)) {
-            if (!Settings.ENABLE_TABLET_LAYOUTS_ON_PHONE.get()) {
-                return 0;
-            }
-
             return windowWidth - (int) (windowWidth * PanelWidth.TWO_THIRDS.fraction);
         }
 
